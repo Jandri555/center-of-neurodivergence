@@ -1,6 +1,7 @@
 package com.neurocenter.apps.pdfreader;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDVectorFont;
 import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
@@ -57,6 +58,10 @@ final class BionicPageRenderer {
         stripper.setEndPage(pageIndex + 1);
         stripper.getText(document);
 
+        PDRectangle cropBox = document.getPage(pageIndex).getCropBox();
+        float cropOffsetX = cropBox.getLowerLeftX();
+        float cropOffsetY = cropBox.getLowerLeftY();
+
         Set<GlyphKey> result = new HashSet<>();
         List<TextPosition> word = new ArrayList<>();
         TextPosition previous = null;
@@ -64,7 +69,7 @@ final class BionicPageRenderer {
         for (TextPosition position : positions) {
             String unicode = position.getUnicode();
             if (!isWordText(unicode)) {
-                markWord(word, ratio, result);
+                markWord(word, ratio, result, cropOffsetX, cropOffsetY)
                 word.clear();
                 previous = null;
                 continue;
@@ -126,7 +131,8 @@ final class BionicPageRenderer {
         return gap > Math.max(1.0f, spaceWidth * 0.45f);
     }
 
-    private static void markWord(List<TextPosition> word, double ratio, Set<GlyphKey> result) {
+    private static void markWord(List<TextPosition> word, double ratio, Set<GlyphKey> result,
+                                  float cropOffsetX, float cropOffsetY) {
         if (word.isEmpty()) return;
 
         int totalCodePoints = word.stream()
@@ -142,7 +148,8 @@ final class BionicPageRenderer {
             int[] codes = position.getCharacterCodes();
             if (codes != null && position.getFont() != null) {
                 for (int code : codes) {
-                    result.add(GlyphKey.of(position.getFont(), code, position.getTextMatrix()));
+                    result.add(GlyphKey.of(position.getFont(), code, position.getTextMatrix(),
+                            cropOffsetX, cropOffsetY));
                 }
             }
             consumed += position.getUnicode().codePointCount(0, position.getUnicode().length());
@@ -153,13 +160,18 @@ final class BionicPageRenderer {
                             int scaleX, int shearY, int shearX,
                             int scaleY, int translateX, int translateY) {
         static GlyphKey of(PDFont font, int code, Matrix matrix) {
+            return of(font, code, matrix, 0, 0);
+        }
+
+        static GlyphKey of(PDFont font, int code, Matrix matrix,
+                           float cropOffsetX, float cropOffsetY) {
             return new GlyphKey(font, code,
                     quantize(matrix.getScaleX()),
                     quantize(matrix.getShearY()),
                     quantize(matrix.getShearX()),
                     quantize(matrix.getScaleY()),
-                    quantize(matrix.getTranslateX()),
-                    quantize(matrix.getTranslateY()));
+                    quantize(matrix.getTranslateX() + cropOffsetX),
+                    quantize(matrix.getTranslateY() + cropOffsetY));
         }
 
         private static int quantize(float value) {
