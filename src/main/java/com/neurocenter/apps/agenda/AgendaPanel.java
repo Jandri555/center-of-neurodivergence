@@ -8,6 +8,8 @@ import javax.swing.AbstractButton;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
+import javax.swing.JDialog;
+import javax.swing.JProgressBar;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
@@ -33,6 +35,7 @@ import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Dialog;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
@@ -82,6 +85,7 @@ final class AgendaPanel extends JPanel {
 
     private final AgendaStore store;
     private final AppContext ctx;
+    private JButton bluetoothSyncButton;
 
     private YearMonth month = YearMonth.now();
     private LocalDate selected = LocalDate.now();
@@ -146,13 +150,21 @@ final class AgendaPanel extends JPanel {
         prepareSync.addActionListener(e -> {
             prepareSync();
             if (store.isSyncEnabled()) {
-                prepareSync.setText("Historial de sincronización activo");
+                prepareSync.setText("Historial activo");
                 prepareSync.setEnabled(false);
+                bluetoothSyncButton.setEnabled(true);
             }
         });
 
+        bluetoothSyncButton = new JButton("Sincronizar Bluetooth");
+        styleAgendaButton(bluetoothSyncButton);
+        bluetoothSyncButton.setEnabled(store.isSyncEnabled());
+        bluetoothSyncButton.setToolTipText("Conecta con Android mediante el puerto COM Bluetooth del sistema");
+        bluetoothSyncButton.addActionListener(e -> syncBluetooth());
+
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         right.add(prepareSync);
+        right.add(bluetoothSyncButton);
         right.add(newTask);
         right.add(newEvent);
 
@@ -160,6 +172,83 @@ final class AgendaPanel extends JPanel {
         bar.add(left, BorderLayout.WEST);
         bar.add(right, BorderLayout.EAST);
         return bar;
+    }
+
+    private void syncBluetooth() {
+        if (!store.isSyncEnabled()) {
+            JOptionPane.showMessageDialog(ctx.window(),
+                    "Activa primero el historial de sincronización en ambos dispositivos.",
+                    "Sincronización Bluetooth", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        com.fazecast.jSerialComm.SerialPort[] ports = BluetoothSerialClient.availablePorts();
+        if (ports.length == 0) {
+            JOptionPane.showMessageDialog(ctx.window(),
+                    "No hay puertos serie disponibles. Empareja primero el móvil con Windows y habilita "
+                            + "el puerto serie Bluetooth saliente (SPP) en la configuración del dispositivo.",
+                    "Sin puerto Bluetooth", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        String[] labels = java.util.Arrays.stream(ports)
+                .map(BluetoothSerialClient::label)
+                .toArray(String[]::new);
+        String instructions = "En Android, pulsa «Esperar conexión Bluetooth» y acepta que el móvil "
+                + "sea visible. Después selecciona aquí el puerto COM Bluetooth saliente del móvil.\\n\\n"
+                + "El primer emparejamiento se realiza desde la configuración Bluetooth de Windows.";
+        String selected = (String) JOptionPane.showInputDialog(
+                ctx.window(), instructions, "Sincronizar Agenda por Bluetooth",
+                JOptionPane.QUESTION_MESSAGE, null, labels, labels[0]);
+        if (selected == null) return;
+
+        int portIndex = java.util.Arrays.asList(labels).indexOf(selected);
+        if (portIndex < 0) return;
+        performBluetoothSync(ports[portIndex]);
+    }
+
+    private void performBluetoothSync(com.fazecast.jSerialComm.SerialPort port) {
+        JDialog progress = new JDialog(
+                SwingUtilities.getWindowAncestor(this),
+                "Sincronizando agenda",
+                Dialog.ModalityType.APPLICATION_MODAL);
+        JPanel panel = new JPanel(new BorderLayout(0, 12));
+        panel.setBorder(new EmptyBorder(18, 22, 18, 22));
+        panel.add(new JLabel("Conectando con el móvil y comparando operaciones…"), BorderLayout.NORTH);
+        JProgressBar bar = new JProgressBar();
+        bar.setIndeterminate(true);
+        panel.add(bar, BorderLayout.CENTER);
+        progress.setContentPane(panel);
+        progress.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+        progress.pack();
+        progress.setLocationRelativeTo(ctx.window());
+
+        Thread worker = new Thread(() -> {
+            String failure = null;
+            try {
+                BluetoothSerialClient.synchronize(port, store);
+            } catch (Exception ex) {
+                failure = ex.getMessage() == null ? ex.toString() : ex.getMessage();
+            }
+
+            final String error = failure;
+            SwingUtilities.invokeLater(() -> {
+                progress.dispose();
+                if (error == null) {
+                    refresh();
+                    JOptionPane.showMessageDialog(ctx.window(),
+                            "La agenda se ha sincronizado correctamente.",
+                            "Sincronización completada", JOptionPane.INFORMATION_MESSAGE);
+                } else {
+                    JOptionPane.showMessageDialog(ctx.window(),
+                            "No se pudo sincronizar la agenda:\\n" + error,
+                            "Error de sincronización", JOptionPane.ERROR_MESSAGE);
+                }
+            });
+        }, "agenda-bluetooth-sync");
+        worker.setDaemon(true);
+        worker.start();
+        progress.setVisible(true);
     }
 
     /** Mantiene los controles de Agenda planos y coherentes con la barra de Bionic PDF. */
@@ -180,7 +269,7 @@ final class AgendaPanel extends JPanel {
                 + "modificaciones, cambios de estado y borrados para poder intercambiarlos con Android.\\n\\n"
                 + "El historial no sustituye la agenda actual y no se vacía automáticamente: se conservará "
                 + "hasta que exista un mecanismo de sincronización con confirmación de recepción.\\n\\n"
-                + "La conexión real por USB y Bluetooth todavía no está disponible. ¿Activar el historial?";
+                + "Bluetooth ya puede utilizar el puerto serie del sistema. La conexión USB todavía está pendiente. ¿Activar el historial?";
         int answer = JOptionPane.showConfirmDialog(
                 ctx.window(), message, "Preparar sincronización",
                 JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE);
