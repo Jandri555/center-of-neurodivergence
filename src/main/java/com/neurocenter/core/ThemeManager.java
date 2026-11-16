@@ -128,7 +128,22 @@ public final class ThemeManager {
                 Map.entry("button", "Button.background"),
                 Map.entry("buttonText", "Button.foreground"),
                 Map.entry("input", "TextField.background"),
-                Map.entry("inputText", "TextField.foreground")
+                Map.entry("inputText", "TextField.foreground"),
+                Map.entry("dialog", "Dialog.background"),
+                Map.entry("dialog", "OptionPane.background"),
+                Map.entry("dialog", "OptionPane.messageArea.background"),
+                Map.entry("dialog", "OptionPane.buttonArea.background"),
+                Map.entry("popup", "PopupMenu.background"),
+                Map.entry("menu", "Menu.background"),
+                Map.entry("menuText", "Menu.foreground"),
+                Map.entry("menuItem", "MenuItem.background"),
+                Map.entry("menuText", "MenuItem.foreground"),
+                Map.entry("menuHover", "MenuItem.selectionBackground"),
+                Map.entry("menuHoverText", "MenuItem.selectionForeground"),
+                Map.entry("buttonHover", "Button.hoverBackground"),
+                Map.entry("buttonPressed", "Button.pressedBackground"),
+                Map.entry("buttonDisabled", "Button.disabledBackground"),
+                Map.entry("buttonDisabledText", "Button.disabledText")
         );
         for (Map.Entry<String, String> entry : keys.entrySet()) {
             JsonElement value = colors.get(entry.getKey());
