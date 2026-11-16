@@ -75,11 +75,13 @@ public final class MainActivity extends Activity {
     private ParcelFileDescriptor usbAccessoryDescriptor;
     private volatile boolean usbSyncActive;
     private boolean usbReceiverRegistered;
+    private boolean usbPermissionPending;
 
     private final BroadcastReceiver usbPermissionReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (!ACTION_USB_PERMISSION.equals(intent.getAction())) return;
+            usbPermissionPending = false;
             UsbAccessory accessory = intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY);
             if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false) && accessory != null) {
                 openUsbAccessory(accessory);
@@ -495,7 +497,7 @@ public final class MainActivity extends Activity {
     }
 
     private void inspectUsbAccessory() {
-        if (isFinishing() || usbSyncActive || usbAccessoryDescriptor != null) return;
+        if (isFinishing() || usbSyncActive || usbPermissionPending || usbAccessoryDescriptor != null) return;
         UsbManager manager = (UsbManager) getSystemService(Context.USB_SERVICE);
         if (manager == null) return;
         UsbAccessory[] accessories = manager.getAccessoryList();
@@ -511,6 +513,7 @@ public final class MainActivity extends Activity {
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= 31) flags |= PendingIntent.FLAG_MUTABLE;
         PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, permissionIntent, flags);
+        usbPermissionPending = true;
         manager.requestPermission(accessory, pendingIntent);
         syncStatus.setText("Esperando autorización para acceder al accesorio USB…");
     }
