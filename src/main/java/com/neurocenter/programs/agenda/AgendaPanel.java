@@ -8,6 +8,7 @@ import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -64,7 +65,7 @@ import java.util.stream.Collectors;
  * Agenda con dos vistas:
  *  - Calendario: mes a la izquierda y lo que hay en el día seleccionado a la derecha.
  *  - Pendientes: todas las tareas sin hacer, ordenadas por fecha límite.
- * Hay dos tipos de entrada: tareas (con fecha límite) y eventos (solo fecha y hora).
+ * Hay dos tipos de entrada: tareas (con fecha límite) y eventos (con fecha, hora y avisos).
  */
 final class AgendaPanel extends JPanel {
 
@@ -73,6 +74,7 @@ final class AgendaPanel extends JPanel {
     private static final DateTimeFormatter DEADLINE = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", ES);
     private static final DateTimeFormatter DEADLINE_YEAR = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM 'de' yyyy", ES);
     private static final String[] WEEKDAYS = { "L", "M", "X", "J", "V", "S", "D" };
+
     private static final String VIEW_CALENDAR = "calendar";
     private static final String VIEW_PENDING = "pending";
     private static final Color OVERDUE = new Color(0xDB4B4B);
@@ -106,6 +108,7 @@ final class AgendaPanel extends JPanel {
 
         views.add(buildPendingView(), VIEW_PENDING);
         views.add(buildCalendarView(), VIEW_CALENDAR);
+
         add(buildTopBar(), BorderLayout.NORTH);
         add(views, BorderLayout.CENTER);
         refresh();
@@ -129,6 +132,7 @@ final class AgendaPanel extends JPanel {
         newTask.addActionListener(e -> addEntry(AgendaEntry.TASK));
         JButton newEvent = new JButton("Nuevo evento");
         newEvent.addActionListener(e -> addEntry(AgendaEntry.EVENT));
+
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         right.add(newTask);
         right.add(newEvent);
@@ -152,8 +156,8 @@ final class AgendaPanel extends JPanel {
     }
 
     private JComponent buildCalendarSide() {
-        JButton prev = new JButton("‹");
-        JButton next = new JButton("›");
+        JButton prev = new JButton("◀");
+        JButton next = new JButton("▶");
         prev.addActionListener(e -> { month = month.minusMonths(1); refresh(); });
         next.addActionListener(e -> { month = month.plusMonths(1); refresh(); });
         monthLabel.setFont(monthLabel.getFont().deriveFont(Font.BOLD, 17f));
@@ -169,6 +173,7 @@ final class AgendaPanel extends JPanel {
             l.setForeground(muted());
             weekdays.add(l);
         }
+
         daysGrid.setPreferredSize(new Dimension(340, 6 * 46 + 5 * 4));
 
         JPanel grid = new JPanel(new BorderLayout(0, 6));
@@ -262,7 +267,6 @@ final class AgendaPanel extends JPanel {
         b.setMargin(new Insets(2, 2, 2, 2));
         b.setFocusable(false);
         if (isSelected) {
-            // "FlatLaf.style" = FlatClientProperties.STYLE
             b.putClientProperty("FlatLaf.style", "background: " + hex(RoundedPanel.accent()) + "; foreground: #FFFFFF");
         } else if (isToday) {
             b.setForeground(RoundedPanel.accent());
@@ -278,10 +282,10 @@ final class AgendaPanel extends JPanel {
     private void rebuildDay() {
         dayTitle.setText(capitalize(DAY_TITLE.format(selected)));
         List<AgendaEntry> list = store.on(selected);
-
         long pending = list.stream().filter(e -> !e.isEvent() && !e.done).count();
         long done = list.stream().filter(e -> !e.isEvent() && e.done).count();
         long events = list.stream().filter(AgendaEntry::isEvent).count();
+
         List<String> parts = new ArrayList<>();
         if (pending > 0) parts.add(plural(pending, "pendiente", "pendientes"));
         if (done > 0) parts.add(plural(done, "hecha", "hechas"));
@@ -366,6 +370,7 @@ final class AgendaPanel extends JPanel {
         text.setOpaque(false);
         text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
         text.add(title);
+
         String sub = subtitle(e, withDeadline);
         if (!sub.isEmpty()) {
             JLabel subLabel = new JLabel(sub);
@@ -382,6 +387,7 @@ final class AgendaPanel extends JPanel {
         edit.addActionListener(ev -> editEntry(e));
         JButton delete = new JButton("Borrar");
         delete.addActionListener(ev -> deleteEntry(e));
+
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actions.setOpaque(false);
         if (withDeadline) actions.add(deadlineBox(e));
@@ -396,13 +402,32 @@ final class AgendaPanel extends JPanel {
     }
 
     private static String subtitle(AgendaEntry e, boolean withDeadline) {
-        if (e.isEvent()) return "Evento";
+        if (e.isEvent()) {
+            List<String> reminders = new ArrayList<>();
+            if (e.remindDayBefore) reminders.add("día anterior");
+            if (e.remindCustom && e.remindBeforeMinutes > 0) {
+                reminders.add(formatAdvance(e.remindBeforeMinutes));
+            }
+            if (reminders.isEmpty()) return "Evento";
+            return "Evento. Aviso: " + String.join(", ", reminders);
+        }
         List<String> parts = new ArrayList<>();
         if (!withDeadline) parts.add("Fecha límite");
-        if (e.remind && e.localTime() != null) parts.add("Con aviso");
         String firstLine = e.notes == null ? "" : e.notes.strip().lines().findFirst().orElse("");
         if (!firstLine.isEmpty()) parts.add(firstLine);
         return String.join(". ", parts);
+    }
+
+    private static String formatAdvance(int minutes) {
+        if (minutes % 1440 == 0) {
+            long days = minutes / 1440;
+            return plural(days, "día antes", "días antes");
+        }
+        if (minutes % 60 == 0) {
+            long hours = minutes / 60;
+            return plural(hours, "hora antes", "horas antes");
+        }
+        return minutes + " min antes";
     }
 
     /** Fecha límite y cuánto falta, a la derecha de cada tarea pendiente. Las vencidas van en rojo. */
@@ -412,6 +437,7 @@ final class AgendaPanel extends JPanel {
 
         JLabel date = new JLabel(deadlineText(e, now.toLocalDate()), SwingConstants.RIGHT);
         date.setFont(date.getFont().deriveFont(Font.BOLD));
+
         JLabel relative = new JLabel(relativeText(e, now), SwingConstants.RIGHT);
         relative.setForeground(overdue ? OVERDUE : muted());
         if (overdue) date.setForeground(OVERDUE);
@@ -501,6 +527,7 @@ final class AgendaPanel extends JPanel {
                 : LocalTime.now().plusHours(1).truncatedTo(ChronoUnit.HOURS);
 
         JTextField title = new JTextField(existing == null ? "" : existing.title, 26);
+
         JSpinner dateSpinner = new JSpinner(new SpinnerDateModel(toDate(date0), null, null, Calendar.DAY_OF_MONTH));
         dateSpinner.setEditor(new JSpinner.DateEditor(dateSpinner, "dd/MM/yyyy"));
 
@@ -510,8 +537,32 @@ final class AgendaPanel extends JPanel {
         JSpinner minute = new JSpinner(new SpinnerNumberModel(time0.getMinute(), 0, 59, 5));
         hour.setEditor(new JSpinner.NumberEditor(hour, "00"));
         minute.setEditor(new JSpinner.NumberEditor(minute, "00"));
-        JCheckBox remind = new JCheckBox("Avisarme a esa hora (con la aplicación abierta)",
-                existing != null && existing.remind);
+
+        // Avisos (solo para eventos):
+        // Por defecto, al crear un evento nuevo viene marcada la opción de avisar el día anterior
+        boolean defaultDayBefore = existing == null ? true : existing.remindDayBefore;
+        JCheckBox remindDayBefore = new JCheckBox("Avisar el día anterior", defaultDayBefore);
+
+        boolean defaultCustom = existing != null && existing.remindCustom;
+        int initMins = (existing != null && existing.remindBeforeMinutes > 0) ? existing.remindBeforeMinutes : 30;
+        int initVal;
+        int initUnitIdx; // 0 = minutos, 1 = horas, 2 = días
+        if (initMins % 1440 == 0) {
+            initVal = initMins / 1440;
+            initUnitIdx = 2;
+        } else if (initMins % 60 == 0) {
+            initVal = initMins / 60;
+            initUnitIdx = 1;
+        } else {
+            initVal = initMins;
+            initUnitIdx = 0;
+        }
+
+        JCheckBox remindCustom = new JCheckBox("Recordar antes:", defaultCustom);
+        JSpinner customAmount = new JSpinner(new SpinnerNumberModel(Math.max(1, initVal), 1, 999, 1));
+        JComboBox<String> customUnit = new JComboBox<>(new String[] { "minutos", "horas", "días" });
+        customUnit.setSelectedIndex(initUnitIdx);
+
         JTextArea notes = new JTextArea(existing == null || existing.notes == null ? "" : existing.notes, 4, 26);
         notes.setLineWrap(true);
         notes.setWrapStyleWord(true);
@@ -520,10 +571,17 @@ final class AgendaPanel extends JPanel {
             boolean t = event || withTime.isSelected();
             hour.setEnabled(t);
             minute.setEnabled(t);
-            remind.setEnabled(t);
         };
         withTime.addActionListener(ev -> syncTime.run());
         syncTime.run();
+
+        Runnable syncCustomRemind = () -> {
+            boolean c = remindCustom.isSelected();
+            customAmount.setEnabled(c);
+            customUnit.setEnabled(c);
+        };
+        remindCustom.addActionListener(ev -> syncCustomRemind.run());
+        syncCustomRemind.run();
 
         JPanel timeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         if (!event) timeRow.add(withTime);
@@ -531,13 +589,20 @@ final class AgendaPanel extends JPanel {
         timeRow.add(new JLabel(":"));
         timeRow.add(minute);
 
+        JPanel customRemindRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        customRemindRow.add(remindCustom);
+        customRemindRow.add(customAmount);
+        customRemindRow.add(customUnit);
+
         JPanel form = new JPanel(new GridBagLayout());
         int row = 0;
         addFormRow(form, row++, "Título", title);
         addFormRow(form, row++, event ? "Día" : "Fecha límite", dateSpinner);
         addFormRow(form, row++, event ? "Hora" : "Hora límite", timeRow);
-        if (!event) {
-            addFormRow(form, row++, "", remind);
+        if (event) {
+            addFormRow(form, row++, "Avisos", remindDayBefore);
+            addFormRow(form, row++, "", customRemindRow);
+        } else {
             addFormRow(form, row++, "Notas", new JScrollPane(notes));
         }
         focusOnShow(title);
@@ -545,6 +610,7 @@ final class AgendaPanel extends JPanel {
         String dialogTitle = existing != null
                 ? (event ? "Editar evento" : "Editar tarea")
                 : (event ? "Nuevo evento" : "Nueva tarea");
+
         while (true) {
             int r = JOptionPane.showConfirmDialog(ctx.window(), form, dialogTitle,
                     JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
@@ -557,7 +623,8 @@ final class AgendaPanel extends JPanel {
                         "Falta el título", JOptionPane.WARNING_MESSAGE);
                 continue;
             }
-            for (JSpinner s : new JSpinner[] { dateSpinner, hour, minute }) {
+
+            for (JSpinner s : new JSpinner[] { dateSpinner, hour, minute, customAmount }) {
                 try {
                     s.commitEdit();
                 } catch (ParseException ignored) {
@@ -573,18 +640,37 @@ final class AgendaPanel extends JPanel {
             e.time = hasTime
                     ? LocalTime.of(((Number) hour.getValue()).intValue(), ((Number) minute.getValue()).intValue()).toString()
                     : null;
+
             if (event) {
-                // Un evento es solo título, fecha y hora.
                 e.notes = "";
                 e.done = false;
                 e.remind = false;
                 e.notified = false;
+
+                e.remindDayBefore = remindDayBefore.isSelected();
+                e.remindCustom = remindCustom.isSelected();
+
+                int amount = ((Number) customAmount.getValue()).intValue();
+                int unitIdx = customUnit.getSelectedIndex();
+                int multiplier = (unitIdx == 2) ? 1440 : (unitIdx == 1 ? 60 : 1);
+                e.remindBeforeMinutes = amount * multiplier;
+
+                LocalDateTime now = LocalDateTime.now();
+                LocalDateTime due = e.due();
+
+                // Si el evento aún está en el futuro, dejamos activos los avisos configurados;
+                // si el evento ya pasó, los marcamos como notificados para no dispararlos retroactivamente.
+                boolean eventInFuture = due != null && due.isAfter(now);
+                e.notifiedDayBefore = !e.remindDayBefore || !eventInFuture;
+                e.notifiedCustom = !e.remindCustom || !eventInFuture;
             } else {
                 e.notes = notes.getText().strip();
-                e.remind = hasTime && remind.isSelected();
-                // Si la hora ya pasó, no se avisa de inmediato; si está en el futuro, el aviso queda pendiente.
-                LocalDateTime due = e.due();
-                e.notified = e.remind && due != null && !due.isAfter(LocalDateTime.now());
+                e.remind = false;
+                e.notified = false;
+                e.remindDayBefore = false;
+                e.notifiedDayBefore = false;
+                e.remindCustom = false;
+                e.notifiedCustom = false;
             }
             return e;
         }
@@ -663,17 +749,12 @@ final class AgendaPanel extends JPanel {
     /** Panel que se adapta al ancho visible del JScrollPane (así los textos largos se recortan en lugar de desbordar). */
     private static final class WidthTrackingPanel extends JPanel implements Scrollable {
         WidthTrackingPanel() { super(new BorderLayout()); }
-
         @Override public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
-
         @Override public int getScrollableUnitIncrement(Rectangle visible, int orientation, int direction) { return 16; }
-
         @Override public int getScrollableBlockIncrement(Rectangle visible, int orientation, int direction) {
             return Math.max(16, visible.height - 32);
         }
-
         @Override public boolean getScrollableTracksViewportWidth() { return true; }
-
         @Override public boolean getScrollableTracksViewportHeight() { return false; }
     }
 }

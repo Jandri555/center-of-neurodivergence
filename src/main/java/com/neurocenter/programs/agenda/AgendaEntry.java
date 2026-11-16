@@ -8,13 +8,12 @@ import java.util.UUID;
 
 /**
  * Una tarea o un evento. Se guarda tal cual en agenda.json (fechas y horas como texto ISO).
- *
- * Tarea:  tiene fecha límite (date), hora límite opcional (time), notas, aviso y se puede marcar como hecha.
- * Evento: solo título, fecha y hora.
- *
+ * Tarea:  tiene fecha límite (date), hora límite opcional (time), notas y se puede marcar como hecha.
+ * Evento: título, fecha, hora y opciones de aviso (día anterior y/o tiempo antes personalizado).
  * Las entradas guardadas antes de que existieran los eventos no tienen "type" y se leen como tareas.
  */
 final class AgendaEntry {
+
     static final String TASK = "task";
     static final String EVENT = "event";
 
@@ -25,8 +24,18 @@ final class AgendaEntry {
     String title = "";
     String notes = "";
     boolean done;
-    boolean remind;         // avisar a la hora indicada (solo tareas)
-    boolean notified;       // el aviso ya se mostró
+
+    // Opciones de aviso (exclusivas de eventos)
+    boolean remindDayBefore;
+    boolean notifiedDayBefore;
+
+    boolean remindCustom;
+    int remindBeforeMinutes = 30;
+    boolean notifiedCustom;
+
+    // Campos antiguos conservados por compatibilidad con agenda.json previos
+    boolean remind;
+    boolean notified;
 
     boolean isEvent() {
         return EVENT.equals(type);
@@ -53,6 +62,18 @@ final class AgendaEntry {
         LocalDate d = localDate();
         LocalTime t = localTime();
         return d == null || t == null ? null : d.atTime(t);
+    }
+
+    /** Momento en el que debe saltar el aviso del día anterior (24h antes del evento). */
+    LocalDateTime dayBeforeTrigger() {
+        LocalDateTime d = due();
+        return d == null ? null : d.minusDays(1);
+    }
+
+    /** Momento en el que debe saltar el aviso personalizado. */
+    LocalDateTime customTrigger() {
+        LocalDateTime d = due();
+        return d == null ? null : d.minusMinutes(Math.max(0, remindBeforeMinutes));
     }
 
     /** Una tarea sin hacer cuya fecha límite ya pasó (sin hora, vence al terminar ese día). */
