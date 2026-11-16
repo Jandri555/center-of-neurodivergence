@@ -150,19 +150,15 @@ final class AgendaPanel extends JPanel {
 
     /** Mantiene los controles de Agenda planos y coherentes con la barra de Bionic PDF. */
     private static void styleAgendaButton(AbstractButton button) {
-        button.putClientProperty("JButton.buttonType", "toolBarButton");
+        // Botón normal: conserva el borde sutil y recupera los estados hover/pressed de FlatLaf.
+        button.putClientProperty("JButton.buttonType", "roundRect");
         button.setFocusable(false);
-        button.setOpaque(false);
-        button.setContentAreaFilled(false);
-        button.setBorderPainted(false);
     }
 
     private static void styleAgendaToggle(JToggleButton button) {
-        button.putClientProperty("JToggleButton.buttonType", "toolBarButton");
+        // Las vistas son pestañas: subrayado al seleccionar y fondo al pasar el ratón.
+        button.putClientProperty("JButton.buttonType", "tab");
         button.setFocusable(false);
-        button.setOpaque(false);
-        button.setContentAreaFilled(false);
-        button.setBorderPainted(false);
     }
 
     private void showView(boolean pending) {
