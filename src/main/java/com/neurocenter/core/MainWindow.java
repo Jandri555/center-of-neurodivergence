@@ -2,8 +2,8 @@ package com.neurocenter.core;
 
 import com.neurocenter.api.NeuroApp;
 import com.neurocenter.api.AppContext;
-import com.neurocenter.programs.agenda.AgendaApp;
-import com.neurocenter.programs.pdfreader.PdfReaderApp;
+import com.neurocenter.apps.agenda.AgendaApp;
+import com.neurocenter.apps.pdfreader.PdfReaderApp;
 import com.neurocenter.ui.BadgeIcon;
 import com.neurocenter.ui.RoundedPanel;
 
