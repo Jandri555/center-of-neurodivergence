@@ -2,6 +2,7 @@ package com.neurocenter.core;
 
 import com.neurocenter.api.NeuroApp;
 import com.neurocenter.api.AppContext;
+import com.neurocenter.api.AppStorage;
 import com.neurocenter.apps.agenda.AgendaApp;
 import com.neurocenter.apps.pdfreader.PdfReaderApp;
 import com.neurocenter.ui.BadgeIcon;
@@ -184,6 +185,7 @@ public final class MainWindow extends JFrame {
                     } catch (Throwable t) {
                         t.printStackTrace();
                     } finally {
+                        session.storage.closeSession();
                         session.worker.shutdown();
                     }
                 });
@@ -420,7 +422,11 @@ public final class MainWindow extends JFrame {
             return;
         }
 
-        AppSession session = new AppSession(id, app, new Ctx(app));
+        ManagedAppStorage storage = new ManagedAppStorage(
+                app.id(), app.name(), AppPaths.appDataDir(app.id()), appRegistry,
+                MainWindow.this, externalAppIds.contains(id));
+        Ctx context = new Ctx(app, storage);
+        AppSession session = new AppSession(id, app, context, storage);
         appSessions.put(id, session);
 
         JPanel loading = new JPanel(new GridBagLayout());
@@ -531,6 +537,7 @@ public final class MainWindow extends JFrame {
             } catch (Throwable t) {
                 t.printStackTrace();
             } finally {
+                session.storage.closeSession();
                 session.worker.shutdown();
                 SwingUtilities.invokeLater(() -> {
                     if (appSessions.get(session.id) == session) {
@@ -617,12 +624,13 @@ public final class MainWindow extends JFrame {
         JLabel message = new JLabel("Ajustes generales");
         root.add(message, BorderLayout.CENTER);
 
-        JPanel buttons = new JPanel(new GridLayout(1, 3, 8, 0));
-        String[] labels = {"Cambiar tema", "Gestionar temas", "Gestionar apps"};
+        JPanel buttons = new JPanel(new GridLayout(2, 2, 8, 8));
+        String[] labels = {"Cambiar tema", "Gestionar temas", "Gestionar apps", "Gestionar permisos"};
         Runnable[] actions = {
                 this::chooseTheme,
                 this::manageThemes,
-                this::manageApps
+                this::manageApps,
+                this::managePermissions
         };
         for (int i = 0; i < labels.length; i++) {
             final int index = i;
@@ -740,6 +748,51 @@ public final class MainWindow extends JFrame {
                             "Error al desinstalar", JOptionPane.ERROR_MESSAGE);
                 }
             }
+        }
+    }
+
+    private void managePermissions() {
+        if (appRegistry == null) {
+            JOptionPane.showMessageDialog(this, "El registro SQLite de aplicaciones no está disponible.",
+                    "Gestionar permisos", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        try {
+            List<AppRegistry.PermissionInfo> permissions = appRegistry.listPermissions();
+            if (permissions.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Todavía no hay permisos permanentes guardados.");
+                return;
+            }
+
+            AppRegistry.PermissionInfo selected = (AppRegistry.PermissionInfo) JOptionPane.showInputDialog(
+                    this,
+                    "Selecciona el permiso que quieres restablecer:",
+                    "Gestionar permisos",
+                    JOptionPane.QUESTION_MESSAGE,
+                    null,
+                    permissions.toArray(AppRegistry.PermissionInfo[]::new),
+                    permissions.get(0));
+            if (selected == null) return;
+
+            StringBuilder details = new StringBuilder(selected.toString());
+            if (AppRegistry.LIMITED_FOLDERS.equals(selected.decision())) {
+                details.append("\\n\\nCarpetas autorizadas:");
+                for (String folder : selected.folders()) details.append("\\n• ").append(folder);
+            }
+            int answer = JOptionPane.showConfirmDialog(
+                    this,
+                    details + "\\n\\nAl restablecerlo, la próxima solicitud de la aplicación volverá a mostrar el aviso.",
+                    "Restablecer permiso",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE);
+            if (answer == JOptionPane.YES_OPTION) {
+                appRegistry.removePermission(selected.appId(), selected.permission());
+                JOptionPane.showMessageDialog(this, "Permiso restablecido.");
+            }
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "No se pudieron gestionar los permisos: " + ex.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -879,14 +932,16 @@ public final class MainWindow extends JFrame {
         private final String id;
         private final NeuroApp app;
         private final AppContext context;
+        private final ManagedAppStorage storage;
         private final ExecutorService worker;
         private volatile boolean closing;
         private JComponent panel;
 
-        private AppSession(String id, NeuroApp app, AppContext context) {
+        private AppSession(String id, NeuroApp app, AppContext context, ManagedAppStorage storage) {
             this.id = id;
             this.app = app;
             this.context = context;
+            this.storage = storage;
             String threadName = "app-" + id.replaceAll("[^A-Za-z0-9_-]", "_");
             this.worker = Executors.newSingleThreadExecutor(task -> {
                 Thread thread = new Thread(task, threadName);
@@ -899,11 +954,17 @@ public final class MainWindow extends JFrame {
     /** Lo que cada app recibe del panel. */
     private final class Ctx implements AppContext {
         private final NeuroApp app;
+        private final ManagedAppStorage storage;
         private PropertiesStore store;
 
-        Ctx(NeuroApp app) { this.app = app; }
+        Ctx(NeuroApp app, ManagedAppStorage storage) {
+            this.app = app;
+            this.storage = storage;
+        }
 
         @Override public Path dataDir() { return AppPaths.appDataDir(app.id()); }
+
+        @Override public AppStorage storage() { return storage; }
 
         private synchronized PropertiesStore store() {
             if (store == null) store = new PropertiesStore(dataDir().resolve("settings.properties"));
