@@ -200,12 +200,24 @@ final class AgendaPanel extends JPanel {
             return;
         }
 
+        String remembered = BluetoothSerialClient.rememberedPortName();
+        if (remembered != null) {
+            for (com.fazecast.jSerialComm.SerialPort port : ports) {
+                if (remembered.equalsIgnoreCase(port.getSystemPortName())) {
+                    performBluetoothSync(port);
+                    return;
+                }
+            }
+            BluetoothSerialClient.clearRememberedPort();
+        }
+
         String[] labels = java.util.Arrays.stream(ports)
                 .map(BluetoothSerialClient::label)
                 .toArray(String[]::new);
-        String instructions = "En Android, pulsa «Esperar conexión Bluetooth» y acepta que el móvil "
-                + "sea visible. Después selecciona aquí el puerto COM Bluetooth saliente del móvil.\\n\\n"
-                + "El primer emparejamiento se realiza desde la configuración Bluetooth de Windows.";
+        String instructions = "Selecciona el puerto COM Bluetooth saliente del móvil. "
+                + "La aplicación recordará el que funcione y lo utilizará automáticamente la próxima vez.\n\n"
+                + "Si no aparece, créalo desde las opciones avanzadas de Bluetooth de Windows "
+                + "(puerto saliente / SPP).";
         String selected = (String) JOptionPane.showInputDialog(
                 ctx.window(), instructions, "Sincronizar Agenda por Bluetooth",
                 JOptionPane.QUESTION_MESSAGE, null, labels, labels[0]);
