@@ -40,6 +40,8 @@ final class AgendaOperation {
                 || counter < 1 || lamport < 1 || entryId == null || entryId.isBlank()
                 || vectorClock == null) return false;
         if (!operationId.equals(deviceId + ":" + counter)) return false;
+        if (!Long.valueOf(counter).equals(vectorClock.get(deviceId))) return false;
+        if (vectorClock.values().stream().anyMatch(value -> value == null || value < 0)) return false;
         if (UPSERT.equals(type)) return entry != null && entryId.equals(entry.id);
         return DELETE.equals(type) && entry == null;
     }
