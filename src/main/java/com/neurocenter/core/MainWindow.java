@@ -104,7 +104,7 @@ public final class MainWindow extends JFrame {
 
     // ------------------------------------------------------------------ registro y arranque
 
-    private void register(NeuroApp app, boolean external {
+    private void register(NeuroApp app, boolean external) {
         try {
             String id = app.id();
             String name = app.name();
