@@ -1,120 +1,253 @@
 package com.neurocenter.apps.pdfreader;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDVectorFont;
+import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
+import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
+import org.apache.pdfbox.rendering.PageDrawer;
+import org.apache.pdfbox.rendering.PageDrawerParameters;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
+import org.apache.pdfbox.util.Matrix;
+import org.apache.pdfbox.util.Vector;
 
 import java.awt.BasicStroke;
-import java.awt.Color;
 import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.image.BufferedImage;
-import javax.swing.UIManager;
+import java.awt.Shape;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.GeneralPath;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
- * Renderiza la página completa y marca el inicio de las palabras sin alterar sus glifos.
- *
- * No reconstruye la página ni vuelve a pintar el texto con una fuente aproximada: dibuja
- * una línea fina bajo el prefijo de cada palabra. Así conserva exactamente la tipografía,
- * las imágenes, los fondos, las columnas y las tablas del documento original.
+ * Renderiza la página original y aplica negrita sintética a los prefijos usando
+ * los contornos vectoriales de la propia fuente del PDF. No sustituye la tipografía.
  */
 final class BionicPageRenderer {
 
     private BionicPageRenderer() {}
 
-    static BufferedImage render(PDDocument document, int pageIndex, float dpi, double ratio)
-            throws IOException {
-        BufferedImage image = new PDFRenderer(document).renderImageWithDPI(pageIndex, dpi);
-        float scale = dpi / 72.0f;
-
-        Graphics2D graphics = image.createGraphics();
-        try {
-            graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-
-            PDFTextStripper stripper = new PDFTextStripper() {
-                @Override
-                protected void writeString(String text, List<TextPosition> positions) {
-                    drawBionicPrefixes(graphics, positions, scale, ratio);
-                }
-            };
-            stripper.setSortByPosition(true);
-            stripper.setStartPage(pageIndex + 1);
-            stripper.setEndPage(pageIndex + 1);
-            stripper.getText(document);
-        } finally {
-            graphics.dispose();
-        }
-        return image;
+    static java.awt.image.BufferedImage render(PDDocument document, int pageIndex,
+                                                float dpi, double ratio) throws IOException {
+        Set<GlyphKey> boldGlyphs = collectBoldGlyphs(document, pageIndex, ratio);
+        PDFRenderer renderer = new BionicRenderer(document, boldGlyphs);
+        return renderer.renderImageWithDPI(pageIndex, dpi);
     }
 
-    private static void drawBionicPrefixes(Graphics2D graphics, List<TextPosition> positions,
-                                           float scale, double ratio) {
+    /**
+     * Recoge los glifos de cada prefijo en el mismo orden de lectura del flujo PDF.
+     * La posición efectiva de cada glifo permite identificarlo después durante el renderizado.
+     */
+    private static Set<GlyphKey> collectBoldGlyphs(PDDocument document, int pageIndex,
+                                                   double ratio) throws IOException {
+        List<TextPosition> positions = new ArrayList<>();
+        PDFTextStripper stripper = new PDFTextStripper() {
+            @Override
+            protected void processTextPosition(TextPosition text) {
+                positions.add(text);
+            }
+        };
+        stripper.setSortByPosition(false);
+        stripper.setStartPage(pageIndex + 1);
+        stripper.setEndPage(pageIndex + 1);
+        stripper.getText(document);
+
+        Set<GlyphKey> result = new HashSet<>();
         List<TextPosition> word = new ArrayList<>();
+        TextPosition previous = null;
+
         for (TextPosition position : positions) {
             String unicode = position.getUnicode();
-            if (unicode == null || unicode.isEmpty()) continue;
-
-            if (unicode.codePoints().allMatch(Character::isWhitespace)) {
-                drawWord(graphics, word, scale, ratio);
+            if (!isWordText(unicode)) {
+                markWord(word, ratio, result);
                 word.clear();
-            } else {
-                word.add(position);
+                previous = null;
+                continue;
             }
+
+            if (!word.isEmpty() && isVisualWordBreak(previous, position)) {
+                markWord(word, ratio, result);
+                word.clear();
+            }
+
+            word.add(position);
+            previous = position;
         }
-        drawWord(graphics, word, scale, ratio);
+
+        markWord(word, ratio, result);
+        return result;
     }
 
-    private static void drawWord(Graphics2D graphics, List<TextPosition> word,
-                                 float scale, double ratio) {
+    private static boolean isWordText(String text) {
+        if (text == null || text.isEmpty()) return false;
+        return text.codePoints().allMatch(codePoint -> {
+            int type = Character.getType(codePoint);
+            return Character.isLetterOrDigit(codePoint)
+                    || type == Character.NON_SPACING_MARK
+                    || type == Character.COMBINING_SPACING_MARK
+                    || type == Character.ENCLOSING_MARK;
+        });
+    }
+
+    /**
+     * PDFTextStripper puede recibir dos palabras consecutivas sin un glifo de espacio
+     * cuando el PDF las separa mediante posicionamiento. Detectamos ese hueco geométrico.
+     */
+    private static boolean isVisualWordBreak(TextPosition previous, TextPosition current) {
+        if (previous == null) return false;
+
+        float previousDirection = previous.getDir();
+        float currentDirection = current.getDir();
+        if (Math.abs(previousDirection - currentDirection) > 1.0f) return true;
+
+        float lineDifference = Math.abs(previous.getYDirAdj() - current.getYDirAdj());
+        float lineHeight = Math.max(previous.getHeightDir(), current.getHeightDir());
+        if (lineDifference > Math.max(1.0f, lineHeight * 0.45f)) return true;
+
+        float gap;
+        if (Math.abs(previousDirection - 180.0f) < 1.0f) {
+            gap = previous.getXDirAdj()
+                    - (current.getXDirAdj() + current.getWidthDirAdj());
+        } else if (Math.abs(previousDirection - 90.0f) < 1.0f
+                || Math.abs(previousDirection - 270.0f) < 1.0f) {
+            gap = current.getYDirAdj()
+                    - (previous.getYDirAdj() + previous.getHeightDir());
+        } else {
+            gap = current.getXDirAdj()
+                    - (previous.getXDirAdj() + previous.getWidthDirAdj());
+        }
+
+        float spaceWidth = previous.getWidthOfSpace();
+        return gap > Math.max(1.0f, spaceWidth * 0.45f);
+    }
+
+    private static void markWord(List<TextPosition> word, double ratio, Set<GlyphKey> result) {
         if (word.isEmpty()) return;
 
-        int codePoints = 0;
-        for (TextPosition position : word) {
-            codePoints += position.getUnicode().codePointCount(0, position.getUnicode().length());
-        }
-        int emphasizedCount = Math.max(1, (int) Math.ceil(codePoints * ratio));
+        int totalCodePoints = word.stream()
+                .mapToInt(position -> position.getUnicode().codePointCount(
+                        0, position.getUnicode().length()))
+                .sum();
+        int boldCodePoints = Math.max(1, (int) Math.ceil(totalCodePoints * ratio));
         int consumed = 0;
-        float startX = Float.POSITIVE_INFINITY;
-        float endX = Float.NEGATIVE_INFINITY;
-        float baseline = 0f;
-        float textHeight = 0f;
 
         for (TextPosition position : word) {
-            if (consumed >= emphasizedCount) break;
+            if (consumed >= boldCodePoints) break;
 
-            int glyphPoints = position.getUnicode()
-                    .codePointCount(0, position.getUnicode().length());
-            float x = position.getXDirAdj() * scale;
-            float width = position.getWidthDirAdj() * scale;
+            int[] codes = position.getCharacterCodes();
+            if (codes != null && position.getFont() != null) {
+                for (int code : codes) {
+                    result.add(GlyphKey.of(position.getFont(), code, position.getTextMatrix()));
+                }
+            }
+            consumed += position.getUnicode().codePointCount(0, position.getUnicode().length());
+        }
+    }
 
-            startX = Math.min(startX, x);
-            endX = Math.max(endX, x + width);
-            baseline = position.getYDirAdj() * scale;
-            textHeight = Math.max(textHeight, position.getHeightDir() * scale);
-            consumed += glyphPoints;
+    private record GlyphKey(PDFont font, int code,
+                            int scaleX, int shearY, int shearX,
+                            int scaleY, int translateX, int translateY) {
+        static GlyphKey of(PDFont font, int code, Matrix matrix) {
+            return new GlyphKey(font, code,
+                    quantize(matrix.getScaleX()),
+                    quantize(matrix.getShearY()),
+                    quantize(matrix.getShearX()),
+                    quantize(matrix.getScaleY()),
+                    quantize(matrix.getTranslateX()),
+                    quantize(matrix.getTranslateY()));
         }
 
-        if (endX <= startX) return;
+        private static int quantize(float value) {
+            return Math.round(value * 1000.0f);
+        }
+    }
 
-        // No reescribimos los glifos del PDF con SansSerif: eso crea dobles
-        // contornos cuando la fuente, el kerning o la línea base no coinciden.
-        // Marcamos el prefijo con una línea fina y dejamos intacta la tipografía.
-        Color accent = UIManager.getColor("Component.accentColor");
-        if (accent == null) accent = new Color(0x55B8FF);
-        graphics.setColor(new Color(accent.getRed(), accent.getGreen(),
-                accent.getBlue(), 190));
-        graphics.setStroke(new BasicStroke(Math.max(1.0f, 1.15f * scale),
-                BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+    private static final class BionicRenderer extends PDFRenderer {
+        private final Set<GlyphKey> boldGlyphs;
 
-        float underlineY = baseline + Math.max(1.0f * scale, textHeight * 0.055f);
-        graphics.drawLine(Math.round(startX), Math.round(underlineY),
-                Math.round(endX), Math.round(underlineY));
+        BionicRenderer(PDDocument document, Set<GlyphKey> boldGlyphs) {
+            super(document);
+            this.boldGlyphs = boldGlyphs;
+        }
+
+        @Override
+        protected PageDrawer createPageDrawer(PageDrawerParameters parameters) throws IOException {
+            return new BionicPageDrawer(parameters, boldGlyphs);
+        }
+    }
+
+    private static final class BionicPageDrawer extends PageDrawer {
+        private final Set<GlyphKey> boldGlyphs;
+
+        BionicPageDrawer(PageDrawerParameters parameters, Set<GlyphKey> boldGlyphs)
+                throws IOException {
+            super(parameters);
+            this.boldGlyphs = boldGlyphs;
+        }
+
+        @Override
+        protected void showFontGlyph(Matrix textRenderingMatrix, PDFont font, int code,
+                                     Vector displacement) throws IOException {
+            boolean bold = boldGlyphs.contains(GlyphKey.of(font, code, textRenderingMatrix));
+
+            // PDFBox dibuja primero el glifo original con sus colores, transparencias y ajustes.
+            super.showFontGlyph(textRenderingMatrix, font, code, displacement);
+
+            if (bold) {
+                reinforceOriginalGlyph(textRenderingMatrix, font, code, displacement);
+            }
+        }
+
+        /**
+         * Engrosa el contorno del glifo original. Así se obtiene una negrita sintética
+         * con la forma de la fuente incrustada, sin duplicar texto ni desplazar caracteres.
+         */
+        private void reinforceOriginalGlyph(Matrix textRenderingMatrix, PDFont font, int code,
+                                            Vector displacement) throws IOException {
+            if (!(font instanceof PDVectorFont vectorFont)) return;
+
+            PDGraphicsState state = getGraphicsState();
+            RenderingMode mode = state.getTextState().getRenderingMode();
+
+            // No alteramos texto invisible, solo trazado o usado como máscara de recorte.
+            if (!mode.isFill() || mode.isClip()) return;
+
+            GeneralPath path = vectorFont.getPath(code);
+            if (path == null || path.getBounds2D().isEmpty()) return;
+
+            AffineTransform transform = textRenderingMatrix.createAffineTransform();
+            transform.concatenate(font.getFontMatrix().createAffineTransform());
+
+            // Replica el ajuste de anchura que aplica el propio PageDrawer de PDFBox.
+            if (!font.isEmbedded() && !font.isVertical() && !font.isStandard14()
+                    && font.hasExplicitWidth(code)) {
+                float fontWidth = font.getWidthFromFont(code);
+                if (displacement.getX() > 0 && fontWidth > 0
+                        && Math.abs(fontWidth - displacement.getX() * 1000.0f) > 0.0001f) {
+                    transform.scale(displacement.getX() * 1000.0f / fontWidth, 1.0);
+                }
+            }
+
+            Shape glyph = transform.createTransformedShape(path);
+            Graphics2D graphics = (Graphics2D) getGraphics().create();
+            try {
+                graphics.setComposite(state.getNonStrokingJavaComposite());
+                graphics.setPaint(getNonStrokingPaint());
+
+                float fontScale = Math.max(Math.abs(textRenderingMatrix.getScaleX()),
+                        Math.abs(textRenderingMatrix.getScaleY()));
+                float strokeWidth = Math.max(0.30f, Math.min(0.75f, fontScale * 0.045f));
+                graphics.setStroke(new BasicStroke(strokeWidth,
+                        BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                graphics.draw(glyph);
+            } finally {
+                graphics.dispose();
+            }
+        }
     }
 }
