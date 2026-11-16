@@ -201,6 +201,14 @@ public final class MainWindow extends JFrame {
         title.setBorder(new EmptyBorder(0, 10, 0, 0));
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
         side.add(title);
+
+        JLabel version = new JLabel("Versión " + AppInfo.VERSION);
+        version.setFont(title.getFont().deriveFont(Font.PLAIN, 11f));
+        Color muted = UIManager.getColor("Label.disabledForeground");
+        if (muted != null) version.setForeground(muted);
+        version.setBorder(new EmptyBorder(2, 10, 0, 0));
+        version.setAlignmentX(Component.LEFT_ALIGNMENT);
+        side.add(version);
         side.add(Box.createVerticalStrut(22));
 
         addNav(side, HOME, "Inicio", new BadgeIcon("I", HOME, 24));
