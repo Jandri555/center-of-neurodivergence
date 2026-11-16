@@ -158,12 +158,18 @@ public final class MainActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         bluetoothButton = button("Esperar conexión Bluetooth");
-        bluetoothButton.setOnClickListener(v -> startBluetoothSync());
+        bluetoothButton.setOnClickListener(v -> {
+            if (bluetoothServer != null) stopBluetoothSync();
+            else startBluetoothSync();
+        });
         root.addView(bluetoothButton, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         usbButton = button("Conectar por cable USB");
-        usbButton.setOnClickListener(v -> showUsbInstructions());
+        usbButton.setOnClickListener(v -> {
+            if (usbAccessoryDescriptor != null) stopUsbSync();
+            else showUsbInstructions();
+        });
         root.addView(usbButton, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
@@ -540,15 +546,20 @@ public final class MainActivity extends Activity {
 
         usbAccessoryDescriptor = descriptor;
         usbSyncActive = true;
-        usbButton.setEnabled(false);
-        syncStatus.setText("Conectado por USB. Sincronizando operaciones con el ordenador…");
+        usbButton.setEnabled(true);
+        usbButton.setText("Desconectar USB");
+        syncStatus.setText("Conectado por USB. Los cambios se sincronizan automáticamente.");
 
         syncExecutor.execute(() -> {
             String failure = null;
             try {
                 FileInputStream input = new FileInputStream(descriptor.getFileDescriptor());
                 FileOutputStream output = new FileOutputStream(descriptor.getFileDescriptor());
-                AgendaSyncProtocol.runServer(input, output, store, this::mergeOnMainThread);
+                AgendaSyncProtocol.runServerSession(
+                        input, output, store, this::mergeOnMainThread,
+                        () -> usbSyncActive,
+                        () -> runOnUiThread(() ->
+                                syncStatus.setText("Conectado por USB. Los cambios se sincronizan automáticamente.")));
             } catch (Exception ex) {
                 failure = ex.getMessage() == null ? ex.toString() : ex.getMessage();
             } finally {
@@ -558,13 +569,16 @@ public final class MainActivity extends Activity {
                     // El descriptor se cierra aunque se pierda el cable.
                 }
                 if (usbAccessoryDescriptor == descriptor) usbAccessoryDescriptor = null;
+                boolean stoppedByUser = !usbSyncActive;
                 usbSyncActive = false;
-                final String error = failure;
+                final String error = stoppedByUser ? null : failure;
                 runOnUiThread(() -> {
-                    if (usbButton != null) usbButton.setEnabled(true);
+                    if (usbButton != null) {
+                        usbButton.setEnabled(true);
+                        usbButton.setText("Conectar por cable USB");
+                    }
                     if (error == null) {
-                        syncStatus.setText("Agenda sincronizada correctamente por USB.");
-                        Toast.makeText(this, "Agenda sincronizada por USB.", Toast.LENGTH_LONG).show();
+                        syncStatus.setText("Conexión USB cerrada.");
                         refresh();
                     } else {
                         syncStatus.setText("No se pudo completar la sincronización USB.");
@@ -663,13 +677,17 @@ public final class MainActivity extends Activity {
             return;
         }
 
-        bluetoothButton.setEnabled(false);
+        bluetoothButton.setEnabled(true);
+        bluetoothButton.setText("Desconectar Bluetooth");
         syncStatus.setText("Esperando al ordenador… Mantén esta pantalla abierta. "
-                + "La visibilidad estará activa durante " + (DISCOVERABLE_SECONDS / 60) + " minutos.");
+                + "La visibilidad para emparejar estará activa durante " + (DISCOVERABLE_SECONDS / 60) + " minutos.");
         syncExecutor.execute(() -> {
             String failure = null;
             try {
-                server.waitForOneSync(store, this::mergeOnMainThread);
+                server.waitForOneSync(
+                        store, this::mergeOnMainThread,
+                        () -> runOnUiThread(() ->
+                                syncStatus.setText("Conectado por Bluetooth. Los cambios se sincronizan automáticamente.")));
             } catch (Exception ex) {
                 failure = ex.getMessage() == null ? ex.toString() : ex.getMessage();
             } finally {
@@ -679,12 +697,12 @@ public final class MainActivity extends Activity {
                     // Ya se está cerrando la conexión.
                 }
                 if (bluetoothServer == server) bluetoothServer = null;
-                final String error = failure;
+                final String error = server.isClosed() ? null : failure;
                 runOnUiThread(() -> {
                     bluetoothButton.setEnabled(true);
+                    bluetoothButton.setText("Esperar conexión Bluetooth");
                     if (error == null) {
-                        syncStatus.setText("Agenda sincronizada correctamente.");
-                        Toast.makeText(this, "Agenda sincronizada.", Toast.LENGTH_LONG).show();
+                        syncStatus.setText("Conexión Bluetooth cerrada.");
                         refresh();
                     } else {
                         syncStatus.setText("No se pudo completar la sincronización.");
@@ -694,6 +712,29 @@ public final class MainActivity extends Activity {
                 });
             }
         });
+    }
+
+    private void stopBluetoothSync() {
+        BluetoothSyncServer server = bluetoothServer;
+        if (server == null) return;
+        try {
+            server.close();
+        } catch (IOException ex) {
+            Toast.makeText(this, "No se pudo cerrar Bluetooth: " + ex.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void stopUsbSync() {
+        ParcelFileDescriptor descriptor = usbAccessoryDescriptor;
+        if (descriptor == null) return;
+        usbSyncActive = false;
+        try {
+            descriptor.close();
+        } catch (IOException ex) {
+            Toast.makeText(this, "No se pudo cerrar USB: " + ex.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     /** El protocolo se ejecuta en segundo plano, pero la lista se modifica en el hilo de UI. */
