@@ -48,7 +48,7 @@ final class BluetoothSerialClient {
         return port.getSystemPortName() + " — " + description;
     }
 
-    static void synchronize(SerialPort port, AgendaStore store, BooleanSupplier keepAlive, Runnable onConnected) throws IOException {
+    static void synchronize(SerialPort port, AgendaStore store, BooleanSupplier keepAlive, Runnable onConnected, Runnable onRemoteChange) throws IOException {
         if (port == null) throw new IOException("No se ha seleccionado ningún puerto serie.");
         if (!store.isSyncEnabled()) {
             throw new IOException("Activa primero el historial de sincronización de la agenda.");
@@ -71,7 +71,10 @@ final class BluetoothSerialClient {
                     port.getInputStream(),
                     port.getOutputStream(),
                     store,
-                    operations -> mergeOnEdt(store, operations),
+                    operations -> {
+                        mergeOnEdt(store, operations);
+                        if (onRemoteChange != null) SwingUtilities.invokeLater(onRemoteChange);
+                    },
                     keepAlive,
                     () -> {
                         PREFERENCES.put(LAST_PORT_KEY, port.getSystemPortName());
