@@ -9,6 +9,8 @@ on:
       - "src/main/java/com/neurocenter/apps/agenda/AgendaOperation.java"
       - "src/main/java/com/neurocenter/apps/agenda/AgendaSyncJournal.java"
       - "src/main/java/com/neurocenter/apps/agenda/AgendaStore.java"
+      - "src/main/java/com/neurocenter/apps/agenda/AgendaSyncProtocol.java"
+      - "src/main/java/com/neurocenter/apps/agenda/AgendaPanel.java"
       - ".github/workflows/android.yml"
   pull_request:
     branches: [ "dev", "main" ]
@@ -39,7 +41,9 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android 16 SDK
         run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
