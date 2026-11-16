@@ -6,6 +6,7 @@ import javax.swing.SwingUtilities;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.prefs.Preferences;
 
 /**
  * Transporte Bluetooth clásico para el escritorio.
@@ -20,7 +21,19 @@ final class BluetoothSerialClient {
     private static final int READ_TIMEOUT_MS = 60_000;
     private static final int WRITE_TIMEOUT_MS = 60_000;
 
+
+    private static final Preferences PREFERENCES = Preferences.userNodeForPackage(BluetoothSerialClient.class);
+    private static final String LAST_PORT_KEY = "agenda.bluetooth.lastPort";
+
     private BluetoothSerialClient() {}
+
+    static String rememberedPortName() {
+        return PREFERENCES.get(LAST_PORT_KEY, null);
+    }
+
+    static void clearRememberedPort() {
+        PREFERENCES.remove(LAST_PORT_KEY);
+    }
 
     static SerialPort[] availablePorts() {
         return SerialPort.getCommPorts();
@@ -58,6 +71,7 @@ final class BluetoothSerialClient {
                     port.getOutputStream(),
                     store,
                     operations -> mergeOnEdt(store, operations));
+            PREFERENCES.put(LAST_PORT_KEY, port.getSystemPortName());
         } finally {
             port.closePort();
         }
