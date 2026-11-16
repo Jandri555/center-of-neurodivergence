@@ -1,9 +1,9 @@
 package com.neurocenter.core;
 
-import com.neurocenter.api.NeuroProgram;
-import com.neurocenter.api.ProgramContext;
-import com.neurocenter.programs.agenda.AgendaProgram;
-import com.neurocenter.programs.pdfreader.PdfReaderProgram;
+import com.neurocenter.api.NeuroApp;
+import com.neurocenter.api.AppContext;
+import com.neurocenter.programs.agenda.AgendaApp;
+import com.neurocenter.programs.pdfreader.PdfReaderApp;
 import com.neurocenter.ui.BadgeIcon;
 import com.neurocenter.ui.RoundedPanel;
 
@@ -54,17 +54,17 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Panel principal: menú lateral con todos los programas y una pantalla de inicio.
- * Los programas integrados se registran en el constructor; los plugins se leen de AppData.
+ * Panel principal: menú lateral con todos los apps y una pantalla de inicio.
+ * Los apps integrados se registran en el constructor; los apps se leen de AppData.
  */
 public final class MainWindow extends JFrame {
 
     private static final String HOME = "__home__";
 
     private final PropertiesStore appSettings;
-    private final Map<String, NeuroProgram> programs = new LinkedHashMap<>();
+    private final Map<String, NeuroApp> programs = new LinkedHashMap<>();
     private final Set<String> pluginIds = new HashSet<>();
-    private final Map<String, ProgramContext> contexts = new HashMap<>();
+    private final Map<String, AppContext> contexts = new HashMap<>();
     private final Map<String, JToggleButton> navButtons = new HashMap<>();
     private final Set<String> openedPanels = new HashSet<>();
     private final List<String> loadErrors = new ArrayList<>();
@@ -79,13 +79,13 @@ public final class MainWindow extends JFrame {
         this.appSettings = appSettings;
 
         // 1) Programas integrados en el propio .jar
-        register(new AgendaProgram(), false);
-        register(new PdfReaderProgram(), false);
+        register(new AgendaApp(), false);
+        register(new PdfReaderApp(), false);
 
-        // 2) Programas externos: .jar en AppData/CenterOfNeurodivergence/plugins
-        PluginLoader.Result plugins = PluginLoader.load(AppPaths.pluginsDir());
-        loadErrors.addAll(plugins.errors());
-        for (NeuroProgram p : plugins.programs()) register(p, true);
+        // 2) Programas externos: .jar en AppData/CenterOfNeurodivergence/apps
+        AppLoader.Result apps = AppLoader.load(AppPaths.appsDir());
+        loadErrors.addAll(apps.errors());
+        for (NeuroApp p : apps.programs()) register(p, true);
 
         startPrograms();
         buildUi();
@@ -104,14 +104,14 @@ public final class MainWindow extends JFrame {
 
     // ------------------------------------------------------------------ registro y arranque
 
-    private void register(NeuroProgram program, boolean plugin) {
+    private void register(NeuroApp program, boolean plugin) {
         try {
             String id = program.id();
             String name = program.name();
             if (id == null || id.isBlank()) throw new IllegalArgumentException("el id está vacío");
             if (name == null || name.isBlank()) throw new IllegalArgumentException("el nombre está vacío");
             if (programs.containsKey(id)) {
-                loadErrors.add("Hay dos programas con el id «" + id + "»: se ignora «" + name + "».");
+                loadErrors.add("Hay dos apps con el id «" + id + "»: se ignora «" + name + "».");
                 return;
             }
             programs.put(id, program);
@@ -122,8 +122,8 @@ public final class MainWindow extends JFrame {
     }
 
     private void startPrograms() {
-        for (NeuroProgram p : new ArrayList<>(programs.values())) {
-            ProgramContext ctx = new Ctx(p);
+        for (NeuroApp p : new ArrayList<>(programs.values())) {
+            AppContext ctx = new Ctx(p);
             contexts.put(p.id(), ctx);
             try {
                 p.start(ctx);
@@ -136,13 +136,13 @@ public final class MainWindow extends JFrame {
     }
 
     private void showLoadErrors() {
-        StringBuilder sb = new StringBuilder("Algunos programas no se han podido cargar:\n");
+        StringBuilder sb = new StringBuilder("Algunos apps no se han podido cargar:\n");
         for (String e : loadErrors) sb.append("\n• ").append(e);
         JOptionPane.showMessageDialog(this, sb.toString(), AppInfo.NAME, JOptionPane.WARNING_MESSAGE);
     }
 
     private void shutdown() {
-        for (NeuroProgram p : programs.values()) {
+        for (NeuroApp p : programs.values()) {
             try {
                 p.stop();
             } catch (Throwable t) {
@@ -185,18 +185,18 @@ public final class MainWindow extends JFrame {
         side.add(Box.createVerticalStrut(22));
 
         addNav(side, HOME, "Inicio", new BadgeIcon("I", HOME, 24));
-        for (NeuroProgram p : programs.values()) {
+        for (NeuroApp p : programs.values()) {
             addNav(side, p.id(), p.name(), iconFor(p, 24));
         }
 
         side.add(Box.createVerticalGlue());
 
-        JButton pluginsButton = new JButton("Carpeta de plugins");
-        pluginsButton.addActionListener(e -> openPluginsFolder());
+        JButton appsButton = new JButton("Carpeta de apps");
+        appsButton.addActionListener(e -> openPluginsFolder());
         themeButton = new JButton();
         updateThemeButtonText();
         themeButton.addActionListener(e -> toggleTheme());
-        for (JButton b : new JButton[] { pluginsButton, themeButton }) {
+        for (JButton b : new JButton[] { appsButton, themeButton }) {
             b.setAlignmentX(Component.LEFT_ALIGNMENT);
             b.setMaximumSize(new Dimension(Integer.MAX_VALUE, b.getPreferredSize().height));
             side.add(b);
@@ -228,12 +228,12 @@ public final class MainWindow extends JFrame {
         JPanel root = new JPanel(new BorderLayout(0, 24));
         root.setBorder(new EmptyBorder(36, 44, 24, 44));
 
-        JLabel heading = new JLabel("<html><div style='font-size:22pt'><b>Tus programas</b></div>"
+        JLabel heading = new JLabel("<html><div style='font-size:22pt'><b>Tus apps</b></div>"
                 + "<div style='margin-top:6px'>Elige uno para empezar.</div></html>");
         root.add(heading, BorderLayout.NORTH);
 
         JPanel grid = new JPanel(new GridLayout(0, 2, 16, 16));
-        for (NeuroProgram p : programs.values()) grid.add(buildCard(p));
+        for (NeuroApp p : programs.values()) grid.add(buildCard(p));
         JPanel gridTop = new JPanel(new BorderLayout());
         gridTop.add(grid, BorderLayout.NORTH);
         JScrollPane scroll = new JScrollPane(gridTop);
@@ -241,13 +241,13 @@ public final class MainWindow extends JFrame {
         scroll.getVerticalScrollBar().setUnitIncrement(16);
         root.add(scroll, BorderLayout.CENTER);
 
-        JLabel hint = new JLabel("<html>Para añadir más programas, copia su archivo .jar en <b>"
-                + esc(AppPaths.pluginsDir().toString()) + "</b> y reinicia la aplicación.</html>");
+        JLabel hint = new JLabel("<html>Para añadir más apps, copia su archivo .jar en <b>"
+                + esc(AppPaths.appsDir().toString()) + "</b> y reinicia la aplicación.</html>");
         root.add(hint, BorderLayout.SOUTH);
         return root;
     }
 
-    private JComponent buildCard(NeuroProgram p) {
+    private JComponent buildCard(NeuroApp p) {
         RoundedPanel card = new RoundedPanel(new BorderLayout(16, 0), 18);
         card.setBorder(new EmptyBorder(18, 18, 18, 18));
         card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -281,7 +281,7 @@ public final class MainWindow extends JFrame {
 
     private void showProgram(String id) {
         if (!HOME.equals(id) && !openedPanels.contains(id)) {
-            NeuroProgram p = programs.get(id);
+            NeuroApp p = programs.get(id);
             if (p == null) return;
             JComponent panel;
             try {
@@ -299,7 +299,7 @@ public final class MainWindow extends JFrame {
         statusLabel.setText(" ");
     }
 
-    private JComponent errorPanel(NeuroProgram p, Throwable t) {
+    private JComponent errorPanel(NeuroApp p, Throwable t) {
         StringWriter sw = new StringWriter();
         t.printStackTrace(new PrintWriter(sw));
         JTextArea area = new JTextArea("«" + p.name() + "» no se ha podido abrir.\n\n" + sw);
@@ -314,12 +314,12 @@ public final class MainWindow extends JFrame {
     // ------------------------------------------------------------------ acciones
 
     private void openPluginsFolder() {
-        Path dir = AppPaths.pluginsDir();
+        Path dir = AppPaths.appsDir();
         try {
             if (!Desktop.isDesktopSupported()) throw new UnsupportedOperationException();
             Desktop.getDesktop().open(dir.toFile());
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "La carpeta de plugins está en:\n" + dir,
+            JOptionPane.showMessageDialog(this, "La carpeta de apps está en:\n" + dir,
                     AppInfo.NAME, JOptionPane.INFORMATION_MESSAGE);
         }
     }
@@ -338,7 +338,7 @@ public final class MainWindow extends JFrame {
 
     // ------------------------------------------------------------------ utilidades
 
-    private static Icon iconFor(NeuroProgram p, int size) {
+    private static Icon iconFor(NeuroApp p, int size) {
         try {
             Icon icon = p.icon();
             if (icon != null) return icon;
@@ -348,7 +348,7 @@ public final class MainWindow extends JFrame {
         return new BadgeIcon(p.name(), p.id(), size);
     }
 
-    private static String safeVersion(NeuroProgram p) {
+    private static String safeVersion(NeuroApp p) {
         try {
             return p.version();
         } catch (Throwable t) {
@@ -360,14 +360,14 @@ public final class MainWindow extends JFrame {
         return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
-    /** Lo que cada programa recibe del panel. */
-    private final class Ctx implements ProgramContext {
-        private final NeuroProgram program;
+    /** Lo que cada app recibe del panel. */
+    private final class Ctx implements AppContext {
+        private final NeuroApp program;
         private PropertiesStore store;
 
-        Ctx(NeuroProgram program) { this.program = program; }
+        Ctx(NeuroApp program) { this.program = program; }
 
-        @Override public Path dataDir() { return AppPaths.programDataDir(program.id()); }
+        @Override public Path dataDir() { return AppPaths.appDataDir(program.id()); }
 
         private synchronized PropertiesStore store() {
             if (store == null) store = new PropertiesStore(dataDir().resolve("settings.properties"));
@@ -384,7 +384,7 @@ public final class MainWindow extends JFrame {
             else SwingUtilities.invokeLater(() -> statusLabel.setText(text));
         }
 
-        @Override public void openProgram(String programId) {
+        @Override public void openApp(String programId) {
             if (programs.containsKey(programId)) showProgram(programId);
         }
 
