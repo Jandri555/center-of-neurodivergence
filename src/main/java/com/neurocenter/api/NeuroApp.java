@@ -12,6 +12,18 @@ import javax.swing.JComponent;
  * completo de la clase (una por línea).
  *
  * La clase necesita un constructor público sin argumentos.
+ *
+ * <p>Cada app abierta tiene un hilo de trabajo propio para su ciclo de vida:
+ * {@link #start(AppContext)} y {@link #stop()} se ejecutan en ese hilo.
+ * {@link #createPanel(AppContext)} se ejecuta en el hilo de Swing (EDT), porque
+ * Swing exige que la interfaz gráfica se cree y actualice desde ese hilo.</p>
+ *
+ * <p>Indicador opcional de cambios pendientes: la clase que implementa esta
+ * interfaz puede declarar
+ * {@code public static volatile boolean UNSAVED_CHANGES = false;}.
+ * El panel principal lo consulta al pulsar la X. Si vale {@code true}, pide
+ * confirmación antes de cerrar. Si el campo no existe o vale {@code false},
+ * cierra directamente. También se admite un campo boolean no estático.</p>
  */
 public interface NeuroApp {
 
@@ -30,14 +42,14 @@ public interface NeuroApp {
     default Icon icon() { return null; }
 
     /**
-     * Se llama una vez al arrancar la aplicación, aunque el usuario no abra el app.
-     * Útil para servicios en segundo plano (avisos, sincronización...). Se ejecuta en el hilo de Swing.
+     * Se llama cada vez que el usuario abre el app, en su hilo de trabajo propio.
+     * Debe reservarse para inicialización y tareas que no manipulen componentes Swing.
      */
     default void start(AppContext context) {}
 
-    /** Se llama la primera vez que el usuario abre el app. Se ejecuta en el hilo de Swing. */
+    /** Crea la interfaz del app. Se ejecuta en el hilo de Swing (EDT). */
     JComponent createPanel(AppContext context);
 
-    /** Se llama al cerrar la aplicación. Guarda aquí lo que quede pendiente. */
+    /** Se llama al cerrar el app, en el mismo hilo de trabajo que ejecutó start(). */
     default void stop() {}
 }
