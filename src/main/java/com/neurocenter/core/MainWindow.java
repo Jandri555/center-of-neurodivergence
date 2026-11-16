@@ -166,6 +166,8 @@ public final class MainWindow extends JFrame {
         settingsButton.setPreferredSize(new Dimension(48, 44));
         settingsButton.setMargin(new Insets(4, 8, 4, 8));
         settingsButton.setFocusable(false);
+        settingsButton.putClientProperty("JButton.buttonType", "toolBarButton");
+        settingsButton.setOpaque(false);
         settingsButton.addActionListener(e -> openSettings());
         JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 8));
         topBar.add(settingsButton);
