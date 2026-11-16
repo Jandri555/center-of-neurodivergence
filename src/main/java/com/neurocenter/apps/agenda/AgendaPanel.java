@@ -4,6 +4,7 @@ import com.neurocenter.api.AppContext;
 import com.neurocenter.ui.BadgeIcon;
 import com.neurocenter.ui.RoundedPanel;
 
+import javax.swing.AbstractButton;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
