@@ -303,19 +303,15 @@ final class PdfReaderPanel extends JPanel {
     }
 
     private static void styleToolbarButton(AbstractButton button) {
-        button.putClientProperty("JButton.buttonType", "toolBarButton");
+        // Botón de acción visible, con borde discreto y estados hover/pressed de FlatLaf.
+        button.putClientProperty("JButton.buttonType", "roundRect");
         button.setFocusable(false);
-        button.setOpaque(false);
-        button.setBorderPainted(false);
     }
 
-    /** Los botones de modo son pestañas, no botones de acción grises. */
+    /** Los modos de lectura se comportan como pestañas, no como botones de texto. */
     private static void styleToolbarToggle(JToggleButton button) {
-        button.putClientProperty("JToggleButton.buttonType", "toolBarButton");
+        button.putClientProperty("JButton.buttonType", "tab");
         button.setFocusable(false);
-        button.setOpaque(false);
-        button.setBorderPainted(false);
-        button.setContentAreaFilled(false);
     }
 
     private JComponent buildEmptyCard() {
