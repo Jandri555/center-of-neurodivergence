@@ -266,9 +266,9 @@ final class AgendaPanel extends JPanel {
 
     private void prepareSync() {
         String message = "Se activará un historial de operaciones de la agenda. Guardará las altas, "
-                + "modificaciones, cambios de estado y borrados para poder intercambiarlos con Android.\\n\\n"
+                + "modificaciones, cambios de estado y borrados para poder intercambiarlos con Android.\n\n"
                 + "El historial no sustituye la agenda actual y no se vacía automáticamente: se conservará "
-                + "hasta que exista un mecanismo de sincronización con confirmación de recepción.\\n\\n"
+                + "hasta que el otro dispositivo confirme que las ha recibido.\n\n"
                 + "Bluetooth ya puede utilizar el puerto serie del sistema. La conexión USB todavía está pendiente. ¿Activar el historial?";
         int answer = JOptionPane.showConfirmDialog(
                 ctx.window(), message, "Preparar sincronización",
