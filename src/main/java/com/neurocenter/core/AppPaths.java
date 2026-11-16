@@ -25,7 +25,7 @@ public final class AppPaths {
 
     public static Path dataDir() { return ROOT.resolve("data"); }
 
-    /** Carpeta de datos de un app; se crea si no existe. */
+    /** Carpeta de datos de una app; se crea si no existe. */
     public static Path appDataDir(String appId) {
         String safe = appId.replaceAll("[^A-Za-z0-9._-]", "_");
         if (safe.isBlank() || safe.chars().allMatch(c -> c == '.')) safe = "_";
