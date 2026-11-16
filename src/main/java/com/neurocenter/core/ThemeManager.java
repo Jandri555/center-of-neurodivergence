@@ -76,6 +76,8 @@ public final class ThemeManager {
         String name = string(json, "name");
         String base = string(json, "base");
         if (id == null || !id.matches("[a-zA-Z0-9._-]{1,48}") ||
+                !dir.getFileName().toString().equals(id) ||
+                "light".equals(id) || "dark".equals(id) ||
                 name == null || name.isBlank() ||
                 !("light".equals(base) || "dark".equals(base))) return null;
         JsonObject colors = object(json, "colors");
