@@ -31,7 +31,7 @@ android {
 // AGP 9.4 expone AndroidSourceDirectorySet sin PatternFilterable.
 // Excluimos los archivos Swing a nivel de tarea de compilación Java.
 tasks.withType<JavaCompile>().configureEach {
-    exclude("**/AgendaApp.java", "**/AgendaPanel.java", "**/BluetoothSerialClient.java")
+    exclude("**/AgendaApp.java", "**/AgendaPanel.java", "**/BluetoothSerialClient.java", "**/UsbAoaClient.java")
 }
 
 dependencies {
