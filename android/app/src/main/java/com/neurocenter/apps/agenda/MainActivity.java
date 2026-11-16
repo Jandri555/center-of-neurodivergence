@@ -526,6 +526,11 @@ public final class MainActivity extends Activity {
 
     private void openUsbAccessory(UsbAccessory accessory) {
         if (usbSyncActive || usbAccessoryDescriptor != null) return;
+        if (bluetoothServer != null) {
+            Toast.makeText(this, "Cierra primero la sesión Bluetooth para usar USB.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
         if (!store.isSyncEnabled()) {
             Toast.makeText(this, "Activa primero el historial de sincronización.",
                     Toast.LENGTH_LONG).show();
@@ -546,6 +551,7 @@ public final class MainActivity extends Activity {
 
         usbAccessoryDescriptor = descriptor;
         usbSyncActive = true;
+        bluetoothButton.setEnabled(false);
         usbButton.setEnabled(true);
         usbButton.setText("Desconectar USB");
         syncStatus.setText("Conectado por USB. Los cambios se sincronizan automáticamente.");
@@ -577,6 +583,7 @@ public final class MainActivity extends Activity {
                         usbButton.setEnabled(true);
                         usbButton.setText("Conectar por cable USB");
                     }
+                    if (bluetoothButton != null) bluetoothButton.setEnabled(true);
                     if (error == null) {
                         syncStatus.setText("Conexión USB cerrada.");
                         refresh();
@@ -591,6 +598,11 @@ public final class MainActivity extends Activity {
     }
 
     private void startBluetoothSync() {
+        if (usbSyncActive || usbAccessoryDescriptor != null) {
+            Toast.makeText(this, "Cierra primero la sesión USB para usar Bluetooth.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
         if (!store.isSyncEnabled()) {
             Toast.makeText(this,
                     "Primero activa «Preparar sincronización» en ambos dispositivos.",
@@ -678,6 +690,7 @@ public final class MainActivity extends Activity {
         }
 
         bluetoothButton.setEnabled(true);
+        usbButton.setEnabled(false);
         bluetoothButton.setText("Desconectar Bluetooth");
         syncStatus.setText("Esperando al ordenador… Mantén esta pantalla abierta. "
                 + "La visibilidad para emparejar estará activa durante " + (DISCOVERABLE_SECONDS / 60) + " minutos.");
@@ -701,6 +714,7 @@ public final class MainActivity extends Activity {
                 final String error = closedByUser ? null : failure;
                 runOnUiThread(() -> {
                     bluetoothButton.setEnabled(true);
+                    usbButton.setEnabled(true);
                     bluetoothButton.setText("Esperar conexión Bluetooth");
                     if (error == null) {
                         syncStatus.setText("Conexión Bluetooth cerrada.");
