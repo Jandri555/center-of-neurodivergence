@@ -79,13 +79,36 @@ En Windows:
 
 El escritorio usa jSerialComm para abrir el puerto serie que Windows presenta. La implementación está lista para pruebas, pero todavía necesita validación física con teléfonos y adaptadores concretos. No se debe dar por garantizada la disponibilidad del perfil SPP en todos los modelos ni controladores.
 
-### USB por cable (pendiente)
+### USB por cable: Android Open Accessory (AOA)
 
-La opción directa prevista es Android Open Accessory (AOA): el ordenador actúa como accesorio USB y Android como dispositivo. Android proporciona `UsbManager` y `UsbAccessory`; el ordenador debe iniciar el protocolo AOA con las peticiones de control del fabricante y volver a detectar el teléfono cuando entra en modo accesorio.
+Hay una implementación inicial en ambos extremos:
 
-La compatibilidad depende del hardware y firmware del teléfono. En Windows, el acceso USB host desde Java probablemente requerirá usb4java/libusb y un controlador compatible con WinUSB/libusbK para la interfaz de accesorio. Eso puede requerir instalar o asociar un controlador específico y no será plug-and-play en todos los equipos. Hay que probarlo antes de presentar USB como opción lista.
+- El escritorio inicia el protocolo AOA con las peticiones de control, envía los datos identificativos del accesorio, espera la reenumeración del teléfono y abre los endpoints bulk.
+- Android detecta el accesorio mediante `UsbManager`, solicita autorización al usuario y utiliza `UsbAccessory` para abrir los flujos de entrada y salida.
+- Ambos extremos pasan esos flujos al mismo `AgendaSyncProtocol` que se utiliza por Bluetooth.
+
+En Windows el dispositivo debe ser accesible por libusb. Si el controlador MTP predeterminado se queda la interfaz, puede ser necesario asociar el dispositivo/interfaz AOA a WinUSB o libusbK. Eso puede cambiar la forma en la que Windows trata el móvil y requiere cuidado: no debe cambiarse el controlador de todas las interfaces del teléfono sin comprobar qué interfaz corresponde al accesorio.
+
+La compatibilidad depende del hardware y firmware del teléfono, del cable de datos, del controlador y de que el fabricante implemente AOA. **El código está implementado, pero la conexión no se ha validado con un teléfono físico.** Por tanto, hay que considerarla experimental y no garantizar que funcione en cualquier móvil o PC.
 
 AOA y MTP no funcionan simultáneamente en el mismo enlace; al cambiar entre ambos modos puede ser necesario desconectar y reconectar.
+
+### Bluetooth clásico RFCOMM/SPP: primera vía implementada
+
+Android abre un servidor RFCOMM usando el UUID estándar del perfil Serial Port Profile (SPP). En el escritorio, jSerialComm permite abrir el puerto COM Bluetooth que Windows crea para la conexión saliente.
+
+En Android:
+1. Activa **Preparar sincronización**.
+2. Pulsa **Esperar conexión Bluetooth**.
+3. Acepta activar Bluetooth y hacer el teléfono visible durante cinco minutos.
+4. Mantén la pantalla de la Agenda abierta mientras se completa el intercambio.
+
+En Windows:
+1. Empareja primero el teléfono desde Configuración → Bluetooth.
+2. Habilita o crea un puerto COM saliente para el servicio serie Bluetooth (SPP) del móvil.
+3. En la Agenda de escritorio, activa el historial, pulsa **Sincronizar Bluetooth** y selecciona ese puerto COM.
+
+No todos los controladores y fabricantes exponen el perfil SPP de la misma forma. La implementación está compilada, pero necesita pruebas físicas con distintos teléfonos y adaptadores. No se ha probado todavía una transferencia real.
 
 ## Aplicación Android
 
