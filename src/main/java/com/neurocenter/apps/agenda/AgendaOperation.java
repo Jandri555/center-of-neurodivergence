@@ -36,8 +36,8 @@ final class AgendaOperation {
     }
 
     boolean isValid() {
-        if (operationId == null || deviceId == null || deviceId.isBlank()
-                || counter < 1 || lamport < 1 || entryId == null || entryId.isBlank()
+        if (operationId == null || deviceId == null || deviceId.trim().isEmpty()
+                || counter < 1 || lamport < 1 || entryId == null || entryId.trim().isEmpty()
                 || vectorClock == null) return false;
         if (!operationId.equals(deviceId + ":" + counter)) return false;
         if (!Long.valueOf(counter).equals(vectorClock.get(deviceId))) return false;
