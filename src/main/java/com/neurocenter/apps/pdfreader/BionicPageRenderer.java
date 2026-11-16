@@ -262,7 +262,7 @@ final class BionicPageRenderer {
                         Math.abs(textRenderingMatrix.getScaleY()));
                 // Engrosado más perceptible: el control de intensidad sigue decidiendo
                 // cuántos caracteres se refuerzan; este valor controla el grosor real.
-                float emboldenWidth = Math.max(0.55f, Math.min(1.70f, fontScale * 0.11f));
+                float emboldenWidth = Math.max(0.24f, Math.min(0.90f, fontScale * 0.055f));
 
                 // Convertimos el engrosado del contorno en una superficie rellena.
                 // draw(glyph) solo pintaba el borde y dejaba un efecto de letra hueca.
