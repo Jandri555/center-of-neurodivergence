@@ -1,6 +1,6 @@
 package com.neurocenter.core;
 
-import com.neurocenter.api.NeuroProgram;
+import com.neurocenter.api.NeuroApp;
 
 import java.io.IOException;
 import java.net.URL;
@@ -16,29 +16,29 @@ import java.util.ServiceLoader;
 import java.util.stream.Stream;
 
 /**
- * Carga los programas externos: cada .jar de la carpeta "plugins" se abre con su propio
+ * Carga los apps externos: cada .jar de la carpeta "apps" se abre con su propio
  * ClassLoader (hijo del de la aplicación, así pueden usar Swing, Gson, PDFBox, FlatLaf...)
- * y se buscan las implementaciones de NeuroProgram declaradas con ServiceLoader.
+ * y se buscan las implementaciones de NeuroApp declaradas con ServiceLoader.
  */
-public final class PluginLoader {
+public final class AppLoader {
 
-    public record Result(List<NeuroProgram> programs, List<String> errors) {}
+    public record Result(List<NeuroApp> programs, List<String> errors) {}
 
-    private PluginLoader() {}
+    private AppLoader() {}
 
-    public static Result load(Path pluginsDir) {
-        List<NeuroProgram> programs = new ArrayList<>();
+    public static Result load(Path appsDir) {
+        List<NeuroApp> programs = new ArrayList<>();
         List<String> errors = new ArrayList<>();
-        if (!Files.isDirectory(pluginsDir)) return new Result(programs, errors);
+        if (!Files.isDirectory(appsDir)) return new Result(programs, errors);
 
         List<Path> jars;
-        try (Stream<Path> files = Files.list(pluginsDir)) {
+        try (Stream<Path> files = Files.list(appsDir)) {
             jars = files
                     .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar"))
                     .sorted()
                     .toList();
         } catch (IOException e) {
-            errors.add("No se pudo leer la carpeta de plugins: " + e.getMessage());
+            errors.add("No se pudo leer la carpeta de apps: " + e.getMessage());
             return new Result(programs, errors);
         }
 
@@ -46,17 +46,17 @@ public final class PluginLoader {
             String name = jar.getFileName().toString();
             try {
                 URL[] urls = { jar.toUri().toURL() };
-                // El ClassLoader se mantiene abierto mientras la app esté en marcha (los plugins lo necesitan).
-                URLClassLoader loader = new URLClassLoader(urls, PluginLoader.class.getClassLoader());
-                Iterator<NeuroProgram> it = ServiceLoader.load(NeuroProgram.class, loader).iterator();
+                // El ClassLoader se mantiene abierto mientras la app esté en marcha (los apps lo necesitan).
+                URLClassLoader loader = new URLClassLoader(urls, AppLoader.class.getClassLoader());
+                Iterator<NeuroApp> it = ServiceLoader.load(NeuroApp.class, loader).iterator();
                 int found = 0;
                 while (it.hasNext()) {
                     programs.add(it.next());
                     found++;
                 }
                 if (found == 0) {
-                    errors.add(name + ": no declara ningún programa "
-                            + "(falta META-INF/services/com.neurocenter.api.NeuroProgram)");
+                    errors.add(name + ": no declara ningún app "
+                            + "(falta META-INF/services/com.neurocenter.api.NeuroApp)");
                 }
             } catch (ServiceConfigurationError e) {
                 errors.add(name + ": " + e.getMessage());
