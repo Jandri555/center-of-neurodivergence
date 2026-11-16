@@ -43,10 +43,20 @@ public class RoundedPanel extends JPanel {
         if (fill == null) fill = getBackground();
         Color border = highlighted ? accent() : UIManager.getColor("Component.borderColor");
         if (border == null) border = Color.GRAY;
-        g2.setColor(fill);
-        g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc);
-        g2.setColor(border);
-        g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc);
+        int width = getWidth();
+        int height = getHeight();
+
+        if (width > 2 && height > 2) {
+            // El trazo de drawRoundRect se centra en su trayectoria. Si esta
+            // coincide con x=0/y=0, la mitad exterior queda fuera del área
+            // de pintura y Swing la recorta (se nota especialmente en el borde
+            // izquierdo de las tarjetas). Dejamos un píxel de margen real.
+            g2.setColor(fill);
+            g2.fillRoundRect(0, 0, width - 1, height - 1, arc, arc);
+            g2.setColor(border);
+            g2.drawRoundRect(1, 1, width - 3, height - 3, arc, arc);
+        }
+
         g2.dispose();
         super.paintComponent(g);
     }
