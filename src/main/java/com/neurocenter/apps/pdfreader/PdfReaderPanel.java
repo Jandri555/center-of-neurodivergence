@@ -198,12 +198,17 @@ final class PdfReaderPanel extends JPanel {
         styleToolbarButton(originalBtn);
         styleToolbarButton(hybridBtn);
         styleToolbarButton(settingsToggle);
+        styleToolbarToggle(bionicBtn);
+        styleToolbarToggle(originalBtn);
+        styleToolbarToggle(hybridBtn);
+        styleToolbarToggle(settingsToggle);
 
         prevBtn.setToolTipText("Página anterior (Alt + ←)");
         nextBtn.setToolTipText("Página siguiente (Alt + →)");
         prevBtn.addActionListener(e -> goToPage(pageIndex - 1));
         nextBtn.addActionListener(e -> goToPage(pageIndex + 1));
         pageSpinner.setPreferredSize(new Dimension(72, pageSpinner.getPreferredSize().height));
+        pageSpinner.putClientProperty("JComponent.roundRect", true);
         pageSpinner.addChangeListener(e -> {
             if (!updatingPage) goToPage(pageModel.getNumber().intValue() - 1);
         });
@@ -265,6 +270,16 @@ final class PdfReaderPanel extends JPanel {
         button.putClientProperty("JButton.buttonType", "toolBarButton");
         button.setFocusable(false);
         button.setOpaque(false);
+        button.setBorderPainted(false);
+    }
+
+    /** Los botones de modo son pestañas, no botones de acción grises. */
+    private static void styleToolbarToggle(JToggleButton button) {
+        button.putClientProperty("JToggleButton.buttonType", "toolBarButton");
+        button.setFocusable(false);
+        button.setOpaque(false);
+        button.setBorderPainted(false);
+        button.setContentAreaFilled(false);
     }
 
     private JComponent buildEmptyCard() {
