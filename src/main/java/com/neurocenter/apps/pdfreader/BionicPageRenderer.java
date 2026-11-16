@@ -69,14 +69,14 @@ final class BionicPageRenderer {
         for (TextPosition position : positions) {
             String unicode = position.getUnicode();
             if (!isWordText(unicode)) {
-                markWord(word, ratio, result, cropOffsetX, cropOffsetY)
+                markWord(word, ratio, result, cropOffsetX, cropOffsetY);
                 word.clear();
                 previous = null;
                 continue;
             }
 
             if (!word.isEmpty() && isVisualWordBreak(previous, position)) {
-                markWord(word, ratio, result);
+                markWord(word, ratio, result, cropOffsetX, cropOffsetY);
                 word.clear();
             }
 
@@ -84,7 +84,7 @@ final class BionicPageRenderer {
             previous = position;
         }
 
-        markWord(word, ratio, result);
+        markWord(word, ratio, result, cropOffsetX, cropOffsetY);
         return result;
     }
 
