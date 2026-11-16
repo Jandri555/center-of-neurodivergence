@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.stream.Stream;
@@ -25,13 +27,30 @@ public final class AppLoader {
     private AppLoader() {}
 
     public static Result load(Path appsDir) {
+        if (!Files.isDirectory(appsDir)) return new Result(new ArrayList<>(), new ArrayList<>());
+        try (Stream<Path> files = Files.list(appsDir)) {
+            List<String> jarNames = files
+                    .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar"))
+                    .map(path -> path.getFileName().toString())
+                    .toList();
+            return load(appsDir, jarNames);
+        } catch (IOException e) {
+            return new Result(new ArrayList<>(),
+                    new ArrayList<>(List.of("No se pudo leer la carpeta de apps: " + e.getMessage())));
+        }
+    }
+
+    /** Solo carga JAR presentes en el registro de instalaciones. */
+    public static Result load(Path appsDir, List<String> installedJarNames) {
         List<NeuroApp> apps = new ArrayList<>();
         List<String> errors = new ArrayList<>();
         if (!Files.isDirectory(appsDir)) return new Result(apps, errors);
 
+        Set<String> installed = new HashSet<>(installedJarNames);
         List<Path> jars;
         try (Stream<Path> files = Files.list(appsDir)) {
             jars = files
+                    .filter(path -> installed.contains(path.getFileName().toString()))
                     .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar"))
                     .sorted()
                     .toList();
