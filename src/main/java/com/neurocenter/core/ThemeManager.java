@@ -32,6 +32,7 @@ public final class ThemeManager {
     public record ThemeInfo(String id, String name, String author, String version,
                             String base, Path directory, JsonObject colors, JsonObject appIcons) {
         public boolean builtIn() { return directory == null; }
+        @Override public String toString() { return name; }
     }
 
     private ThemeManager() {}
