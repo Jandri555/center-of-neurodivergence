@@ -460,13 +460,14 @@ public final class MainWindow extends JFrame {
     // ------------------------------------------------------------------ utilidades
 
     private static Icon iconFor(NeuroApp p, int size) {
+        Icon fallback;
         try {
-            Icon icon = p.icon();
-            if (icon != null) return icon;
+            fallback = p.icon();
+            if (fallback == null) fallback = new BadgeIcon(p.name(), p.id(), size);
         } catch (Throwable ignored) {
             // una app con un icono roto no debe romper el panel
+            fallback = new BadgeIcon(p.name(), p.id(), size);
         }
-        Icon fallback = new BadgeIcon(p.name(), p.id(), size);
         return ThemeManager.appIcon(p.id(), fallback, size);
     }
 
