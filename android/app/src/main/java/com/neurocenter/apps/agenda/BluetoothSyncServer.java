@@ -13,8 +13,7 @@ import java.util.UUID;
  */
 final class BluetoothSyncServer implements AutoCloseable {
 
-    static final UUID SERVICE_UUID = UUID.fromString(
-            "da1e8a3b-60d4-4bdf-9c9a-7f6e8a4d6c21");
+    static final UUID SERVICE_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     static final String SERVICE_NAME = "Center of Neurodivergence Agenda";
 
     private final BluetoothServerSocket serverSocket;
