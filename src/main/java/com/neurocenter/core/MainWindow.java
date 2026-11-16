@@ -25,6 +25,7 @@ import javax.swing.JTextArea;
 import javax.swing.JToggleButton;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import javax.swing.border.EmptyBorder;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -219,7 +220,13 @@ public final class MainWindow extends JFrame {
         b.setHorizontalAlignment(SwingConstants.LEFT);
         b.setIconTextGap(12);
         b.setMargin(new Insets(8, 10, 8, 10));
-        b.putClientProperty("JButton.buttonType", "toolBarButton"); // estilo plano de FlatLaf
+        b.putClientProperty("JButton.buttonType", "toolBarButton");
+        b.setContentAreaFilled(false);
+        b.setOpaque(false);
+        b.setFocusable(false);
+        b.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 3, 0, 0, UIManager.getColor("Panel.background")),
+                new EmptyBorder(8, 7, 8, 10)));
         b.setAlignmentX(Component.LEFT_ALIGNMENT);
         b.setMaximumSize(new Dimension(Integer.MAX_VALUE, b.getPreferredSize().height + 4));
         b.addActionListener(e -> showApp(id));
@@ -301,7 +308,25 @@ public final class MainWindow extends JFrame {
         cards.show(content, id);
         JToggleButton b = navButtons.get(id);
         if (b != null) b.setSelected(true);
+        updateNavAppearance();
         statusLabel.setText(" ");
+    }
+
+    /** Resalta la app activa con una línea lateral, sin rellenar toda la fila. */
+    private void updateNavAppearance() {
+        Color panel = UIManager.getColor("Panel.background");
+        Color accent = UIManager.getColor("Component.focusColor");
+        if (panel == null) panel = getBackground();
+        if (accent == null) accent = UIManager.getColor("Component.accentColor");
+        if (accent == null) accent = UIManager.getColor("Button.foreground");
+        for (JToggleButton button : navButtons.values()) {
+            Color marker = button.isSelected() ? accent : panel;
+            button.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createMatteBorder(0, 3, 0, 0, marker),
+                    new EmptyBorder(8, 7, 8, 10)));
+            button.setContentAreaFilled(false);
+            button.setOpaque(false);
+        }
     }
 
     private JComponent errorPanel(NeuroApp p, Throwable t) {
