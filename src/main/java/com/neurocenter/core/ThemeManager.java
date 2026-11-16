@@ -130,7 +130,7 @@ public final class ThemeManager {
                 Map.entry("input", "TextField.background"),
                 Map.entry("inputText", "TextField.foreground"),
                 Map.entry("dialog", "Dialog.background"),
-                Map.entry("dialog", "OptionPane.background"),
+                Map.entry("dialogOptionPane", "OptionPane.background"),
                 Map.entry("dialogMessage", "OptionPane.messageArea.background"),
                 Map.entry("dialogButtons", "OptionPane.buttonArea.background"),
                 Map.entry("popup", "PopupMenu.background"),
