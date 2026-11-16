@@ -231,7 +231,7 @@ final class BionicPageRenderer {
             // No alteramos texto invisible, solo trazado o usado como máscara de recorte.
             if (!mode.isFill() || mode.isClip()) return;
 
-            GeneralPath path = vectorFont.getPath(code);
+            GeneralPath path = vectorFont.getNormalizedPath(code);
             if (path == null || path.getBounds2D().isEmpty()) return;
 
             AffineTransform transform = textRenderingMatrix.createAffineTransform();
