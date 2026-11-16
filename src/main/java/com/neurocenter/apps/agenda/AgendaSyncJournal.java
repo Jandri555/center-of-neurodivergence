@@ -49,6 +49,7 @@ final class AgendaSyncJournal {
     private static final class Metadata {
         String deviceId = UUID.randomUUID().toString();
         boolean enabled;
+        boolean baselineComplete;
         long lamport;
         Map<String, Long> vectorClock = new LinkedHashMap<>();
     }
@@ -71,13 +72,20 @@ final class AgendaSyncJournal {
      * Activa el historial y crea una línea base con las entradas que ya existían.
      * No altera ni borra el archivo de agenda existente.
      */
+    synchronized boolean needsBaseline() {
+        return metadata.enabled && !metadata.baselineComplete;
+    }
+
     synchronized void enable(List<AgendaEntry> currentEntries) {
         if (!metadata.enabled) {
             metadata.enabled = true;
+            metadata.baselineComplete = false;
             saveMetadataUnchecked();
         }
-        // Baseline creation is idempotent. If the process stopped halfway
-        // through its first activation, a later load completes the missing entries.
+        if (metadata.baselineComplete) return;
+
+        // The baseline only captures entries that existed on this device when
+        // sync was enabled. Imported remote entries must never become local writes.
         for (AgendaEntry entry : currentEntries) {
             if (entry == null || entry.id == null || entry.id.trim().isEmpty()) continue;
             boolean alreadySeeded = operations.stream().anyMatch(operation ->
@@ -86,6 +94,7 @@ final class AgendaSyncJournal {
                             && entry.id.equals(operation.entryId));
             if (!alreadySeeded) recordUpsert(entry);
         }
+        metadata.baselineComplete = true;
         saveMetadataUnchecked();
     }
 
