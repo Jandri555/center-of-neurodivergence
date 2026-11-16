@@ -1,5 +1,7 @@
 # Center of Neurodivergence
 
+**Versión actual: 1.0**
+
 Panel de escritorio en Java (Swing + FlatLaf) con varias apps integradas y extensibles.
 
 | App | Qué hace |
