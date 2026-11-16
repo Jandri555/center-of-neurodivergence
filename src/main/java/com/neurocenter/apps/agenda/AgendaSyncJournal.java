@@ -187,7 +187,7 @@ final class AgendaSyncJournal {
         });
     }
 
-    /** true si every event known by before is causally included in after. */
+    /** Devuelve true si todos los cambios conocidos por before están incluidos en after. */
     private static boolean happensBefore(AgendaOperation before, AgendaOperation after) {
         boolean strictlyEarlier = false;
         Set<String> devices = new LinkedHashSet<>(before.vectorClock.keySet());
@@ -217,6 +217,14 @@ final class AgendaSyncJournal {
     private void loadOperations() throws IOException {
         if (!Files.isRegularFile(operationsFile)) return;
         String raw = Files.readString(operationsFile, StandardCharsets.UTF_8);
+        // Una interrupción durante el último append puede dejar una línea final
+        // incompleta. Solo se descarta ese fragmento; las líneas confirmadas se conservan.
+        if (!raw.isEmpty() && !raw.endsWith("\\n") && !raw.endsWith("\\r")) {
+            int lastBreak = Math.max(raw.lastIndexOf('\\n'), raw.lastIndexOf('\\r'));
+            raw = lastBreak >= 0 ? raw.substring(0, lastBreak + 1) : "";
+            Files.writeString(operationsFile, raw, StandardCharsets.UTF_8,
+                    StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+        }
         String[] lines = raw.split("\\R");
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i].trim();
