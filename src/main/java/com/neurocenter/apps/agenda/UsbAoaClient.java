@@ -15,12 +15,14 @@ import javax.swing.SwingUtilities;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.InterruptedIOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 
 /**
  * Host USB para Android Open Accessory (AOA).
@@ -49,13 +51,13 @@ final class UsbAoaClient {
     private static final byte AOA_START_ACCESSORY = 53;
 
     private static final long CONTROL_TIMEOUT_MS = 3_000;
-    private static final long BULK_TIMEOUT_MS = 60_000;
+    private static final long BULK_TIMEOUT_MS = 1_000;
     private static final int BULK_BUFFER_SIZE = 16 * 1024;
     private static final long REENUMERATION_TIMEOUT_MS = 30_000;
 
     private UsbAoaClient() {}
 
-    static void synchronize(AgendaStore store) throws IOException {
+    static void synchronize(AgendaStore store, BooleanSupplier keepAlive, Runnable onConnected) throws IOException {
         if (store == null || !store.isSyncEnabled()) {
             throw new IOException("Activa primero el historial de sincronización de la agenda.");
         }
@@ -81,9 +83,11 @@ final class UsbAoaClient {
                 try {
                     UsbInputStream input = new UsbInputStream(handle, endpoints.inputEndpoint());
                     UsbOutputStream output = new UsbOutputStream(handle, endpoints.outputEndpoint());
-                    AgendaSyncProtocol.runClient(
+                    AgendaSyncProtocol.runClientSession(
                             input, output, store,
-                            operations -> mergeOnEdt(store, operations));
+                            operations -> mergeOnEdt(store, operations),
+                            keepAlive,
+                            onConnected);
                 } finally {
                     LibUsb.releaseInterface(handle, endpoints.interfaceNumber());
                 }
@@ -193,6 +197,9 @@ final class UsbAoaClient {
     private static DeviceHandle waitForAccessory(Context context) throws IOException {
         long deadline = System.nanoTime() + REENUMERATION_TIMEOUT_MS * 1_000_000L;
         while (System.nanoTime() < deadline) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedIOException("Se canceló la conexión USB.");
+            }
             DeviceHandle handle = findAccessory(context);
             if (handle != null) return handle;
             try {
@@ -374,7 +381,12 @@ final class UsbAoaClient {
                     buffer.get(target, offset, Math.min(count, length));
                     return Math.min(count, length);
                 }
-                if (result == LibUsb.ERROR_TIMEOUT) continue;
+                if (result == LibUsb.ERROR_TIMEOUT) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        throw new InterruptedIOException("Se canceló la sincronización USB.");
+                    }
+                    continue;
+                }
                 if (result < 0) check(result, "Error al recibir datos por USB");
                 return count;
             }
