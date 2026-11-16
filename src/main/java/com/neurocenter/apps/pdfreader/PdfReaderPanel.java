@@ -272,6 +272,7 @@ final class PdfReaderPanel extends JPanel {
                 + "<br><br>En la vista de lectura, el principio de cada palabra va en negrita<br>"
                 + "para que resulte más fácil seguir el texto.</div></html>", SwingConstants.CENTER);
         JButton open = new JButton("Abrir PDF…");
+        styleToolbarButton(open);
         open.addActionListener(e -> chooseFile());
         msg.setAlignmentX(Component.CENTER_ALIGNMENT);
         open.setAlignmentX(Component.CENTER_ALIGNMENT);
