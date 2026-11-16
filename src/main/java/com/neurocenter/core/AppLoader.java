@@ -22,14 +22,14 @@ import java.util.stream.Stream;
  */
 public final class AppLoader {
 
-    public record Result(List<NeuroApp> programs, List<String> errors) {}
+    public record Result(List<NeuroApp> apps, List<String> errors) {}
 
     private AppLoader() {}
 
     public static Result load(Path appsDir) {
-        List<NeuroApp> programs = new ArrayList<>();
+        List<NeuroApp> apps = new ArrayList<>();
         List<String> errors = new ArrayList<>();
-        if (!Files.isDirectory(appsDir)) return new Result(programs, errors);
+        if (!Files.isDirectory(appsDir)) return new Result(apps, errors);
 
         List<Path> jars;
         try (Stream<Path> files = Files.list(appsDir)) {
@@ -39,7 +39,7 @@ public final class AppLoader {
                     .toList();
         } catch (IOException e) {
             errors.add("No se pudo leer la carpeta de apps: " + e.getMessage());
-            return new Result(programs, errors);
+            return new Result(apps, errors);
         }
 
         for (Path jar : jars) {
@@ -51,7 +51,7 @@ public final class AppLoader {
                 Iterator<NeuroApp> it = ServiceLoader.load(NeuroApp.class, loader).iterator();
                 int found = 0;
                 while (it.hasNext()) {
-                    programs.add(it.next());
+                    apps.add(it.next());
                     found++;
                 }
                 if (found == 0) {
@@ -64,6 +64,6 @@ public final class AppLoader {
                 errors.add(name + ": " + t);
             }
         }
-        return new Result(programs, errors);
+        return new Result(apps, errors);
     }
 }
