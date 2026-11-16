@@ -72,7 +72,7 @@ public final class MainWindow extends JFrame {
     private final CardLayout cards = new CardLayout();
     private final JPanel content = new JPanel(cards);
     private final JLabel statusLabel = new JLabel(" ");
-    private JButton themeButton;
+    private JButton settingsButton;
 
     public MainWindow(PropertiesStore appSettings) {
         super(AppInfo.NAME);
@@ -191,17 +191,12 @@ public final class MainWindow extends JFrame {
 
         side.add(Box.createVerticalGlue());
 
-        JButton appsButton = new JButton("Carpeta de apps");
-        appsButton.addActionListener(e -> openPluginsFolder());
-        themeButton = new JButton();
-        updateThemeButtonText();
-        themeButton.addActionListener(e -> toggleTheme());
-        for (JButton b : new JButton[] { appsButton, themeButton }) {
-            b.setAlignmentX(Component.LEFT_ALIGNMENT);
-            b.setMaximumSize(new Dimension(Integer.MAX_VALUE, b.getPreferredSize().height));
-            side.add(b);
-            side.add(Box.createVerticalStrut(6));
-        }
+        settingsButton = new JButton("⚙  Ajustes");
+        settingsButton.setToolTipText("Ajustes generales y gestión de apps");
+        settingsButton.addActionListener(e -> openSettings());
+        settingsButton.setAlignmentX(Component.LEFT_ALIGNMENT);
+        settingsButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, settingsButton.getPreferredSize().height));
+        side.add(settingsButton);
 
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.add(side, BorderLayout.CENTER);
@@ -313,27 +308,67 @@ public final class MainWindow extends JFrame {
 
     // ------------------------------------------------------------------ acciones
 
-    private void openPluginsFolder() {
-        Path dir = AppPaths.appsDir();
-        try {
-            if (!Desktop.isDesktopSupported()) throw new UnsupportedOperationException();
-            Desktop.getDesktop().open(dir.toFile());
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "La carpeta de apps está en:\n" + dir,
-                    AppInfo.NAME, JOptionPane.INFORMATION_MESSAGE);
+    private void openSettings() {
+        String[] options = {"Tema claro", "Tema oscuro", "Gestionar apps", "Cerrar"};
+        int choice = JOptionPane.showOptionDialog(this, "Ajustes generales", "Ajustes",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
+        if (choice == 0 || choice == 1) {
+            appSettings.put("theme", choice == 1 ? "dark" : "light");
+            ThemeManager.apply(choice == 1);
+            SwingUtilities.updateComponentTreeUI(this);
+            for (Window window : getOwnedWindows()) SwingUtilities.updateComponentTreeUI(window);
+        } else if (choice == 2) {
+            manageApps();
         }
     }
 
-    private void toggleTheme() {
-        boolean dark = !"dark".equals(appSettings.get("theme", "light"));
-        appSettings.put("theme", dark ? "dark" : "light");
-        ThemeManager.apply(dark);
-        updateThemeButtonText();
-    }
-
-    private void updateThemeButtonText() {
-        boolean dark = "dark".equals(appSettings.get("theme", "light"));
-        themeButton.setText(dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro");
+    private void manageApps() {
+        String[] options = {"Instalar app (.jar)", "Desinstalar app", "Abrir carpeta de apps", "Volver"};
+        int choice = JOptionPane.showOptionDialog(this,
+                "Las operaciones se aplican al reiniciar. Instala solo apps de fuentes de confianza.",
+                "Gestor de apps", JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
+        if (choice == 0) {
+            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Apps Java (*.jar)", "jar"));
+            if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                java.nio.file.Path source = chooser.getSelectedFile().toPath();
+                try {
+                    java.nio.file.Path target = AppPaths.appsDir().resolve(source.getFileName());
+                    if (java.nio.file.Files.exists(target)) throw new java.io.IOException("Ya existe una app con ese nombre.");
+                    java.nio.file.Files.copy(source, target);
+                    JOptionPane.showMessageDialog(this, "App instalada. Estará disponible al reiniciar.");
+                } catch (java.io.IOException ex) {
+                    JOptionPane.showMessageDialog(this, "No se pudo instalar la app: " + ex.getMessage());
+                }
+            }
+        } else if (choice == 1) {
+            try (var stream = java.nio.file.Files.list(AppPaths.appsDir())) {
+                String[] jars = stream.filter(p -> p.toString().toLowerCase().endsWith(".jar"))
+                        .map(p -> p.getFileName().toString()).toArray(String[]::new);
+                if (jars.length == 0) {
+                    JOptionPane.showMessageDialog(this, "No hay apps externas instaladas.");
+                    return;
+                }
+                String selected = (String) JOptionPane.showInputDialog(this, "Selecciona una app:",
+                        "Desinstalar app", JOptionPane.WARNING_MESSAGE, null, jars, jars[0]);
+                if (selected != null && JOptionPane.showConfirmDialog(this,
+                        "Se eliminará al próximo inicio. ¿Continuar?", "Confirmar",
+                        JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+                    java.nio.file.Files.writeString(AppPaths.root().resolve("pending-uninstall.txt"),
+                            selected + System.lineSeparator(), java.nio.file.StandardOpenOption.CREATE,
+                            java.nio.file.StandardOpenOption.APPEND);
+                    JOptionPane.showMessageDialog(this, "Desinstalación programada para el próximo inicio.");
+                }
+            } catch (java.io.IOException ex) {
+                JOptionPane.showMessageDialog(this, "No se pudo gestionar la app: " + ex.getMessage());
+            }
+        } else if (choice == 2) {
+            try {
+                if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(AppPaths.appsDir().toFile());
+            } catch (java.io.IOException ex) {
+                JOptionPane.showMessageDialog(this, "No se pudo abrir la carpeta: " + ex.getMessage());
+            }
+        }
     }
 
     // ------------------------------------------------------------------ utilidades
