@@ -55,6 +55,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
@@ -87,6 +88,10 @@ final class AgendaPanel extends JPanel {
     private final AppContext ctx;
     private JButton bluetoothSyncButton;
     private JButton usbSyncButton;
+    private volatile AtomicBoolean activeSession;
+    private volatile com.fazecast.jSerialComm.SerialPort activeBluetoothPort;
+    private volatile Thread activeSyncWorker;
+    private volatile JDialog activeConnectionDialog;
 
     private YearMonth month = YearMonth.now();
     private LocalDate selected = LocalDate.now();
@@ -252,91 +257,152 @@ final class AgendaPanel extends JPanel {
     }
 
     private void performUsbSync() {
+        if (activeSession != null && activeSession.get()) return;
+        AtomicBoolean running = new AtomicBoolean(true);
         JDialog progress = new JDialog(
                 SwingUtilities.getWindowAncestor(this),
-                "Sincronizando agenda por USB",
-                Dialog.ModalityType.APPLICATION_MODAL);
+                "Agenda conectada por USB",
+                Dialog.ModalityType.MODELESS);
         JPanel panel = new JPanel(new BorderLayout(0, 12));
         panel.setBorder(new EmptyBorder(18, 22, 18, 22));
-        panel.add(new JLabel("Buscando el teléfono y negociando Android Open Accessory…"), BorderLayout.NORTH);
+        JLabel status = new JLabel("Buscando el teléfono y negociando Android Open Accessory…");
+        panel.add(status, BorderLayout.NORTH);
         JProgressBar bar = new JProgressBar();
         bar.setIndeterminate(true);
         panel.add(bar, BorderLayout.CENTER);
+        JButton disconnect = new JButton("Desconectar");
+        disconnect.addActionListener(e -> {
+            running.set(false);
+            Thread worker = activeSyncWorker;
+            if (worker != null) worker.interrupt();
+            progress.dispose();
+        });
+        panel.add(disconnect, BorderLayout.SOUTH);
         progress.setContentPane(panel);
         progress.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
         progress.pack();
         progress.setLocationRelativeTo(ctx.window());
 
+        activeSession = running;
+        activeConnectionDialog = progress;
         Thread worker = new Thread(() -> {
             String failure = null;
             try {
-                UsbAoaClient.synchronize(store);
+                UsbAoaClient.synchronize(
+                        store,
+                        running::get,
+                        () -> SwingUtilities.invokeLater(() ->
+                                status.setText("Conectado por USB. Los cambios se sincronizan automáticamente.")),
+                        this::refresh);
             } catch (Exception ex) {
-                failure = ex.getMessage() == null ? ex.toString() : ex.getMessage();
-            }
-
-            final String error = failure;
-            SwingUtilities.invokeLater(() -> {
-                progress.dispose();
-                if (error == null) {
-                    refresh();
-                    JOptionPane.showMessageDialog(ctx.window(),
-                            "La agenda se ha sincronizado correctamente por USB.",
-                            "Sincronización completada", JOptionPane.INFORMATION_MESSAGE);
-                } else {
-                    JOptionPane.showMessageDialog(ctx.window(),
-                            "No se pudo sincronizar por USB:\\n" + error,
-                            "Error de sincronización", JOptionPane.ERROR_MESSAGE);
+                if (running.get()) {
+                    failure = ex.getMessage() == null ? ex.toString() : ex.getMessage();
                 }
-            });
-        }, "agenda-usb-sync");
+            } finally {
+                boolean stoppedByUser = !running.get();
+                running.set(false);
+                final String error = failure;
+                SwingUtilities.invokeLater(() -> {
+                    if (activeSession == running) activeSession = null;
+                    if (activeSyncWorker == Thread.currentThread()) activeSyncWorker = null;
+                    activeConnectionDialog = null;
+                    progress.dispose();
+                    refresh();
+                    if (error != null && !stoppedByUser) {
+                        JOptionPane.showMessageDialog(ctx.window(),
+                                "Se perdió la conexión USB:\n" + error,
+                                "Conexión USB interrumpida", JOptionPane.ERROR_MESSAGE);
+                    }
+                });
+            }
+        }, "agenda-usb-session");
+        activeSyncWorker = worker;
         worker.setDaemon(true);
         worker.start();
         progress.setVisible(true);
     }
 
     private void performBluetoothSync(com.fazecast.jSerialComm.SerialPort port) {
+        if (activeSession != null && activeSession.get()) return;
+        AtomicBoolean running = new AtomicBoolean(true);
         JDialog progress = new JDialog(
                 SwingUtilities.getWindowAncestor(this),
-                "Sincronizando agenda",
-                Dialog.ModalityType.APPLICATION_MODAL);
+                "Agenda conectada por Bluetooth",
+                Dialog.ModalityType.MODELESS);
         JPanel panel = new JPanel(new BorderLayout(0, 12));
         panel.setBorder(new EmptyBorder(18, 22, 18, 22));
-        panel.add(new JLabel("Conectando con el móvil y comparando operaciones…"), BorderLayout.NORTH);
+        JLabel status = new JLabel("Conectando con el móvil…");
+        panel.add(status, BorderLayout.NORTH);
         JProgressBar bar = new JProgressBar();
         bar.setIndeterminate(true);
         panel.add(bar, BorderLayout.CENTER);
+        JButton disconnect = new JButton("Desconectar");
+        disconnect.addActionListener(e -> {
+            running.set(false);
+            port.closePort();
+            progress.dispose();
+        });
+        panel.add(disconnect, BorderLayout.SOUTH);
         progress.setContentPane(panel);
         progress.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
         progress.pack();
         progress.setLocationRelativeTo(ctx.window());
 
+        activeSession = running;
+        activeBluetoothPort = port;
+        activeConnectionDialog = progress;
         Thread worker = new Thread(() -> {
             String failure = null;
             try {
-                BluetoothSerialClient.synchronize(port, store);
+                BluetoothSerialClient.synchronize(
+                        port, store, running::get,
+                        () -> SwingUtilities.invokeLater(() ->
+                                status.setText("Conectado por Bluetooth. Los cambios se sincronizan automáticamente.")),
+                        this::refresh);
             } catch (Exception ex) {
-                failure = ex.getMessage() == null ? ex.toString() : ex.getMessage();
-            }
-
-            final String error = failure;
-            SwingUtilities.invokeLater(() -> {
-                progress.dispose();
-                if (error == null) {
-                    refresh();
-                    JOptionPane.showMessageDialog(ctx.window(),
-                            "La agenda se ha sincronizado correctamente.",
-                            "Sincronización completada", JOptionPane.INFORMATION_MESSAGE);
-                } else {
-                    JOptionPane.showMessageDialog(ctx.window(),
-                            "No se pudo sincronizar la agenda:\\n" + error,
-                            "Error de sincronización", JOptionPane.ERROR_MESSAGE);
+                if (running.get()) {
+                    failure = ex.getMessage() == null ? ex.toString() : ex.getMessage();
                 }
-            });
-        }, "agenda-bluetooth-sync");
+            } finally {
+                boolean stoppedByUser = !running.get();
+                running.set(false);
+                final String error = failure;
+                SwingUtilities.invokeLater(() -> {
+                    if (activeSession == running) activeSession = null;
+                    if (activeBluetoothPort == port) activeBluetoothPort = null;
+                    if (activeSyncWorker == Thread.currentThread()) activeSyncWorker = null;
+                    activeConnectionDialog = null;
+                    progress.dispose();
+                    refresh();
+                    if (error != null && !stoppedByUser) {
+                        JOptionPane.showMessageDialog(ctx.window(),
+                                "Se perdió la conexión Bluetooth:\n" + error,
+                                "Conexión Bluetooth interrumpida", JOptionPane.ERROR_MESSAGE);
+                    }
+                });
+            }
+        }, "agenda-bluetooth-session");
+        activeSyncWorker = worker;
         worker.setDaemon(true);
         worker.start();
         progress.setVisible(true);
+    }
+
+    private void stopActiveSession() {
+        AtomicBoolean running = activeSession;
+        if (running != null) running.set(false);
+        com.fazecast.jSerialComm.SerialPort port = activeBluetoothPort;
+        if (port != null) port.closePort();
+        Thread worker = activeSyncWorker;
+        if (worker != null) worker.interrupt();
+        JDialog dialog = activeConnectionDialog;
+        if (dialog != null) dialog.dispose();
+    }
+
+    @Override
+    public void removeNotify() {
+        stopActiveSession();
+        super.removeNotify();
     }
 
     /** Mantiene los controles de Agenda planos y coherentes con la barra de Bionic PDF. */
