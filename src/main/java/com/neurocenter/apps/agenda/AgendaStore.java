@@ -17,9 +17,17 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
-/** Guarda y recupera las entradas de la agenda en un archivo JSON. */
+/**
+ * Guarda y recupera las entradas de la agenda en JSON.
+ *
+ * Cuando se activa la sincronización, cada cambio se registra además como una
+ * operación inmutable en agenda-operations.jsonl. El JSON sigue siendo una
+ * copia materializada para que la agenda de escritorio conserve su arranque simple.
+ */
 final class AgendaStore {
 
     private static final Type LIST_TYPE = new TypeToken<List<AgendaEntry>>() {}.getType();
@@ -36,41 +44,123 @@ final class AgendaStore {
     private final Path file;
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private final List<AgendaEntry> entries = new ArrayList<>();
+    private final AgendaSyncJournal syncJournal;
+    private Map<String, String> lastSavedState = new LinkedHashMap<>();
 
     AgendaStore(Path file) {
         this.file = file;
+        try {
+            this.syncJournal = new AgendaSyncJournal(file);
+        } catch (IOException ex) {
+            throw new UncheckedIOException("No se pudo abrir el historial de sincronización de la agenda.", ex);
+        }
     }
 
     void load() {
         entries.clear();
-        if (!Files.isRegularFile(file)) return;
-        try {
-            List<AgendaEntry> loaded = gson.fromJson(Files.readString(file, StandardCharsets.UTF_8), LIST_TYPE);
-            if (loaded != null) entries.addAll(loaded);
-        } catch (JsonParseException | IOException e) {
-            // Archivo dañado: lo apartamos (no se pierde nada) y empezamos con la agenda vacía.
+        if (Files.isRegularFile(file)) {
             try {
-                Files.move(file, file.resolveSibling("agenda.corrupto-" + System.currentTimeMillis() + ".json"));
-            } catch (IOException ignored) {
-                // si ni siquiera se puede apartar, seguimos igualmente
+                List<AgendaEntry> loaded = gson.fromJson(Files.readString(file, StandardCharsets.UTF_8), LIST_TYPE);
+                if (loaded != null) entries.addAll(loaded);
+            } catch (JsonParseException | IOException e) {
+                // Archivo dañado: lo apartamos (no se pierde nada) y empezamos con la agenda vacía.
+                try {
+                    Files.move(file, file.resolveSibling("agenda.corrupto-" + System.currentTimeMillis() + ".json"));
+                } catch (IOException ignored) {
+                    // si ni siquiera se puede apartar, seguimos igualmente
+                }
             }
         }
+
+        if (syncJournal.isEnabled()) {
+            // Si se activó la sincronización antes de existir el historial, crea una
+            // línea base desde la agenda que ya había en el dispositivo.
+            syncJournal.enable(entries);
+            if (!syncJournal.exportOperations().isEmpty()) {
+                entries.clear();
+                entries.addAll(syncJournal.materialize());
+                writeSnapshot();
+            }
+        }
+        rememberSavedState();
     }
 
     /** Escritura segura: primero a un archivo temporal y luego se sustituye el original. */
     void save() {
+        if (syncJournal.isEnabled()) recordChanges();
+        writeSnapshot();
+        rememberSavedState();
+    }
+
+    private void recordChanges() {
+        Map<String, AgendaEntry> previous = entriesById(lastSavedState);
+        Map<String, AgendaEntry> current = new LinkedHashMap<>();
+        for (AgendaEntry entry : entries) {
+            if (entry.id != null) current.put(entry.id, entry);
+        }
+
+        for (Map.Entry<String, AgendaEntry> item : current.entrySet()) {
+            String previousJson = lastSavedState.get(item.getKey());
+            String currentJson = gson.toJson(item.getValue());
+            if (!currentJson.equals(previousJson)) syncJournal.recordUpsert(item.getValue());
+        }
+        for (String previousId : previous.keySet()) {
+            if (!current.containsKey(previousId)) syncJournal.recordDelete(previousId);
+        }
+    }
+
+    private Map<String, AgendaEntry> entriesById(Map<String, String> snapshot) {
+        Map<String, AgendaEntry> result = new LinkedHashMap<>();
+        snapshot.forEach((id, json) -> result.put(id, gson.fromJson(json, AgendaEntry.class)));
+        return result;
+    }
+
+    private void rememberSavedState() {
+        Map<String, String> snapshot = new LinkedHashMap<>();
+        for (AgendaEntry entry : entries) {
+            if (entry.id != null) snapshot.put(entry.id, gson.toJson(entry));
+        }
+        lastSavedState = snapshot;
+    }
+
+    private void writeSnapshot() {
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
             Files.writeString(tmp, gson.toJson(entries, LIST_TYPE), StandardCharsets.UTF_8);
             try {
-                Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE);
+                Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             } catch (AtomicMoveNotSupportedException e) {
                 Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    /** Activa la captura de operaciones y crea una línea base de la agenda existente. */
+    void enableSync() {
+        syncJournal.enable(entries);
+        rememberSavedState();
+    }
+
+    boolean isSyncEnabled() {
+        return syncJournal.isEnabled();
+    }
+
+    /** Historial completo, listo para intercambiar por USB o Bluetooth. */
+    List<AgendaOperation> exportOperations() {
+        return syncJournal.exportOperations();
+    }
+
+    /** Incorpora operaciones remotas y reconstruye el estado sin generar operaciones locales duplicadas. */
+    void mergeOperations(List<AgendaOperation> incoming) {
+        syncJournal.enable(entries);
+        syncJournal.mergeOperations(incoming);
+        entries.clear();
+        entries.addAll(syncJournal.materialize());
+        writeSnapshot();
+        rememberSavedState();
     }
 
     List<AgendaEntry> all() {
@@ -88,6 +178,11 @@ final class AgendaStore {
 
     void add(AgendaEntry entry) {
         entries.add(entry);
+    }
+
+    void replace(AgendaEntry existing, AgendaEntry updated) {
+        int index = entries.indexOf(existing);
+        if (index >= 0) entries.set(index, updated);
     }
 
     void remove(AgendaEntry entry) {
