@@ -31,6 +31,10 @@ Los datos se guardan en la carpeta `CenterOfNeurodivergence`:
 
 La carpeta `apps/` contiene las apps externas instaladas, `themes/` los temas `.tme` instalados y `data/` los datos de cada app.
 
+El registro de aplicaciones externas se guarda en `apps.db` (SQLite), dentro de esa misma carpeta. La tabla `installed_apps` conserva el identificador, nombre, autor, versión, nombre del JAR, fecha de instalación, tamaño en bytes y la opción `autorun` (0 = desactivado, 1 = activado). La base de datos es la fuente de verdad: al iniciar solo se cargan los JAR registrados.
+
+En **Ajustes → Gestionar apps → Configurar inicio automático** puedes activar o desactivar el arranque automático de cada app. Las apps con `autorun = 1` se inician al abrir Center of Neurodivergence, pero la pantalla inicial sigue siendo Inicio.
+
 ## Gestionar apps externas
 
 Abre **Ajustes** (⚙) en el panel y entra en **Gestionar apps**. Desde ahí puedes instalar un archivo JAR o programar su desinstalación. Los cambios se aplican al reiniciar, porque una app cargada puede mantener su JAR bloqueado en Windows.
@@ -95,6 +99,14 @@ Por seguridad, el instalador rechaza rutas ZIP inseguras, archivos fuera de `the
 Mira `example-app/`. Implementa `com.neurocenter.api.NeuroApp` y registra la clase mediante `META-INF/services/com.neurocenter.api.NeuroApp`.
 
 La app recibe un `AppContext` con acceso a su carpeta de datos, ajustes, barra de estado, ventana principal y navegación mediante `openApp(id)`. Compila contra la aplicación como dependencia `provided`; no empaquetes las librerías de la aplicación dentro del JAR de la app.
+
+Para que el registro pueda mostrar metadatos fiables, añade al manifiesto del JAR estas entradas:
+- `NeuroCenter-App-Id`: identificador estable de la app.
+- `Implementation-Title`: nombre visible.
+- `Implementation-Vendor`: autor o entidad responsable.
+- `Implementation-Version`: versión de la app.
+
+Si falta alguna entrada, el instalador utiliza valores de reserva (por ejemplo, el nombre del JAR y «Desconocido» para el autor).
 
 ## Estructura del código
 
