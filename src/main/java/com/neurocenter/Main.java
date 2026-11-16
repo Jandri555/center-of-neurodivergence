@@ -13,10 +13,10 @@ public final class Main {
     public static void main(String[] args) {
         AppPaths.ensureDirectories();
         PropertiesStore settings = new PropertiesStore(AppPaths.root().resolve("settings.properties"));
-        boolean dark = "dark".equals(settings.get("theme", "light"));
+        String themeId = settings.get("theme", "light");
 
         SwingUtilities.invokeLater(() -> {
-            ThemeManager.apply(dark);
+            ThemeManager.apply(themeId);
             // Botones de los diálogos en español
             UIManager.put("OptionPane.okButtonText", "Aceptar");
             UIManager.put("OptionPane.cancelButtonText", "Cancelar");
