@@ -62,8 +62,8 @@ public final class MainWindow extends JFrame {
     private static final String HOME = "__home__";
 
     private final PropertiesStore appSettings;
-    private final Map<String, NeuroApp> programs = new LinkedHashMap<>();
-    private final Set<String> pluginIds = new HashSet<>();
+    private final Map<String, NeuroApp> apps = new LinkedHashMap<>();
+    private final Set<String> externalAppIds = new HashSet<>();
     private final Map<String, AppContext> contexts = new HashMap<>();
     private final Map<String, JToggleButton> navButtons = new HashMap<>();
     private final Set<String> openedPanels = new HashSet<>();
@@ -85,9 +85,9 @@ public final class MainWindow extends JFrame {
         // 2) Programas externos: .jar en AppData/CenterOfNeurodivergence/apps
         AppLoader.Result apps = AppLoader.load(AppPaths.appsDir());
         loadErrors.addAll(apps.errors());
-        for (NeuroApp p : apps.programs()) register(p, true);
+        for (NeuroApp p : apps.apps()) register(p, true);
 
-        startPrograms();
+        startApps();
         buildUi();
 
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
@@ -97,39 +97,39 @@ public final class MainWindow extends JFrame {
         setMinimumSize(new Dimension(960, 620));
         setSize(1240, 800);
         setLocationRelativeTo(null);
-        showProgram(HOME);
+        showApp(HOME);
 
         if (!loadErrors.isEmpty()) SwingUtilities.invokeLater(this::showLoadErrors);
     }
 
     // ------------------------------------------------------------------ registro y arranque
 
-    private void register(NeuroApp program, boolean plugin) {
+    private void register(NeuroApp app, boolean plugin) {
         try {
             String id = program.id();
             String name = program.name();
             if (id == null || id.isBlank()) throw new IllegalArgumentException("el id está vacío");
             if (name == null || name.isBlank()) throw new IllegalArgumentException("el nombre está vacío");
-            if (programs.containsKey(id)) {
+            if (apps.containsKey(id)) {
                 loadErrors.add("Hay dos apps con el id «" + id + "»: se ignora «" + name + "».");
                 return;
             }
-            programs.put(id, program);
-            if (plugin) pluginIds.add(id);
+            apps.put(id, program);
+            if (plugin) externalAppIds.add(id);
         } catch (Throwable t) {
             loadErrors.add(program.getClass().getName() + ": " + t);
         }
     }
 
-    private void startPrograms() {
-        for (NeuroApp p : new ArrayList<>(programs.values())) {
+    private void startApps() {
+        for (NeuroApp p : new ArrayList<>(apps.values())) {
             AppContext ctx = new Ctx(p);
             contexts.put(p.id(), ctx);
             try {
                 p.start(ctx);
             } catch (Throwable t) {
                 loadErrors.add(p.name() + ": error al iniciar (" + t + ")");
-                programs.remove(p.id());
+                apps.remove(p.id());
                 contexts.remove(p.id());
             }
         }
@@ -142,7 +142,7 @@ public final class MainWindow extends JFrame {
     }
 
     private void shutdown() {
-        for (NeuroApp p : programs.values()) {
+        for (NeuroApp p : apps.values()) {
             try {
                 p.stop();
             } catch (Throwable t) {
@@ -185,7 +185,7 @@ public final class MainWindow extends JFrame {
         side.add(Box.createVerticalStrut(22));
 
         addNav(side, HOME, "Inicio", new BadgeIcon("I", HOME, 24));
-        for (NeuroApp p : programs.values()) {
+        for (NeuroApp p : apps.values()) {
             addNav(side, p.id(), p.name(), iconFor(p, 24));
         }
 
@@ -212,7 +212,7 @@ public final class MainWindow extends JFrame {
         b.putClientProperty("JButton.buttonType", "toolBarButton"); // estilo plano de FlatLaf
         b.setAlignmentX(Component.LEFT_ALIGNMENT);
         b.setMaximumSize(new Dimension(Integer.MAX_VALUE, b.getPreferredSize().height + 4));
-        b.addActionListener(e -> showProgram(id));
+        b.addActionListener(e -> showApp(id));
         navGroup.add(b);
         navButtons.put(id, b);
         side.add(b);
@@ -228,7 +228,7 @@ public final class MainWindow extends JFrame {
         root.add(heading, BorderLayout.NORTH);
 
         JPanel grid = new JPanel(new GridLayout(0, 2, 16, 16));
-        for (NeuroApp p : programs.values()) grid.add(buildCard(p));
+        for (NeuroApp p : apps.values()) grid.add(buildCard(p));
         JPanel gridTop = new JPanel(new BorderLayout());
         gridTop.add(grid, BorderLayout.NORTH);
         JScrollPane scroll = new JScrollPane(gridTop);
@@ -250,14 +250,14 @@ public final class MainWindow extends JFrame {
         JLabel icon = new JLabel(iconFor(p, 40));
         icon.setVerticalAlignment(SwingConstants.TOP);
 
-        String kind = pluginIds.contains(p.id()) ? "Plugin, versión " + safeVersion(p) : "Integrado";
+        String kind = externalAppIds.contains(p.id()) ? "Plugin, versión " + safeVersion(p) : "Integrado";
         JLabel text = new JLabel("<html><body style='width:220px'><b style='font-size:13pt'>" + esc(p.name())
                 + "</b><br>" + esc(p.description())
                 + "<br><br><span style='color:gray'>" + esc(kind) + "</span></body></html>");
         text.setVerticalAlignment(SwingConstants.TOP);
 
         JButton open = new JButton("Abrir");
-        open.addActionListener(e -> showProgram(p.id()));
+        open.addActionListener(e -> showApp(p.id()));
         JPanel south = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         south.setOpaque(false);
         south.setBorder(new EmptyBorder(12, 0, 0, 0));
@@ -267,16 +267,16 @@ public final class MainWindow extends JFrame {
         card.add(text, BorderLayout.CENTER);
         card.add(south, BorderLayout.SOUTH);
         card.addMouseListener(new MouseAdapter() {
-            @Override public void mouseClicked(MouseEvent e) { showProgram(p.id()); }
+            @Override public void mouseClicked(MouseEvent e) { showApp(p.id()); }
             @Override public void mouseEntered(MouseEvent e) { card.setHighlighted(true); }
             @Override public void mouseExited(MouseEvent e) { card.setHighlighted(false); }
         });
         return card;
     }
 
-    private void showProgram(String id) {
+    private void showApp(String id) {
         if (!HOME.equals(id) && !openedPanels.contains(id)) {
-            NeuroApp p = programs.get(id);
+            NeuroApp p = apps.get(id);
             if (p == null) return;
             JComponent panel;
             try {
@@ -397,10 +397,10 @@ public final class MainWindow extends JFrame {
 
     /** Lo que cada app recibe del panel. */
     private final class Ctx implements AppContext {
-        private final NeuroApp program;
+        private final NeuroApp app;
         private PropertiesStore store;
 
-        Ctx(NeuroApp program) { this.program = program; }
+        Ctx(NeuroApp app) { this.program = program; }
 
         @Override public Path dataDir() { return AppPaths.appDataDir(program.id()); }
 
@@ -419,8 +419,8 @@ public final class MainWindow extends JFrame {
             else SwingUtilities.invokeLater(() -> statusLabel.setText(text));
         }
 
-        @Override public void openApp(String programId) {
-            if (programs.containsKey(programId)) showProgram(programId);
+        @Override public void openApp(String appId) {
+            if (apps.containsKey(appId)) showApp(appId);
         }
 
         @Override public Window window() { return MainWindow.this; }
