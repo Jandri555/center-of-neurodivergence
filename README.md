@@ -1,6 +1,6 @@
 # Center of Neurodivergence
 
-**Versión actual: 1.0**
+La versión de la aplicación se define en un único lugar: la etiqueta `<version>` de `pom.xml`. Maven la incorpora automáticamente al manifiesto del JAR.
 
 Panel de escritorio en Java (Swing + FlatLaf) con varias apps integradas y extensibles.
 
@@ -25,7 +25,7 @@ java -jar target/center-of-neurodivergence.jar
 
 Los datos se guardan en la carpeta `CenterOfNeurodivergence`:
 
-- Windows: `%APPDATA%\CenterOfNeurodivergence\`
+- Windows: `%APPDATA%\\CenterOfNeurodivergence\\`
 - macOS: `~/Library/Application Support/CenterOfNeurodivergence/`
 - Linux: `~/.local/share/CenterOfNeurodivergence/`
 
