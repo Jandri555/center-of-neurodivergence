@@ -12,6 +12,7 @@ import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -142,7 +143,7 @@ public final class MainActivity extends Activity {
         content.setPadding(0, dp(12), 0, dp(8));
         scroll.addView(content);
         root.addView(scroll, new LinearLayout.LayoutParams(
-                LinearLayout.MATCH_PARENT, 0, 1f));
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         setContentView(root);
     }
