@@ -163,13 +163,13 @@ final class AgendaPanel extends JPanel {
             }
         });
 
-        bluetoothSyncButton = new JButton("Sincronizar Bluetooth");
+        bluetoothSyncButton = new JButton("Conectar Bluetooth");
         styleAgendaButton(bluetoothSyncButton);
         bluetoothSyncButton.setEnabled(store.isSyncEnabled());
         bluetoothSyncButton.setToolTipText("Conecta con Android mediante el puerto COM Bluetooth del sistema");
         bluetoothSyncButton.addActionListener(e -> syncBluetooth());
 
-        usbSyncButton = new JButton("Sincronizar USB");
+        usbSyncButton = new JButton("Conectar USB");
         styleAgendaButton(usbSyncButton);
         usbSyncButton.setEnabled(store.isSyncEnabled());
         usbSyncButton.setToolTipText("Conecta un Android por cable USB (Android Open Accessory)");
@@ -257,7 +257,7 @@ final class AgendaPanel extends JPanel {
     }
 
     private void performUsbSync() {
-        if (activeSession != null && activeSession.get()) return;
+        if (activeSession != null) return;
         AtomicBoolean running = new AtomicBoolean(true);
         JDialog progress = new JDialog(
                 SwingUtilities.getWindowAncestor(this),
