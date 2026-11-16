@@ -24,9 +24,12 @@ final class BluetoothSyncServer implements AutoCloseable {
         serverSocket = adapter.listenUsingRfcommWithServiceRecord(SERVICE_NAME, SERVICE_UUID);
     }
 
-    void waitForOneSync(AgendaStore store) throws IOException {
+    void waitForOneSync(
+            AgendaStore store,
+            AgendaSyncProtocol.OperationMerger merger) throws IOException {
         try (BluetoothSocket socket = serverSocket.accept()) {
-            AgendaSyncProtocol.runServer(socket.getInputStream(), socket.getOutputStream(), store);
+            AgendaSyncProtocol.runServer(
+                    socket.getInputStream(), socket.getOutputStream(), store, merger);
         }
     }
 
