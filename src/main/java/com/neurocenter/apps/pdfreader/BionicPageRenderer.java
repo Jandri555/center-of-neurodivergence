@@ -37,7 +37,12 @@ final class BionicPageRenderer {
                                                 float dpi, double ratio) throws IOException {
         Set<GlyphKey> boldGlyphs = collectBoldGlyphs(document, pageIndex, ratio);
         PDFRenderer renderer = new BionicRenderer(document, boldGlyphs);
-        return renderer.renderImageWithDPI(pageIndex, dpi);
+
+        // Sobremuestreo para suavizar los bordes del texto sin cambiar el tamaño en pantalla.
+        float renderScale = PdfImageQuality.renderScale(dpi);
+        java.awt.image.BufferedImage highResolution =
+                renderer.renderImageWithDPI(pageIndex, dpi * renderScale);
+        return PdfImageQuality.downsample(highResolution, renderScale);
     }
 
     /**
@@ -255,7 +260,9 @@ final class BionicPageRenderer {
 
                 float fontScale = Math.max(Math.abs(textRenderingMatrix.getScaleX()),
                         Math.abs(textRenderingMatrix.getScaleY()));
-                float emboldenWidth = Math.max(0.18f, Math.min(0.55f, fontScale * 0.035f));
+                // Engrosado más perceptible: el control de intensidad sigue decidiendo
+                // cuántos caracteres se refuerzan; este valor controla el grosor real.
+                float emboldenWidth = Math.max(0.55f, Math.min(1.70f, fontScale * 0.11f));
 
                 // Convertimos el engrosado del contorno en una superficie rellena.
                 // draw(glyph) solo pintaba el borde y dejaba un efecto de letra hueca.
