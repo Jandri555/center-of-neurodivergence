@@ -116,6 +116,16 @@ public final class ThemeManager {
         Color normalButtonText = UIManager.getColor("Button.foreground");
         if (normalButton != null) UIManager.put("Button.default.background", normalButton);
         if (normalButtonText != null) UIManager.put("Button.default.foreground", normalButtonText);
+        // El botón predeterminado recibe el foco inicial del JOptionPane.
+        // Su foco no debe confundirse con un estado de selección/acento.
+        UIManager.put("Button.default.boldText", false);
+        Color neutralFocus = UIManager.getColor("Component.borderColor");
+        if (neutralFocus != null) {
+            UIManager.put("Component.focusColor", neutralFocus);
+            UIManager.put("Button.default.focusColor", neutralFocus);
+            UIManager.put("Button.default.focusedBorderColor", neutralFocus);
+            UIManager.put("Button.focusedBorderColor", neutralFocus);
+        }
 
         applyColors(theme.colors());
         activeTheme = theme;
@@ -128,10 +138,15 @@ public final class ThemeManager {
                 Map.entry("surface", "Panel.background"),
                 Map.entry("foreground", "Component.foreground"),
                 Map.entry("text", "Label.foreground"),
-                Map.entry("primary", "Component.focusColor"),
                 Map.entry("selection", "List.selectionBackground"),
                 Map.entry("selectionText", "List.selectionForeground"),
                 Map.entry("border", "Component.borderColor"),
+                Map.entry("focus", "Component.focusColor"),
+                Map.entry("buttonFocusedBorder", "Button.focusedBorderColor"),
+                Map.entry("buttonDefaultFocusedBorder", "Button.default.focusedBorderColor"),
+                Map.entry("buttonDefaultFocus", "Button.default.focusColor"),
+                Map.entry("buttonDefaultFocused", "Button.default.focusedBackground"),
+                Map.entry("buttonDefaultFocusedText", "Button.default.focusedForeground"),
                 Map.entry("button", "Button.background"),
                 Map.entry("buttonText", "Button.foreground"),
                 Map.entry("buttonDefault", "Button.default.background"),
