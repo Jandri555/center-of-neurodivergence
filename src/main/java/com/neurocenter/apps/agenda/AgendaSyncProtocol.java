@@ -35,10 +35,27 @@ final class AgendaSyncProtocol {
 
     private AgendaSyncProtocol() {}
 
+    @FunctionalInterface
+    interface OperationMerger {
+        void merge(List<AgendaOperation> operations) throws IOException;
+    }
+
     /**
      * Sincroniza desde el lado que inicia la conexión (por ejemplo, el PC).
      */
     static void runClient(InputStream input, OutputStream output, AgendaStore store) throws IOException {
+        runClient(input, output, store, store::mergeOperations);
+    }
+
+    /**
+     * Variante que permite al escritorio aplicar el lote remoto en el EDT,
+     * mientras la conexión Bluetooth trabaja en un hilo auxiliar.
+     */
+    static void runClient(
+            InputStream input,
+            OutputStream output,
+            AgendaStore store,
+            OperationMerger merger) throws IOException {
         requireEnabled(store);
 
         SyncMessage request = message("SYNC_REQUEST", store);
@@ -46,7 +63,7 @@ final class AgendaSyncProtocol {
 
         SyncMessage response = receive(input);
         requireKind(response, "SYNC_RESPONSE");
-        store.mergeOperations(response.operations);
+        merger.merge(response.operations);
 
         Map<String, Long> acknowledgedClock = store.syncVectorClock();
         SyncMessage ack = new SyncMessage();
