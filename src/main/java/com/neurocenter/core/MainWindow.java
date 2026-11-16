@@ -47,6 +47,8 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -55,6 +57,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Panel principal: menú lateral con todos los apps y una pantalla de inicio.
@@ -67,10 +72,13 @@ public final class MainWindow extends JFrame {
     private final PropertiesStore appSettings;
     private final Map<String, NeuroApp> apps = new LinkedHashMap<>();
     private final Set<String> externalAppIds = new HashSet<>();
-    private final Map<String, AppContext> contexts = new HashMap<>();
     private final Map<String, JToggleButton> navButtons = new HashMap<>();
     private final Map<String, JPanel> navMarkers = new HashMap<>();
-    private final Set<String> openedPanels = new HashSet<>();
+    private final Map<String, JPanel> navRows = new HashMap<>();
+    private final Map<String, AppSession> appSessions = new LinkedHashMap<>();
+    private final JPanel openAppsList = new JPanel();
+    private String activeAppId = HOME;
+    private boolean shuttingDown;
     private final List<String> loadErrors = new ArrayList<>();
     private final ButtonGroup navGroup = new ButtonGroup();
     private final CardLayout cards = new CardLayout();
@@ -94,7 +102,6 @@ public final class MainWindow extends JFrame {
         loadErrors.addAll(apps.errors());
         for (NeuroApp p : apps.apps()) register(p, true);
 
-        startApps();
         buildUi();
 
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
@@ -128,20 +135,7 @@ public final class MainWindow extends JFrame {
         }
     }
 
-    private void startApps() {
-        for (NeuroApp p : new ArrayList<>(apps.values())) {
-            AppContext ctx = new Ctx(p);
-            contexts.put(p.id(), ctx);
-            try {
-                p.start(ctx);
-            } catch (Throwable t) {
-                loadErrors.add(p.name() + ": error al iniciar (" + t + ")");
-                apps.remove(p.id());
-                contexts.remove(p.id());
-            }
-        }
-    }
-
+    private void showLoadErrors() {
     private void showLoadErrors() {
         StringBuilder sb = new StringBuilder("Algunos apps no se han podido cargar:\n");
         for (String e : loadErrors) sb.append("\n• ").append(e);
@@ -149,17 +143,50 @@ public final class MainWindow extends JFrame {
     }
 
     private void shutdown() {
-        for (NeuroApp p : apps.values()) {
+        if (shuttingDown) return;
+        shuttingDown = true;
+
+        List<AppSession> sessions = new ArrayList<>(appSessions.values());
+        for (AppSession session : sessions) {
+            if (session.closing) continue;
+            session.closing = true;
             try {
-                p.stop();
-            } catch (Throwable t) {
-                t.printStackTrace();
+                // Cada app termina en su propio hilo, después de cualquier start()
+                // que pudiera seguir ejecutándose en esa misma cola.
+                session.worker.execute(() -> {
+                    try {
+                        session.app.stop();
+                    } catch (Throwable t) {
+                        t.printStackTrace();
+                    } finally {
+                        session.worker.shutdown();
+                    }
+                });
+            } catch (RuntimeException ex) {
+                ex.printStackTrace();
+                session.worker.shutdownNow();
             }
         }
+
         dispose();
-        System.exit(0);
+        Thread terminator = new Thread(() -> {
+            for (AppSession session : sessions) {
+                try {
+                    if (!session.worker.awaitTermination(10, TimeUnit.SECONDS)) {
+                        session.worker.shutdownNow();
+                    }
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    session.worker.shutdownNow();
+                }
+            }
+            System.exit(0);
+        }, "app-shutdown");
+        terminator.setDaemon(false);
+        terminator.start();
     }
 
+    // ------------------------------------------------------------------ interfaz
     // ------------------------------------------------------------------ interfaz
 
     private void buildUi() {
@@ -212,11 +239,15 @@ public final class MainWindow extends JFrame {
         side.add(version);
         side.add(Box.createVerticalStrut(22));
 
-        addNav(side, HOME, "Inicio", new BadgeIcon("I", HOME, 24));
-        for (NeuroApp p : apps.values()) {
-            addNav(side, p.id(), p.name(), iconFor(p, 24));
-        }
+        // Inicio siempre está visible. Las apps aparecen debajo solo mientras
+        // tienen una sesión abierta.
+        addNav(side, HOME, "Inicio", new BadgeIcon("I", HOME, 24), false);
+        side.add(Box.createVerticalStrut(10));
 
+        openAppsList.setLayout(new BoxLayout(openAppsList, BoxLayout.Y_AXIS));
+        openAppsList.setOpaque(false);
+        openAppsList.setAlignmentX(Component.LEFT_ALIGNMENT);
+        side.add(openAppsList);
         side.add(Box.createVerticalGlue());
 
         JPanel wrapper = new JPanel(new BorderLayout());
@@ -225,38 +256,54 @@ public final class MainWindow extends JFrame {
         return wrapper;
     }
 
-    private void addNav(JPanel side, String id, String text, Icon icon) {
-        JToggleButton b = new JToggleButton(text, icon);
-        b.setHorizontalAlignment(SwingConstants.LEFT);
-        b.setIconTextGap(12);
-        b.setMargin(new Insets(8, 10, 8, 10));
-        b.putClientProperty("JButton.buttonType", "toolBarButton");
-        b.setContentAreaFilled(false);
-        b.setOpaque(false);
-        b.setFocusable(false);
-        // El indicador tiene su propio componente, fuera del área de pintura
-        // del botón. Así FlatLaf no puede recortar su borde izquierdo.
-        b.setBorder(new EmptyBorder(8, 12, 8, 10));
-        b.addActionListener(e -> showApp(id));
+    private void addNav(JPanel parent, String id, String text, Icon icon, boolean closable) {
+        JToggleButton button = new JToggleButton(text, icon);
+        button.setHorizontalAlignment(SwingConstants.LEFT);
+        button.setIconTextGap(12);
+        button.setMargin(new Insets(8, 10, 8, 10));
+        button.putClientProperty("JButton.buttonType", "toolBarButton");
+        button.setContentAreaFilled(false);
+        button.setOpaque(false);
+        button.setFocusable(false);
+        button.setBorder(new EmptyBorder(8, 12, 8, 10));
+        button.addActionListener(e -> showApp(id));
 
         JPanel marker = new JPanel();
         marker.setOpaque(true);
         marker.setPreferredSize(new Dimension(3, 1));
         marker.setMinimumSize(new Dimension(3, 0));
         marker.setMaximumSize(new Dimension(3, Integer.MAX_VALUE));
+        marker.setBackground(navMarkerColor(false));
 
-        JPanel item = new JPanel(new BorderLayout());
-        item.setOpaque(false);
-        item.add(marker, BorderLayout.WEST);
-        item.add(b, BorderLayout.CENTER);
-        item.setAlignmentX(Component.LEFT_ALIGNMENT);
-        item.setMaximumSize(new Dimension(Integer.MAX_VALUE, b.getPreferredSize().height + 4));
+        JPanel controls = new JPanel(new BorderLayout());
+        controls.setOpaque(false);
+        controls.add(button, BorderLayout.CENTER);
 
-        navGroup.add(b);
-        navButtons.put(id, b);
+        JPanel row = new JPanel(new BorderLayout());
+        row.setOpaque(false);
+        row.add(marker, BorderLayout.WEST);
+        row.add(controls, BorderLayout.CENTER);
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        if (closable) {
+            JButton close = new JButton("×");
+            close.setToolTipText("Cerrar " + text);
+            close.setFocusable(false);
+            close.setOpaque(false);
+            close.setContentAreaFilled(false);
+            close.setBorder(new EmptyBorder(4, 8, 4, 8));
+            close.setMargin(new Insets(0, 0, 0, 0));
+            close.putClientProperty("JButton.buttonType", "toolBarButton");
+            close.addActionListener(e -> requestCloseApp(id));
+            controls.add(close, BorderLayout.EAST);
+            navRows.put(id, row);
+        }
+
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, button.getPreferredSize().height + 4));
+        navGroup.add(button);
+        navButtons.put(id, button);
         navMarkers.put(id, marker);
-        side.add(item);
-        side.add(Box.createVerticalStrut(2));
+        parent.add(row);
     }
 
     private JComponent buildHome() {
@@ -315,35 +362,181 @@ public final class MainWindow extends JFrame {
     }
 
     private void showApp(String id) {
-        if (!HOME.equals(id) && !openedPanels.contains(id)) {
-            NeuroApp p = apps.get(id);
-            if (p == null) return;
-            JComponent panel;
-            try {
-                panel = p.createPanel(contexts.get(id));
-                if (panel == null) throw new IllegalStateException("createPanel devolvió null");
-            } catch (Throwable t) {
-                panel = errorPanel(p, t);
-            }
-            content.add(panel, id);
-            openedPanels.add(id);
+        if (HOME.equals(id)) {
+            activeAppId = HOME;
+            cards.show(content, HOME);
+            JToggleButton home = navButtons.get(HOME);
+            if (home != null) home.setSelected(true);
+            updateNavAppearance();
+            statusLabel.setText(" ");
+            return;
         }
+
+        NeuroApp app = apps.get(id);
+        if (app == null) return;
+
+        AppSession existing = appSessions.get(id);
+        if (existing != null) {
+            if (existing.closing) {
+                statusLabel.setText("La aplicación se está cerrando…");
+                return;
+            }
+            activeAppId = id;
+            cards.show(content, id);
+            JToggleButton button = navButtons.get(id);
+            if (button != null) button.setSelected(true);
+            updateNavAppearance();
+            statusLabel.setText(" ");
+            return;
+        }
+
+        AppSession session = new AppSession(id, app, new Ctx(app));
+        appSessions.put(id, session);
+
+        JPanel loading = new JPanel(new GridBagLayout());
+        loading.add(new JLabel("Iniciando " + app.name() + "…"));
+        session.panel = loading;
+        content.add(loading, id);
+
+        addNav(openAppsList, id, app.name(), iconFor(app, 24), true);
+        activeAppId = id;
         cards.show(content, id);
-        JToggleButton b = navButtons.get(id);
-        if (b != null) b.setSelected(true);
+        JToggleButton button = navButtons.get(id);
+        if (button != null) button.setSelected(true);
         updateNavAppearance();
         statusLabel.setText(" ");
+
+        // Cada app dispone de una cola/hilo propio para su ciclo de vida.
+        // La creación y manipulación de componentes Swing sigue reservada al EDT.
+        session.worker.execute(() -> {
+            Throwable failure = null;
+            try {
+                app.start(session.context);
+            } catch (Throwable t) {
+                failure = t;
+            }
+            Throwable startFailure = failure;
+            SwingUtilities.invokeLater(() -> finishOpeningApp(session, startFailure));
+        });
     }
 
-    /** Resalta la app activa con una línea lateral, sin rellenar toda la fila. */
-    private Color navMarkerColor(boolean selected) {
-        Color panel = UIManager.getColor("Panel.background");
-        if (!selected) return panel != null ? panel : getBackground();
+    private void finishOpeningApp(AppSession session, Throwable startFailure) {
+        if (appSessions.get(session.id) != session || session.closing) return;
 
-        Color accent = UIManager.getColor("Component.accentColor");
-        if (accent == null) accent = UIManager.getColor("Component.focusColor");
-        if (accent == null) accent = UIManager.getColor("Button.foreground");
-        return accent != null ? accent : getForeground();
+        if (startFailure != null) {
+            setAppPanel(session, errorPanel(session.app, startFailure));
+            statusLabel.setText("No se pudo iniciar " + session.app.name() + ".");
+            return;
+        }
+
+        try {
+            JComponent panel = session.app.createPanel(session.context);
+            if (panel == null) throw new IllegalStateException("createPanel devolvió null");
+            setAppPanel(session, panel);
+        } catch (Throwable t) {
+            setAppPanel(session, errorPanel(session.app, t));
+            statusLabel.setText("No se pudo abrir " + session.app.name() + ".");
+        }
+    }
+
+    private void setAppPanel(AppSession session, JComponent panel) {
+        if (session.panel != null) content.remove(session.panel);
+        session.panel = panel;
+        content.add(panel, session.id);
+        content.revalidate();
+        content.repaint();
+        if (session.id.equals(activeAppId)) cards.show(content, session.id);
+    }
+
+    private void requestCloseApp(String id) {
+        AppSession session = appSessions.get(id);
+        if (session == null || session.closing) return;
+
+        if (hasUnsavedChanges(session.app)) {
+            String[] options = { "Aceptar", "Cerrar de todos modos" };
+            int choice = JOptionPane.showOptionDialog(
+                    this,
+                    "Esta aplicación indica que puede tener cambios sin guardar.\n\n"
+                            + "Pulsa «Aceptar» para mantenerla abierta o «Cerrar de todos modos» para finalizarla.",
+                    "Posibles cambios sin guardar",
+                    JOptionPane.DEFAULT_OPTION,
+                    JOptionPane.WARNING_MESSAGE,
+                    null,
+                    options,
+                    options[0]);
+            if (choice != 1) return;
+        }
+
+        closeApp(session);
+    }
+
+    private void closeApp(AppSession session) {
+        if (session.closing) return;
+        session.closing = true;
+
+        if (session.id.equals(activeAppId)) showApp(HOME);
+
+        if (session.panel != null) content.remove(session.panel);
+        content.revalidate();
+        content.repaint();
+
+        JToggleButton button = navButtons.remove(session.id);
+        if (button != null) navGroup.remove(button);
+        navMarkers.remove(session.id);
+
+        JPanel row = navRows.remove(session.id);
+        if (row != null) openAppsList.remove(row);
+        openAppsList.revalidate();
+        openAppsList.repaint();
+        updateNavAppearance();
+
+        statusLabel.setText("Cerrando " + session.app.name() + "…");
+
+        // stop() se ejecuta en el mismo hilo de la app y después de start().
+        session.worker.execute(() -> {
+            try {
+                session.app.stop();
+            } catch (Throwable t) {
+                t.printStackTrace();
+            } finally {
+                session.worker.shutdown();
+                SwingUtilities.invokeLater(() -> {
+                    if (appSessions.get(session.id) == session) {
+                        appSessions.remove(session.id);
+                    }
+                    if (!shuttingDown && "Cerrando " + session.app.name() + "…".equals(statusLabel.getText())) {
+                        statusLabel.setText(" ");
+                    }
+                });
+            }
+        });
+    }
+
+    /**
+     * Convención opcional para los apps: public static volatile boolean
+     * UNSAVED_CHANGES. Si no existe, o vale false, el cierre no pide confirmación.
+     */
+    private static boolean hasUnsavedChanges(NeuroApp app) {
+        for (Class<?> type = app.getClass(); type != null && type != Object.class; type = type.getSuperclass()) {
+            final Field field;
+            try {
+                field = type.getDeclaredField("UNSAVED_CHANGES");
+            } catch (NoSuchFieldException ignored) {
+                continue;
+            }
+
+            if (field.getType() != boolean.class && field.getType() != Boolean.class) return true;
+            try {
+                if (!field.trySetAccessible()) return true;
+                Object value = field.get(Modifier.isStatic(field.getModifiers()) ? null : app);
+                return Boolean.TRUE.equals(value);
+            } catch (ReflectiveOperationException | RuntimeException ex) {
+                // Si la app declara la flag pero no podemos leerla, priorizamos
+                // no perder datos y mostramos la advertencia.
+                return true;
+            }
+        }
+        return false;
     }
 
     private void updateNavAppearance() {
@@ -354,6 +547,16 @@ public final class MainWindow extends JFrame {
             }
             entry.getValue().repaint();
         }
+    }
+
+    private Color navMarkerColor(boolean selected) {
+        Color panel = UIManager.getColor("Panel.background");
+        if (!selected) return panel != null ? panel : getBackground();
+
+        Color accent = UIManager.getColor("Component.accentColor");
+        if (accent == null) accent = UIManager.getColor("Component.focusColor");
+        if (accent == null) accent = UIManager.getColor("Button.foreground");
+        return accent != null ? accent : getForeground();
     }
 
     private JComponent errorPanel(NeuroApp p, Throwable t) {
@@ -577,6 +780,28 @@ public final class MainWindow extends JFrame {
         return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
+    /** Una sesión abierta: cada app tiene su propio hilo de ciclo de vida. */
+    private static final class AppSession {
+        private final String id;
+        private final NeuroApp app;
+        private final AppContext context;
+        private final ExecutorService worker;
+        private volatile boolean closing;
+        private JComponent panel;
+
+        private AppSession(String id, NeuroApp app, AppContext context) {
+            this.id = id;
+            this.app = app;
+            this.context = context;
+            String threadName = "app-" + id.replaceAll("[^A-Za-z0-9_-]", "_");
+            this.worker = Executors.newSingleThreadExecutor(task -> {
+                Thread thread = new Thread(task, threadName);
+                thread.setDaemon(true);
+                return thread;
+            });
+        }
+    }
+
     /** Lo que cada app recibe del panel. */
     private final class Ctx implements AppContext {
         private final NeuroApp app;
@@ -602,16 +827,18 @@ public final class MainWindow extends JFrame {
         }
 
         @Override public void openApp(String appId) {
-            if (apps.containsKey(appId)) showApp(appId);
+            if (apps.containsKey(appId)) SwingUtilities.invokeLater(() -> showApp(appId));
         }
 
         @Override public Window window() { return MainWindow.this; }
 
         @Override public void requestAttention() {
-            Toolkit.getDefaultToolkit().beep();
-            if ((getExtendedState() & Frame.ICONIFIED) != 0) setExtendedState(Frame.NORMAL);
-            toFront();
-            requestFocus();
+            SwingUtilities.invokeLater(() -> {
+                Toolkit.getDefaultToolkit().beep();
+                if ((getExtendedState() & Frame.ICONIFIED) != 0) setExtendedState(Frame.NORMAL);
+                toFront();
+                requestFocus();
+            });
         }
     }
 }
