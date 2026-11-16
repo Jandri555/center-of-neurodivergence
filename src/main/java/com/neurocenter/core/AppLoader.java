@@ -22,7 +22,8 @@ import java.util.stream.Stream;
  */
 public final class AppLoader {
 
-    public record Result(List<NeuroApp> apps, List<String> errors) {}
+    public record LoadedApp(NeuroApp app, String jarFilename) {}
+    public record Result(List<LoadedApp> apps, List<String> errors) {}
 
     private AppLoader() {}
 
@@ -42,7 +43,7 @@ public final class AppLoader {
 
     /** Solo carga JAR presentes en el registro de instalaciones. */
     public static Result load(Path appsDir, List<String> installedJarNames) {
-        List<NeuroApp> apps = new ArrayList<>();
+        List<LoadedApp> apps = new ArrayList<>();
         List<String> errors = new ArrayList<>();
         if (!Files.isDirectory(appsDir)) return new Result(apps, errors);
 
@@ -69,7 +70,7 @@ public final class AppLoader {
                 try {
                     ServiceLoader<NeuroApp> serviceLoader = ServiceLoader.load(NeuroApp.class, loader);
                     for (NeuroApp app : serviceLoader) {
-                        apps.add(app);
+                        apps.add(new LoadedApp(app, name));
                         found++;
                     }
                 } catch (ServiceConfigurationError error) {
