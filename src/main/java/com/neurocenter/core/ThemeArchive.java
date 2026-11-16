@@ -50,6 +50,7 @@ public final class ThemeArchive {
                     if (name.equals("theme.json")) manifestFound = true;
                     Path target = temp.resolve(name).normalize();
                     if (!target.startsWith(temp)) throw new IOException("Ruta insegura en el paquete.");
+                    if (Files.exists(target)) throw new IOException("El paquete contiene una entrada duplicada: " + name);
                     Files.createDirectories(target.getParent());
                     try (var out = Files.newOutputStream(target)) {
                         byte[] buffer = new byte[8192];
