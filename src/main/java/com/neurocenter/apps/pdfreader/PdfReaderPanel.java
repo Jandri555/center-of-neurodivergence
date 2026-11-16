@@ -65,7 +65,7 @@ import java.util.concurrent.Executors;
  *  - Lectura: el texto se recompone y se muestra con Bionic Reading.
  *  - Original: la página tal cual está en el PDF.
  *  - Original + Bionic: conserva la página y refuerza visualmente el inicio de las palabras.
- * Recuerda el último PDF, la página por la que ibas y los ajustes de lectura.
+ * Recuerda los ajustes de lectura y la página de cada documento, pero no reabre PDFs automáticamente.
  */
 final class PdfReaderPanel extends JPanel {
 
@@ -182,16 +182,6 @@ final class PdfReaderPanel extends JPanel {
         wireReadingControls();
         installKeys();
 
-        // --- reabrir el último PDF
-        String last = ctx.getSetting("lastFile", "");
-        if (!last.isBlank()) {
-            try {
-                Path p = Path.of(last);
-                if (Files.isRegularFile(p)) openFile(p, true);
-            } catch (RuntimeException ignored) {
-                // ruta guardada no válida
-            }
-        }
     }
 
     // ------------------------------------------------------------------ construcción de la interfaz
@@ -418,7 +408,6 @@ final class PdfReaderPanel extends JPanel {
         pageCount = loaded.getNumberOfPages();
         if (previous != null) closeAsync(previous);
 
-        ctx.putSetting("lastFile", path.toString());
         Path parent = path.toAbsolutePath().getParent();
         if (parent != null) ctx.putSetting("lastDir", parent.toString());
 
