@@ -76,8 +76,15 @@ final class AgendaSyncJournal {
             metadata.enabled = true;
             saveMetadataUnchecked();
         }
-        if (operations.isEmpty()) {
-            for (AgendaEntry entry : currentEntries) recordUpsert(entry);
+        // Baseline creation is idempotent. If the process stopped halfway
+        // through its first activation, a later load completes the missing entries.
+        for (AgendaEntry entry : currentEntries) {
+            if (entry == null || entry.id == null || entry.id.trim().isEmpty()) continue;
+            boolean alreadySeeded = operations.stream().anyMatch(operation ->
+                    metadata.deviceId.equals(operation.deviceId)
+                            && AgendaOperation.UPSERT.equals(operation.type)
+                            && entry.id.equals(operation.entryId));
+            if (!alreadySeeded) recordUpsert(entry);
         }
         saveMetadataUnchecked();
     }
@@ -161,9 +168,10 @@ final class AgendaSyncJournal {
 
             // Si dos dispositivos borran/actualizan la misma entrada sin haberse
             // sincronizado, el borrado concurrente gana para no resucitar datos.
-            List<AgendaOperation> deletions = heads.stream()
-                    .filter(op -> AgendaOperation.DELETE.equals(op.type))
-                    .collect(java.util.stream.Collectors.toList());
+            List<AgendaOperation> deletions = new ArrayList<>();
+            for (AgendaOperation operation : heads) {
+                if (AgendaOperation.DELETE.equals(operation.type)) deletions.add(operation);
+            }
             AgendaOperation winner = (deletions.isEmpty() ? heads : deletions)
                     .stream().max(ORDER).orElse(null);
 
