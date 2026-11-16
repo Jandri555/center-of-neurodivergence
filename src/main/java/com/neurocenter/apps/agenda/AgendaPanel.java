@@ -303,8 +303,10 @@ final class AgendaPanel extends JPanel {
                 running.set(false);
                 final String error = failure;
                 SwingUtilities.invokeLater(() -> {
-                    if (activeSession == running) activeSession = null;
-                    if (activeSyncWorker == Thread.currentThread()) activeSyncWorker = null;
+                    if (activeSession == running) {
+                        activeSession = null;
+                        activeSyncWorker = null;
+                    }
                     activeConnectionDialog = null;
                     progress.dispose();
                     refresh();
@@ -368,9 +370,11 @@ final class AgendaPanel extends JPanel {
                 running.set(false);
                 final String error = failure;
                 SwingUtilities.invokeLater(() -> {
-                    if (activeSession == running) activeSession = null;
+                    if (activeSession == running) {
+                        activeSession = null;
+                        activeSyncWorker = null;
+                    }
                     if (activeBluetoothPort == port) activeBluetoothPort = null;
-                    if (activeSyncWorker == Thread.currentThread()) activeSyncWorker = null;
                     activeConnectionDialog = null;
                     progress.dispose();
                     refresh();
