@@ -54,7 +54,10 @@ final class BluetoothSyncServer implements AutoCloseable {
     public void close() throws IOException {
         closed = true;
         BluetoothSocket socket = activeSocket;
-        if (socket != null) socket.close();
-        serverSocket.close();
+        try {
+            if (socket != null) socket.close();
+        } finally {
+            serverSocket.close();
+        }
     }
 }
