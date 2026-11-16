@@ -209,6 +209,20 @@ final class PdfReaderPanel extends JPanel {
         nextBtn.addActionListener(e -> goToPage(pageIndex + 1));
         pageSpinner.setPreferredSize(new Dimension(72, pageSpinner.getPreferredSize().height));
         pageSpinner.putClientProperty("JComponent.roundRect", true);
+        pageSpinner.setBorder(null);
+        JComponent editor = pageSpinner.getEditor();
+        if (editor instanceof JSpinner.DefaultEditor spinnerEditor) {
+            spinnerEditor.getTextField().setOpaque(false);
+            spinnerEditor.getTextField().setBorder(null);
+            spinnerEditor.getTextField().setHorizontalAlignment(SwingConstants.CENTER);
+        }
+        for (Component child : pageSpinner.getComponents()) {
+            if (child instanceof JButton arrow) {
+                styleToolbarButton(arrow);
+                arrow.setBorderPainted(false);
+                arrow.setContentAreaFilled(false);
+            }
+        }
         pageSpinner.addChangeListener(e -> {
             if (!updatingPage) goToPage(pageModel.getNumber().intValue() - 1);
         });
