@@ -60,6 +60,21 @@ Intercambio previsto:
 
 No se debe borrar el historial por el mero hecho de haber enviado los datos.
 
+### Sesión continua (Bluetooth y USB)
+
+La sincronización ya no termina al intercambiar el historial inicial. Una vez conectados, ambos dispositivos mantienen una sesión abierta y, aproximadamente cada 350 ms:
+
+- Anuncian su reloj causal.
+- Envían solo las operaciones que el otro dispositivo todavía no conoce.
+- Guardan las operaciones recibidas y actualizan la vista de la agenda.
+- Repiten el intercambio mientras la conexión siga abierta.
+
+Por tanto, una tarea, evento, modificación, cambio de estado o borrado guardado en cualquiera de los dos dispositivos se propaga automáticamente al otro. Los borrados siguen viajando como tombstones; no se comparan listas ni se resucitan entradas eliminadas por una copia antigua.
+
+La ventana de conexión del escritorio es no modal, de modo que se puede seguir usando la agenda mientras sincroniza. **Desconectar** cierra la sesión manualmente. En Android, el botón cambia a **Desconectar Bluetooth** o **Desconectar USB** mientras la sesión está activa. Cerrar la agenda o perder el enlace también termina la sesión.
+
+Si se pierde la conexión, el historial local permanece intacto. Al volver a conectar, el intercambio inicial recupera las operaciones pendientes y ambos dispositivos vuelven a converger.
+
 ## Medios de conexión
 
 ### Bluetooth clásico RFCOMM/SPP (primera vía implementada)
@@ -69,8 +84,8 @@ El transporte de Bluetooth usa el mismo protocolo de sincronización. Android ab
 En Android:
 1. Activa **Preparar sincronización**.
 2. Pulsa **Esperar conexión Bluetooth**.
-3. Acepta activar Bluetooth y hacer el teléfono visible durante cinco minutos.
-4. Mantén la pantalla de la Agenda abierta mientras se completa el intercambio.
+3. Acepta activar Bluetooth y hacer el teléfono visible durante cinco minutos para permitir el emparejamiento inicial.
+4. El botón pasará a ser **Desconectar Bluetooth**. Mantén la Agenda abierta para conservar la sesión; no es necesario volver a iniciar la sincronización por cada cambio.
 
 En Windows:
 1. Empareja primero el teléfono desde la configuración Bluetooth.
@@ -86,6 +101,7 @@ Hay una implementación inicial en ambos extremos:
 - El escritorio inicia el protocolo AOA con las peticiones de control, envía los datos identificativos del accesorio, espera la reenumeración del teléfono y abre los endpoints bulk.
 - Android detecta el accesorio mediante `UsbManager`, solicita autorización al usuario y utiliza `UsbAccessory` para abrir los flujos de entrada y salida.
 - Ambos extremos pasan esos flujos al mismo `AgendaSyncProtocol` que se utiliza por Bluetooth.
+- La conexión permanece abierta para intercambiar automáticamente cambios nuevos en ambos sentidos hasta desconectar el USB o cerrar la agenda.
 
 En Windows el dispositivo debe ser accesible por libusb. Si el controlador MTP predeterminado se queda la interfaz, puede ser necesario asociar el dispositivo/interfaz AOA a WinUSB o libusbK. Eso puede cambiar la forma en la que Windows trata el móvil y requiere cuidado: no debe cambiarse el controlador de todas las interfaces del teléfono sin comprobar qué interfaz corresponde al accesorio.
 
@@ -106,7 +122,7 @@ En Android:
 En Windows:
 1. Empareja primero el teléfono desde Configuración → Bluetooth.
 2. Habilita o crea un puerto COM saliente para el servicio serie Bluetooth (SPP) del móvil.
-3. En la Agenda de escritorio, activa el historial, pulsa **Sincronizar Bluetooth** y selecciona ese puerto COM.
+3. En la Agenda de escritorio, activa el historial y pulsa **Conectar Bluetooth**. La primera vez, selecciona el puerto COM saliente; después se recordará y se intentará usar automáticamente.
 
 No todos los controladores y fabricantes exponen el perfil SPP de la misma forma. La implementación está compilada, pero necesita pruebas físicas con distintos teléfonos y adaptadores. No se ha probado todavía una transferencia real.
 
@@ -122,12 +138,12 @@ La aplicación Android será independiente del panel Swing y tendrá:
 
 ## Fases
 
-1. **Motor de operaciones (en curso):** historial local, línea base, operaciones idempotentes, borrados y pruebas de conflictos.
-2. **Protocolo común:** mensajes, negociación, intercambio bidireccional, confirmaciones y compactación segura.
-3. **Android:** proyecto Gradle y agenda móvil usando el mismo contrato.
-4. **Bluetooth:** primera conexión real entre Android y escritorio.
-5. **USB AOA:** implementación y pruebas de compatibilidad con dispositivos.
-6. **Pruebas de desconexión:** cortes durante transferencia, repetición de lotes, cambios concurrentes, borrados offline y recuperación tras reinicio.
+1. **Motor de operaciones:** historial local, línea base, operaciones idempotentes, borrados y pruebas de conflictos.
+2. **Protocolo común:** intercambio inicial y sesión incremental bidireccional persistente.
+3. **Android:** agenda móvil usando el mismo contrato y controles para cerrar la sesión.
+4. **Bluetooth:** implementación de sesión continua; pendiente validar la conexión sostenida con dispositivos físicos.
+5. **USB AOA:** implementación de sesión continua; pendiente validar compatibilidad con dispositivos y controladores reales.
+6. **Pruebas físicas:** cortes durante una sesión, cambios concurrentes, borrados offline, reconexión y recuperación tras reinicio.
 
 ## Referencias técnicas
 
