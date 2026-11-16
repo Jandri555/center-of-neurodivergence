@@ -27,6 +27,7 @@ android {
                 "com/neurocenter/apps/agenda/AgendaEntry.java",
                 "com/neurocenter/apps/agenda/AgendaOperation.java",
                 "com/neurocenter/apps/agenda/AgendaSyncJournal.java",
+                "com/neurocenter/apps/agenda/AgendaSyncProtocol.java",
                 "com/neurocenter/apps/agenda/AgendaStore.java",
                 "com/neurocenter/apps/agenda/MainActivity.java"
             )
