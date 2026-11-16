@@ -1,19 +1,26 @@
-name: Maven build
+name: Maven CI
 
 on:
   push:
     branches:
       - main
-      - feature/apps-management-global-theme
+      - dev
   pull_request:
     branches:
       - main
+      - dev
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
+    name: Build and test (Java 17)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,5 +33,5 @@ jobs:
           java-version: '17'
           cache: maven
 
-      - name: Build with Maven
-        run: mvn --batch-mode --no-transfer-progress package
+      - name: Build and verify with Maven
+        run: mvn --batch-mode --no-transfer-progress clean verify
