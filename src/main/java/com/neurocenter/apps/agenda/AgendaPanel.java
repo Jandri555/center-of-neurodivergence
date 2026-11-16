@@ -392,7 +392,7 @@ final class AgendaPanel extends JPanel {
         progress.setVisible(true);
     }
 
-    private void stopActiveSession() {
+    void closeSyncSession() {
         AtomicBoolean running = activeSession;
         if (running != null) running.set(false);
         com.fazecast.jSerialComm.SerialPort port = activeBluetoothPort;
@@ -405,7 +405,7 @@ final class AgendaPanel extends JPanel {
 
     @Override
     public void removeNotify() {
-        stopActiveSession();
+        closeSyncSession();
         super.removeNotify();
     }
 
