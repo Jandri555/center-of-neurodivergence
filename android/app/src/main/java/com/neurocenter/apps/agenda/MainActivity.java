@@ -2,12 +2,19 @@ package com.neurocenter.apps.agenda;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.PendingIntent;
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
 import android.content.Intent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.ParcelFileDescriptor;
+import android.hardware.usb.UsbAccessory;
+import android.hardware.usb.UsbManager;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -23,6 +30,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.IOException;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -55,11 +64,31 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_ENABLE_BT = 7102;
     private static final int REQUEST_DISCOVERABLE = 7103;
     private static final int DISCOVERABLE_SECONDS = 300;
+    private static final String ACTION_USB_PERMISSION =
+            "com.neurocenter.agenda.USB_ACCESSORY_PERMISSION";
     private final ExecutorService syncExecutor = Executors.newSingleThreadExecutor();
     private volatile BluetoothSyncServer bluetoothServer;
     private BluetoothAdapter bluetoothAdapter;
     private Button bluetoothButton;
+    private Button usbButton;
     private TextView syncStatus;
+    private ParcelFileDescriptor usbAccessoryDescriptor;
+    private volatile boolean usbSyncActive;
+    private boolean usbReceiverRegistered;
+
+    private final BroadcastReceiver usbPermissionReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (!ACTION_USB_PERMISSION.equals(intent.getAction())) return;
+            UsbAccessory accessory = intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY);
+            if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false) && accessory != null) {
+                openUsbAccessory(accessory);
+            } else {
+                Toast.makeText(MainActivity.this,
+                        "No se ha concedido acceso al accesorio USB.", Toast.LENGTH_LONG).show();
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -74,6 +103,7 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        registerUsbPermissionReceiver();
         buildScreen();
         refresh();
     }
@@ -130,8 +160,13 @@ public final class MainActivity extends Activity {
         root.addView(bluetoothButton, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
+        usbButton = button("Conectar por cable USB");
+        usbButton.setOnClickListener(v -> showUsbInstructions());
+        root.addView(usbButton, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
         syncStatus = text(store.isSyncEnabled()
-                ? "Historial preparado. Elige Bluetooth para conectar con el ordenador."
+                ? "Historial preparado. Conecta por Bluetooth o por cable USB."
                 : "Activa la sincronización en ambos dispositivos para transferir cambios.",
                 12, false);
         syncStatus.setPadding(0, dp(6), 0, dp(4));
@@ -424,6 +459,120 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
+    private void registerUsbPermissionReceiver() {
+        if (usbReceiverRegistered) return;
+        IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(usbPermissionReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(usbPermissionReceiver, filter);
+        }
+        usbReceiverRegistered = true;
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        inspectUsbAccessory();
+    }
+
+    private void showUsbInstructions() {
+        if (!store.isSyncEnabled()) {
+            Toast.makeText(this, "Activa primero «Preparar sincronización» en ambos dispositivos.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Sincronización por cable USB")
+                .setMessage("Conecta el móvil al ordenador con un cable de datos. En el ordenador, "
+                        + "abre la Agenda y pulsa «Sincronizar USB».\n\n"
+                        + "El ordenador cambiará el teléfono al modo Android Open Accessory. "
+                        + "Cuando Android pregunte qué aplicación debe gestionar el accesorio, "
+                        + "selecciona Agenda. Mantén esta pantalla abierta hasta que termine.")
+                .setPositiveButton("Entendido", null)
+                .show();
+        inspectUsbAccessory();
+    }
+
+    private void inspectUsbAccessory() {
+        if (isFinishing() || usbSyncActive || usbAccessoryDescriptor != null) return;
+        UsbManager manager = (UsbManager) getSystemService(Context.USB_SERVICE);
+        if (manager == null) return;
+        UsbAccessory[] accessories = manager.getAccessoryList();
+        if (accessories == null || accessories.length == 0) return;
+
+        UsbAccessory accessory = accessories[0];
+        if (manager.hasPermission(accessory)) {
+            openUsbAccessory(accessory);
+            return;
+        }
+
+        Intent permissionIntent = new Intent(ACTION_USB_PERMISSION).setPackage(getPackageName());
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= 31) flags |= PendingIntent.FLAG_MUTABLE;
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, permissionIntent, flags);
+        manager.requestPermission(accessory, pendingIntent);
+        syncStatus.setText("Esperando autorización para acceder al accesorio USB…");
+    }
+
+    private void openUsbAccessory(UsbAccessory accessory) {
+        if (usbSyncActive || usbAccessoryDescriptor != null) return;
+        if (!store.isSyncEnabled()) {
+            Toast.makeText(this, "Activa primero el historial de sincronización.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        UsbManager manager = (UsbManager) getSystemService(Context.USB_SERVICE);
+        if (manager == null) {
+            Toast.makeText(this, "El servicio USB no está disponible.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        ParcelFileDescriptor descriptor = manager.openAccessory(accessory);
+        if (descriptor == null) {
+            Toast.makeText(this, "No se pudo abrir el accesorio USB.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        usbAccessoryDescriptor = descriptor;
+        usbSyncActive = true;
+        usbButton.setEnabled(false);
+        syncStatus.setText("Conectado por USB. Sincronizando operaciones con el ordenador…");
+
+        syncExecutor.execute(() -> {
+            String failure = null;
+            try {
+                FileInputStream input = new FileInputStream(descriptor.getFileDescriptor());
+                FileOutputStream output = new FileOutputStream(descriptor.getFileDescriptor());
+                AgendaSyncProtocol.runServer(input, output, store, this::mergeOnMainThread);
+            } catch (Exception ex) {
+                failure = ex.getMessage() == null ? ex.toString() : ex.getMessage();
+            } finally {
+                try {
+                    descriptor.close();
+                } catch (IOException ignored) {
+                    // El descriptor se cierra aunque se pierda el cable.
+                }
+                if (usbAccessoryDescriptor == descriptor) usbAccessoryDescriptor = null;
+                usbSyncActive = false;
+                final String error = failure;
+                runOnUiThread(() -> {
+                    if (usbButton != null) usbButton.setEnabled(true);
+                    if (error == null) {
+                        syncStatus.setText("Agenda sincronizada correctamente por USB.");
+                        Toast.makeText(this, "Agenda sincronizada por USB.", Toast.LENGTH_LONG).show();
+                        refresh();
+                    } else {
+                        syncStatus.setText("No se pudo completar la sincronización USB.");
+                        Toast.makeText(this, "Error de sincronización USB: " + error,
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
+            }
+        });
+    }
+
     private void startBluetoothSync() {
         if (!store.isSyncEnabled()) {
             Toast.makeText(this,
@@ -582,6 +731,18 @@ public final class MainActivity extends Activity {
             } catch (IOException ignored) {
                 // La actividad está finalizando.
             }
+        }
+        ParcelFileDescriptor descriptor = usbAccessoryDescriptor;
+        if (descriptor != null) {
+            try {
+                descriptor.close();
+            } catch (IOException ignored) {
+                // La actividad está finalizando.
+            }
+        }
+        if (usbReceiverRegistered) {
+            unregisterReceiver(usbPermissionReceiver);
+            usbReceiverRegistered = false;
         }
         syncExecutor.shutdownNow();
         super.onDestroy();
