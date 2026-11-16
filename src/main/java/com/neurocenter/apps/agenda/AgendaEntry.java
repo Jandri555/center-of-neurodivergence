@@ -81,7 +81,7 @@ final class AgendaEntry {
 
     LocalTime localTime() {
         try {
-            return time == null || time.isBlank() ? null : LocalTime.parse(time);
+            return time == null || time.trim().isEmpty() ? null : LocalTime.parse(time);
         } catch (DateTimeParseException e) {
             return null;
         }
