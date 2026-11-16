@@ -62,19 +62,30 @@ No se debe borrar el historial por el mero hecho de haber enviado los datos.
 
 ## Medios de conexión
 
-### USB por cable
+### Bluetooth clásico RFCOMM/SPP (primera vía implementada)
 
-La opción directa prevista es Android Open Accessory (AOA): el ordenador actúa como accesorio USB y Android como dispositivo. Android proporciona `UsbManager` y `UsbAccessory`; el ordenador necesitará implementar el lado host del protocolo AOA.
+El transporte de Bluetooth usa el mismo protocolo de sincronización. Android abre un servidor RFCOMM con un UUID de servicio fijo y el PC se conecta como cliente.
 
-La compatibilidad depende del hardware y del firmware del móvil. La app deberá comprobar si el teléfono ofrece USB accessory mode y explicar el motivo cuando no esté disponible. En el PC se estudiará usb4java/libusb para acceder al dispositivo AOA.
+En Android:
+1. Activa **Preparar sincronización**.
+2. Pulsa **Esperar conexión Bluetooth**.
+3. Acepta activar Bluetooth y hacer el teléfono visible durante cinco minutos.
+4. Mantén la pantalla de la Agenda abierta mientras se completa el intercambio.
+
+En Windows:
+1. Empareja primero el teléfono desde la configuración Bluetooth.
+2. En las opciones avanzadas de Bluetooth, crea o habilita un puerto COM saliente para el servicio serie Bluetooth del móvil (SPP).
+3. En la Agenda de escritorio, activa el historial, pulsa **Sincronizar Bluetooth** y selecciona el puerto COM saliente.
+
+El escritorio usa jSerialComm para abrir el puerto serie que Windows presenta. La implementación está lista para pruebas, pero todavía necesita validación física con teléfonos y adaptadores concretos. No se debe dar por garantizada la disponibilidad del perfil SPP en todos los modelos ni controladores.
+
+### USB por cable (pendiente)
+
+La opción directa prevista es Android Open Accessory (AOA): el ordenador actúa como accesorio USB y Android como dispositivo. Android proporciona `UsbManager` y `UsbAccessory`; el ordenador debe iniciar el protocolo AOA con las peticiones de control del fabricante y volver a detectar el teléfono cuando entra en modo accesorio.
+
+La compatibilidad depende del hardware y firmware del teléfono. En Windows, el acceso USB host desde Java probablemente requerirá usb4java/libusb y un controlador compatible con WinUSB/libusbK para la interfaz de accesorio. Eso puede requerir instalar o asociar un controlador específico y no será plug-and-play en todos los equipos. Hay que probarlo antes de presentar USB como opción lista.
 
 AOA y MTP no funcionan simultáneamente en el mismo enlace; al cambiar entre ambos modos puede ser necesario desconectar y reconectar.
-
-### Bluetooth
-
-La opción prevista es Bluetooth clásico RFCOMM/SPP, que proporciona flujos de entrada y salida adecuados para el mismo protocolo. Android ofrece `BluetoothSocket` y `BluetoothServerSocket`.
-
-En Windows el lado escritorio necesitará un adaptador compatible con RFCOMM (por ejemplo, mediante un puerto COM Bluetooth o una integración con la pila Bluetooth del sistema). No se debe asumir que Java estándar proporciona Bluetooth de escritorio.
 
 ## Aplicación Android
 
