@@ -78,11 +78,11 @@ public final class MainWindow extends JFrame {
         super(AppInfo.NAME);
         this.appSettings = appSettings;
 
-        // 1) Programas integrados en el propio .jar
+        // 1) Apps integradas en el propio .jar
         register(new AgendaApp(), false);
         register(new PdfReaderApp(), false);
 
-        // 2) Programas externos: .jar en AppData/CenterOfNeurodivergence/apps
+        // 2) Apps externas: .jar en AppData/CenterOfNeurodivergence/apps
         AppLoader.Result apps = AppLoader.load(AppPaths.appsDir());
         loadErrors.addAll(apps.errors());
         for (NeuroApp p : apps.apps()) register(p, true);
@@ -104,7 +104,7 @@ public final class MainWindow extends JFrame {
 
     // ------------------------------------------------------------------ registro y arranque
 
-    private void register(NeuroApp app, boolean plugin) {
+    private void register(NeuroApp app, boolean external {
         try {
             String id = app.id();
             String name = app.name();
@@ -115,7 +115,7 @@ public final class MainWindow extends JFrame {
                 return;
             }
             apps.put(id, app);
-            if (plugin) externalAppIds.add(id);
+            if (external) externalAppIds.add(id);
         } catch (Throwable t) {
             loadErrors.add(app.getClass().getName() + ": " + t);
         }
@@ -159,6 +159,14 @@ public final class MainWindow extends JFrame {
         setLayout(new BorderLayout());
         add(buildSidebar(), BorderLayout.WEST);
 
+        settingsButton = new JButton("⚙");
+        settingsButton.setToolTipText("Ajustes generales");
+        settingsButton.addActionListener(e -> openSettings());
+        settingsButton.setFocusable(false);
+        JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 4));
+        topBar.add(settingsButton);
+        add(topBar, BorderLayout.NORTH);
+
         content.add(buildHome(), HOME);
         add(content, BorderLayout.CENTER);
 
@@ -190,13 +198,6 @@ public final class MainWindow extends JFrame {
         }
 
         side.add(Box.createVerticalGlue());
-
-        settingsButton = new JButton("⚙  Ajustes");
-        settingsButton.setToolTipText("Ajustes generales y gestión de apps");
-        settingsButton.addActionListener(e -> openSettings());
-        settingsButton.setAlignmentX(Component.LEFT_ALIGNMENT);
-        settingsButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, settingsButton.getPreferredSize().height));
-        side.add(settingsButton);
 
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.add(side, BorderLayout.CENTER);
@@ -236,7 +237,7 @@ public final class MainWindow extends JFrame {
         scroll.getVerticalScrollBar().setUnitIncrement(16);
         root.add(scroll, BorderLayout.CENTER);
 
-        JLabel hint = new JLabel("<html>Para añadir más apps, copia su archivo .jar en <b>"
+        JLabel hint = new JLabel("<html>Para instalar o desinstalar apps, utiliza el gestor de <b>"
                 + esc(AppPaths.appsDir().toString()) + "</b> y reinicia la aplicación.</html>");
         root.add(hint, BorderLayout.SOUTH);
         return root;
@@ -250,7 +251,7 @@ public final class MainWindow extends JFrame {
         JLabel icon = new JLabel(iconFor(p, 40));
         icon.setVerticalAlignment(SwingConstants.TOP);
 
-        String kind = externalAppIds.contains(p.id()) ? "Plugin, versión " + safeVersion(p) : "Integrado";
+        String kind = externalAppIds.contains(p.id()) ? "App externa, versión " + safeVersion(p) : "Integrado";
         JLabel text = new JLabel("<html><body style='width:220px'><b style='font-size:13pt'>" + esc(p.name())
                 + "</b><br>" + esc(p.description())
                 + "<br><br><span style='color:gray'>" + esc(kind) + "</span></body></html>");
@@ -378,7 +379,7 @@ public final class MainWindow extends JFrame {
             Icon icon = p.icon();
             if (icon != null) return icon;
         } catch (Throwable ignored) {
-            // un plugin con un icono roto no debe romper el panel
+            // una app con un icono roto no debe romper el panel
         }
         return new BadgeIcon(p.name(), p.id(), size);
     }
