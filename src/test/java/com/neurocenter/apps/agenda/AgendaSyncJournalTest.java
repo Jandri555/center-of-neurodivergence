@@ -32,6 +32,7 @@ class AgendaSyncJournalTest {
         assertEquals(2, desktop.exportOperations().size());
 
         AgendaStore phone = store("phone");
+        phone.enableSync();
         phone.mergeOperations(desktop.exportOperations());
         assertEquals(1, phone.all().size());
         assertTrue(phone.all().get(0).done);
@@ -61,6 +62,7 @@ class AgendaSyncJournalTest {
         desktop.enableSync();
 
         AgendaStore phone = store("phone");
+        phone.enableSync();
         phone.mergeOperations(desktop.exportOperations());
 
         // Ambos dispositivos parten de la misma versión, pero trabajan desconectados.
@@ -142,6 +144,7 @@ class AgendaSyncJournalTest {
         desktop.enableSync();
 
         AgendaStore phone = store("reminder-phone");
+        phone.enableSync();
         phone.mergeOperations(desktop.exportOperations());
         AgendaEntry phoneEvent = phone.all().get(0);
         phoneEvent.notifiedDayBefore = true;
