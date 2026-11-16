@@ -73,9 +73,8 @@ final class AgendaStore {
         }
 
         if (syncJournal.isEnabled()) {
-            // Si se activó la sincronización antes de existir el historial, crea una
-            // línea base desde la agenda que ya había en el dispositivo.
-            syncJournal.enable(entries);
+            // Solo completa una línea base local que se interrumpió durante la activación.
+            if (syncJournal.needsBaseline()) syncJournal.enable(entries);
             if (!syncJournal.exportOperations().isEmpty()) {
                 Map<String, AgendaEntry> localEntries = new LinkedHashMap<>();
                 for (AgendaEntry entry : entries) localEntries.put(entry.id, entry);
@@ -176,7 +175,9 @@ final class AgendaStore {
 
     /** Incorpora operaciones remotas y reconstruye el estado sin generar operaciones locales duplicadas. */
     void mergeOperations(List<AgendaOperation> incoming) {
-        syncJournal.enable(entries);
+        if (!syncJournal.isEnabled() || syncJournal.needsBaseline()) {
+            throw new IllegalStateException("Activa la sincronización y completa la línea base antes de recibir operaciones.");
+        }
         Map<String, AgendaEntry> localEntries = new LinkedHashMap<>();
         for (AgendaEntry entry : entries) localEntries.put(entry.id, entry);
         syncJournal.mergeOperations(incoming);
