@@ -138,7 +138,15 @@ final class AgendaPanel extends JPanel {
         styleAgendaButton(newEvent);
         newEvent.addActionListener(e -> addEntry(AgendaEntry.EVENT));
 
+        JButton prepareSync = new JButton(store.isSyncEnabled()
+                ? "Historial de sincronización activo" : "Preparar sincronización");
+        styleAgendaButton(prepareSync);
+        prepareSync.setEnabled(!store.isSyncEnabled());
+        prepareSync.setToolTipText("Activa el registro de cambios para futuras conexiones con Android");
+        prepareSync.addActionListener(e -> prepareSync());
+
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        right.add(prepareSync);
         right.add(newTask);
         right.add(newEvent);
 
@@ -159,6 +167,31 @@ final class AgendaPanel extends JPanel {
         // Las vistas son pestañas: subrayado al seleccionar y fondo al pasar el ratón.
         button.putClientProperty("JButton.buttonType", "tab");
         button.setFocusable(false);
+    }
+
+    private void prepareSync() {
+        String message = "Se activará un historial de operaciones de la agenda. Guardará las altas, "
+                + "modificaciones, cambios de estado y borrados para poder intercambiarlos con Android.\\n\\n"
+                + "El historial no sustituye la agenda actual y no se vacía automáticamente: se conservará "
+                + "hasta que exista un mecanismo de sincronización con confirmación de recepción.\\n\\n"
+                + "La conexión real por USB y Bluetooth todavía no está disponible. ¿Activar el historial?";
+        int answer = JOptionPane.showConfirmDialog(
+                ctx.window(), message, "Preparar sincronización",
+                JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE);
+        if (answer != JOptionPane.YES_OPTION) return;
+
+        try {
+            store.enableSync();
+            JOptionPane.showMessageDialog(ctx.window(),
+                    "Historial activado. A partir de ahora, los cambios de la agenda se registrarán "
+                            + "para la futura sincronización con Android.",
+                    "Sincronización preparada", JOptionPane.INFORMATION_MESSAGE);
+            refresh();
+        } catch (RuntimeException ex) {
+            JOptionPane.showMessageDialog(ctx.window(),
+                    "No se pudo activar el historial: " + ex.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     private void showView(boolean pending) {
