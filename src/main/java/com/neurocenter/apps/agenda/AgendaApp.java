@@ -21,6 +21,7 @@ public final class AgendaApp implements NeuroApp {
     private AgendaStore store;
     private AppContext context;
     private Timer reminderTimer;
+    private AgendaPanel agendaPanel;
 
     @Override public String id() { return "agenda"; }
     @Override public String name() { return "Agenda"; }
@@ -42,12 +43,17 @@ public final class AgendaApp implements NeuroApp {
 
     @Override
     public JComponent createPanel(AppContext ctx) {
-        return new AgendaPanel(store, ctx);
+        agendaPanel = new AgendaPanel(store, ctx);
+        return agendaPanel;
     }
 
     @Override
     public void stop() {
         if (reminderTimer != null) reminderTimer.stop();
+        if (agendaPanel != null) {
+            agendaPanel.closeSyncSession();
+            agendaPanel = null;
+        }
     }
 
     private void checkReminders() {
