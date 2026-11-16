@@ -6,7 +6,6 @@ import com.formdev.flatlaf.FlatLightLaf;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParseException;
 
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
@@ -17,10 +16,11 @@ import java.io.IOException;
 import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 
 /** Catálogo y aplicación de temas integrados y temas externos .tme. */
 public final class ThemeManager {
@@ -28,6 +28,7 @@ public final class ThemeManager {
     private static final Gson GSON = new Gson();
     private static final Map<String, ThemeInfo> THEMES = new LinkedHashMap<>();
     private static ThemeInfo activeTheme;
+    private static final Set<String> OVERRIDDEN_KEYS = new HashSet<>();
 
     public record ThemeInfo(String id, String name, String author, String version,
                             String base, Path directory, JsonObject colors, JsonObject appIcons) {
@@ -100,6 +101,8 @@ public final class ThemeManager {
 
     public static synchronized void apply(String themeId) {
         refreshThemes();
+        for (String key : OVERRIDDEN_KEYS) UIManager.getDefaults().remove(key);
+        OVERRIDDEN_KEYS.clear();
         ThemeInfo theme = THEMES.get(themeId);
         if (theme == null) theme = THEMES.get("light");
         if ("dark".equals(theme.base())) FlatDarkLaf.setup();
@@ -112,9 +115,9 @@ public final class ThemeManager {
 
     private static void applyColors(JsonObject colors) {
         Map<String, String> keys = Map.ofEntries(
-                Map.entry("background", "Panel.background"),
+                Map.entry("background", "Window.background"),
                 Map.entry("surface", "Panel.background"),
-                Map.entry("foreground", "Label.foreground"),
+                Map.entry("foreground", "Component.foreground"),
                 Map.entry("text", "Label.foreground"),
                 Map.entry("primary", "Component.focusColor"),
                 Map.entry("selection", "List.selectionBackground"),
@@ -130,6 +133,7 @@ public final class ThemeManager {
             if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) continue;
             try {
                 UIManager.put(entry.getValue(), Color.decode(value.getAsString()));
+                OVERRIDDEN_KEYS.add(entry.getValue());
             } catch (NumberFormatException ignored) {
                 System.err.println("Color inválido en tema: " + entry.getKey());
             }
