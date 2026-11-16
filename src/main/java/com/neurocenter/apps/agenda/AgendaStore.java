@@ -100,7 +100,6 @@ final class AgendaStore {
     }
 
     private void recordChanges() {
-        Map<String, AgendaEntry> previous = entriesById(lastSavedState);
         Map<String, AgendaEntry> current = new LinkedHashMap<>();
         for (AgendaEntry entry : entries) {
             if (entry.id != null) current.put(entry.id, entry);
@@ -114,12 +113,6 @@ final class AgendaStore {
         for (String previousId : lastSavedState.keySet()) {
             if (!current.containsKey(previousId)) syncJournal.recordDelete(previousId);
         }
-    }
-
-    private Map<String, AgendaEntry> entriesById(Map<String, String> snapshot) {
-        Map<String, AgendaEntry> result = new LinkedHashMap<>();
-        snapshot.forEach((id, json) -> result.put(id, gson.fromJson(json, AgendaEntry.class)));
-        return result;
     }
 
     private void rememberSavedState() {
