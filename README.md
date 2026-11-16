@@ -19,7 +19,7 @@ java -jar target/center-of-neurodivergence.jar
 
 ## Datos de usuario
 Los datos se guardan en \`CenterOfNeurodivergence\`:
-- Windows: \`%APPDATA%\\CenterOfNeurodivergence\\\`
+- Windows: \`%APPDATA%\\CenterOfNeurodivergence\`
 - macOS: \`~/Library/Application Support/CenterOfNeurodivergence/\`
 - Linux: \`~/.local/share/CenterOfNeurodivergence/\`
 
@@ -93,7 +93,7 @@ La app recibe un \`AppContext\` con acceso a su carpeta de datos, ajustes, barra
 ## Estructura del código
 \`\`\`text
 com.neurocenter
-├── api/       NeuroApp, AppContext y API heredada
+├── api/       NeuroApp, AppContext
 ├── core/      MainWindow, AppLoader, AppPaths, PropertiesStore, ThemeManager
 ├── ui/        RoundedPanel, BadgeIcon
 └── apps/      Agenda y Bionic PDF
