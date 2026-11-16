@@ -86,6 +86,10 @@ final class PdfReaderPanel extends JPanel {
     private static final String CARD_EMPTY = "empty";
     private static final String CARD_BIONIC = "bionic";
     private static final String CARD_ORIGINAL = "original";
+    private static final String CARD_HYBRID = "hybrid";
+    private static final String MODE_BIONIC = "bionic";
+    private static final String MODE_ORIGINAL = "original";
+    private static final String MODE_HYBRID = "hybrid";
 
     private final AppContext ctx;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
@@ -103,7 +107,7 @@ final class PdfReaderPanel extends JPanel {
     private boolean disposed;
     private boolean updatingPage;
     private double zoom;
-    private boolean bionicMode;
+    private String viewMode;
     private boolean textReady;
     private List<String> paragraphs = List.of();
     private int lastSide = -1;
@@ -113,6 +117,8 @@ final class PdfReaderPanel extends JPanel {
     private final JPanel content = new JPanel(cards);
     private final JLabel imageLabel = new JLabel();
     private final JScrollPane imageScroll = new JScrollPane(imageLabel);
+    private final JLabel hybridImageLabel = new JLabel();
+    private final JScrollPane hybridImageScroll = new JScrollPane(hybridImageLabel);
     private final JTextPane textPane = new JTextPane();
     private final JScrollPane textScroll = new JScrollPane(textPane);
     private final JPanel settingsSide = new JPanel(new BorderLayout());
@@ -124,6 +130,7 @@ final class PdfReaderPanel extends JPanel {
     private final JButton nextBtn = new JButton("›");
     private final JToggleButton bionicBtn = new JToggleButton("Lectura");
     private final JToggleButton originalBtn = new JToggleButton("Original");
+    private final JToggleButton hybridBtn = new JToggleButton("Original + Bionic");
     private final JToggleButton settingsToggle = new JToggleButton("Ajustes de lectura");
     private final JPanel zoomBox = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
     private final JComboBox<String> fontBox;
@@ -153,7 +160,9 @@ final class PdfReaderPanel extends JPanel {
         widthSlider = new JSlider(400, 1200, clamp(intPref("width", 760), 400, 1200));
         themeBox.setSelectedIndex(clamp(intPref("theme", 1), 0, THEMES.length - 1));
         zoom = Math.max(0.4, Math.min(3.0, doublePref("zoom", 1.0)));
-        bionicMode = !"original".equals(ctx.getSetting("mode", "bionic"));
+        viewMode = ctx.getSetting("mode", MODE_BIONIC);
+        if (!MODE_BIONIC.equals(viewMode) && !MODE_ORIGINAL.equals(viewMode)
+                && !MODE_HYBRID.equals(viewMode)) viewMode = MODE_BIONIC;
         settingsToggle.setSelected(!"false".equals(ctx.getSetting("settingsOpen", "true")));
 
         // --- interfaz
@@ -161,6 +170,7 @@ final class PdfReaderPanel extends JPanel {
         content.add(buildEmptyCard(), CARD_EMPTY);
         content.add(buildBionicCard(), CARD_BIONIC);
         content.add(buildOriginalCard(), CARD_ORIGINAL);
+        content.add(buildHybridCard(), CARD_HYBRID);
         add(content, BorderLayout.CENTER);
         cards.show(content, CARD_EMPTY);
 
@@ -201,12 +211,16 @@ final class PdfReaderPanel extends JPanel {
         ButtonGroup modes = new ButtonGroup();
         modes.add(bionicBtn);
         modes.add(originalBtn);
+        modes.add(hybridBtn);
         bionicBtn.setToolTipText("Texto recompuesto con Bionic Reading");
         originalBtn.setToolTipText("La página tal como es en el PDF");
-        bionicBtn.setSelected(bionicMode);
-        originalBtn.setSelected(!bionicMode);
-        bionicBtn.addActionListener(e -> setBionicMode(true));
-        originalBtn.addActionListener(e -> setBionicMode(false));
+        hybridBtn.setToolTipText("Conserva la página original y refuerza visualmente el inicio de las palabras");
+        bionicBtn.setSelected(MODE_BIONIC.equals(viewMode));
+        originalBtn.setSelected(MODE_ORIGINAL.equals(viewMode));
+        hybridBtn.setSelected(MODE_HYBRID.equals(viewMode));
+        bionicBtn.addActionListener(e -> setViewMode(MODE_BIONIC));
+        originalBtn.addActionListener(e -> setViewMode(MODE_ORIGINAL));
+        hybridBtn.addActionListener(e -> setViewMode(MODE_HYBRID));
 
         JButton zoomOut = new JButton("−");
         JButton zoomIn = new JButton("+");
@@ -233,6 +247,7 @@ final class PdfReaderPanel extends JPanel {
         bar.add(Box.createHorizontalStrut(10));
         bar.add(bionicBtn);
         bar.add(originalBtn);
+        bar.add(hybridBtn);
         bar.add(Box.createHorizontalStrut(10));
         bar.add(zoomBox);
         bar.add(settingsToggle);
@@ -271,6 +286,16 @@ final class PdfReaderPanel extends JPanel {
         imageScroll.getVerticalScrollBar().setUnitIncrement(24);
         imageScroll.getHorizontalScrollBar().setUnitIncrement(24);
         return imageScroll;
+    }
+
+    private JComponent buildHybridCard() {
+        hybridImageLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        hybridImageLabel.setVerticalAlignment(SwingConstants.TOP);
+        hybridImageLabel.setBorder(new EmptyBorder(16, 16, 16, 16));
+        hybridImageScroll.setBorder(null);
+        hybridImageScroll.getVerticalScrollBar().setUnitIncrement(24);
+        hybridImageScroll.getHorizontalScrollBar().setUnitIncrement(24);
+        return hybridImageScroll;
     }
 
     private JComponent buildBionicCard() {
@@ -402,7 +427,7 @@ final class PdfReaderPanel extends JPanel {
         updatingPage = false;
         pageTotal.setText("/ " + pageCount);
         setNavEnabled(true);
-        cards.show(content, bionicMode ? CARD_BIONIC : CARD_ORIGINAL);
+        cards.show(content, cardForMode());
 
         int start = intPrefRaw(ctx.getSetting("page|" + path, "1"), 1);
         goToPage(start - 1); // sigue por donde lo dejaste
@@ -448,18 +473,24 @@ final class PdfReaderPanel extends JPanel {
         if (document == null || worker.isShutdown()) return;
         final PDDocument doc = document;
         final int index = pageIndex;
-        final boolean bionic = bionicMode;
+        final String mode = viewMode;
         final float dpi = (float) (96.0 * zoom);
+        final double ratio = RATIOS[strengthSlider.getValue() - 1];
         final int myTicket = ++ticket;
-        if (bionic) textReady = false;
+        if (MODE_BIONIC.equals(mode)) textReady = false;
 
         worker.submit(() -> {
             if (myTicket != ticket) return; // ya hay una petición más reciente
             try {
-                if (bionic) {
+                if (MODE_BIONIC.equals(mode)) {
                     List<String> result = extractParagraphs(doc, index);
                     SwingUtilities.invokeLater(() -> {
                         if (myTicket == ticket) showText(result);
+                    });
+                } else if (MODE_HYBRID.equals(mode)) {
+                    BufferedImage image = BionicPageRenderer.render(doc, index, dpi, ratio);
+                    SwingUtilities.invokeLater(() -> {
+                        if (myTicket == ticket) showHybridImage(image);
                     });
                 } else {
                     BufferedImage image = new PDFRenderer(doc).renderImageWithDPI(index, dpi);
@@ -486,6 +517,11 @@ final class PdfReaderPanel extends JPanel {
     private void showImage(BufferedImage image) {
         imageLabel.setIcon(new ImageIcon(image));
         SwingUtilities.invokeLater(() -> imageScroll.getVerticalScrollBar().setValue(0));
+    }
+
+    private void showHybridImage(BufferedImage image) {
+        hybridImageLabel.setIcon(new ImageIcon(image));
+        SwingUtilities.invokeLater(() -> hybridImageScroll.getVerticalScrollBar().setValue(0));
     }
 
     private void showText(List<String> result) {
@@ -558,7 +594,7 @@ final class PdfReaderPanel extends JPanel {
 
     private void readingPrefsChanged() {
         savePrefs();
-        if (bionicMode && textReady) renderBionic();
+        if (MODE_BIONIC.equals(viewMode) && textReady) renderBionic();
     }
 
     private void savePrefs() {
@@ -572,27 +608,37 @@ final class PdfReaderPanel extends JPanel {
 
     // ------------------------------------------------------------------ modos y zoom
 
-    private void setBionicMode(boolean bionic) {
-        bionicMode = bionic;
-        ctx.putSetting("mode", bionic ? "bionic" : "original");
+    private String cardForMode() {
+        if (MODE_BIONIC.equals(viewMode)) return CARD_BIONIC;
+        if (MODE_HYBRID.equals(viewMode)) return CARD_HYBRID;
+        return CARD_ORIGINAL;
+    }
+
+    private void setViewMode(String mode) {
+        viewMode = mode;
+        ctx.putSetting("mode", mode);
+        bionicBtn.setSelected(MODE_BIONIC.equals(mode));
+        originalBtn.setSelected(MODE_ORIGINAL.equals(mode));
+        hybridBtn.setSelected(MODE_HYBRID.equals(mode));
         applyModeVisibility();
         if (document != null) {
-            cards.show(content, bionic ? CARD_BIONIC : CARD_ORIGINAL);
+            cards.show(content, cardForMode());
             loadCurrentPage();
         }
     }
 
     private void applyModeVisibility() {
-        zoomBox.setVisible(!bionicMode);
-        settingsToggle.setVisible(bionicMode);
-        settingsSide.setVisible(settingsToggle.isSelected());
+        boolean reading = MODE_BIONIC.equals(viewMode);
+        zoomBox.setVisible(!reading);
+        settingsToggle.setVisible(reading);
+        settingsSide.setVisible(reading && settingsToggle.isSelected());
     }
 
     private void changeZoom(double delta) {
         zoom = Math.max(0.4, Math.min(3.0, zoom + delta));
         ctx.putSetting("zoom", String.format(Locale.ROOT, "%.2f", zoom));
         updateZoomLabel();
-        if (document != null && !bionicMode) loadCurrentPage();
+        if (document != null && !MODE_BIONIC.equals(viewMode)) loadCurrentPage();
     }
 
     private void updateZoomLabel() {
