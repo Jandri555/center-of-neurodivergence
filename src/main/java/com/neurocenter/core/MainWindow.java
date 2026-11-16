@@ -136,7 +136,6 @@ public final class MainWindow extends JFrame {
     }
 
     private void showLoadErrors() {
-    private void showLoadErrors() {
         StringBuilder sb = new StringBuilder("Algunos apps no se han podido cargar:\n");
         for (String e : loadErrors) sb.append("\n• ").append(e);
         JOptionPane.showMessageDialog(this, sb.toString(), AppInfo.NAME, JOptionPane.WARNING_MESSAGE);
@@ -186,7 +185,6 @@ public final class MainWindow extends JFrame {
         terminator.start();
     }
 
-    // ------------------------------------------------------------------ interfaz
     // ------------------------------------------------------------------ interfaz
 
     private void buildUi() {
@@ -504,7 +502,8 @@ public final class MainWindow extends JFrame {
                     if (appSessions.get(session.id) == session) {
                         appSessions.remove(session.id);
                     }
-                    if (!shuttingDown && "Cerrando " + session.app.name() + "…".equals(statusLabel.getText())) {
+                    if (!shuttingDown
+                            && statusLabel.getText().equals("Cerrando " + session.app.name() + "…")) {
                         statusLabel.setText(" ");
                     }
                 });
