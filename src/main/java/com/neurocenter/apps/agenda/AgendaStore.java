@@ -125,6 +125,14 @@ final class AgendaStore {
 
     /** Los avisos ya mostrados son locales: cada dispositivo los gestiona por separado. */
     private static void copyLocalReminderState(AgendaEntry source, AgendaEntry target) {
+        boolean sameSchedule = java.util.Objects.equals(source.type, target.type)
+                && java.util.Objects.equals(source.date, target.date)
+                && java.util.Objects.equals(source.time, target.time)
+                && source.remindDayBefore == target.remindDayBefore
+                && source.remindCustom == target.remindCustom
+                && source.remindBeforeMinutes == target.remindBeforeMinutes;
+        if (!sameSchedule) return;
+
         target.remind = source.remind;
         target.notified = source.notified;
         target.notifiedDayBefore = source.notifiedDayBefore;
