@@ -110,6 +110,13 @@ public final class ThemeManager {
         if ("dark".equals(theme.base())) FlatDarkLaf.setup();
         else FlatLightLaf.setup();
 
+        // Los botones predeterminados de JOptionPane no deben destacar en azul
+        // solo por ser la primera opción del diálogo.
+        Color normalButton = UIManager.getColor("Button.background");
+        Color normalButtonText = UIManager.getColor("Button.foreground");
+        if (normalButton != null) UIManager.put("Button.default.background", normalButton);
+        if (normalButtonText != null) UIManager.put("Button.default.foreground", normalButtonText);
+
         applyColors(theme.colors());
         activeTheme = theme;
         FlatLaf.updateUI();
