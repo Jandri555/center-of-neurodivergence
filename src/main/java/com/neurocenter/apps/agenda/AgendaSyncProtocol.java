@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 /**
  * Protocolo bidireccional de sincronización independiente de USB o Bluetooth.
@@ -115,6 +116,77 @@ final class AgendaSyncProtocol {
         complete.protocolVersion = VERSION;
         complete.vectorClock = localClock;
         send(output, complete);
+    }
+
+    /**
+     * Mantiene una sesión iniciada por el escritorio. Tras el intercambio inicial,
+     * ambos extremos envían periódicamente solo las operaciones que el otro aún
+     * no conoce. La sesión termina al cerrar el transporte o solicitar la salida.
+     */
+    static void runClientSession(
+            InputStream input,
+            OutputStream output,
+            AgendaStore store,
+            OperationMerger merger,
+            BooleanSupplier keepAlive,
+            Runnable onConnected) throws IOException {
+        runClient(input, output, store, merger);
+        runContinuousSession(input, output, store, merger, keepAlive, onConnected);
+    }
+
+    /** Variante persistente del extremo Android que espera la conexión. */
+    static void runServerSession(
+            InputStream input,
+            OutputStream output,
+            AgendaStore store,
+            OperationMerger merger,
+            BooleanSupplier keepAlive,
+            Runnable onConnected) throws IOException {
+        runServer(input, output, store, merger);
+        runContinuousSession(input, output, store, merger, keepAlive, onConnected);
+    }
+
+    private static void runContinuousSession(
+            InputStream input,
+            OutputStream output,
+            AgendaStore store,
+            OperationMerger merger,
+            BooleanSupplier keepAlive,
+            Runnable onConnected) throws IOException {
+        if (keepAlive == null || !keepAlive.getAsBoolean()) return;
+        if (onConnected != null) onConnected.run();
+
+        // El intercambio inicial ya ha dejado ambos dispositivos con el mismo
+        // reloj causal. En cada ronda se anuncia el reloj y se envía lo que falta.
+        Map<String, Long> remoteClock = new LinkedHashMap<>(store.syncVectorClock());
+        while (keepAlive.getAsBoolean() && !Thread.currentThread().isInterrupted()) {
+            SyncMessage update = new SyncMessage();
+            update.kind = "SESSION_UPDATE";
+            update.protocolVersion = VERSION;
+            update.vectorClock = store.syncVectorClock();
+            update.operations = store.exportOperationsAfter(remoteClock);
+            send(output, update);
+
+            SyncMessage incoming = receive(input);
+            requireKind(incoming, "SESSION_UPDATE");
+            if (!incoming.operations.isEmpty()) {
+                merger.merge(incoming.operations);
+            }
+            // Este reloj representa lo que el otro extremo conocía al enviar
+            // su lote; las operaciones que acaba de recibir aparecerán en la
+            // siguiente ronda, evitando perder confirmaciones simultáneas.
+            remoteClock = new LinkedHashMap<>(incoming.vectorClock);
+
+            try {
+                Thread.sleep(350L);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                if (keepAlive.getAsBoolean()) {
+                    throw new IOException("Se interrumpió la sesión de sincronización.", ex);
+                }
+                break;
+            }
+        }
     }
 
     private static SyncMessage message(String kind, AgendaStore store) {
