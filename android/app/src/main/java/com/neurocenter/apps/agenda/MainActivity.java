@@ -228,7 +228,7 @@ public final class MainActivity extends Activity {
 
         String kind = entry.isEvent() ? "EVENTO" : "TAREA";
         TextView kindLabel = text(kind + " · " + safe(entry.date)
-                + (entry.time == null || entry.time.isBlank() ? "" : " · " + entry.time), 12, true);
+                + (entry.time == null || entry.time.trim().isEmpty() ? "" : " · " + entry.time), 12, true);
         card.addView(kindLabel);
 
         LinearLayout main = new LinearLayout(this);
@@ -251,7 +251,7 @@ public final class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         card.addView(main);
 
-        if (entry.notes != null && !entry.notes.isBlank()) {
+        if (entry.notes != null && !entry.notes.trim().isEmpty()) {
             TextView notes = text(entry.notes, 13, false);
             notes.setPadding(0, dp(4), 0, 0);
             card.addView(notes);
