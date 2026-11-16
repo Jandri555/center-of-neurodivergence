@@ -163,7 +163,7 @@ final class AgendaSyncJournal {
             // sincronizado, el borrado concurrente gana para no resucitar datos.
             List<AgendaOperation> deletions = heads.stream()
                     .filter(op -> AgendaOperation.DELETE.equals(op.type))
-                    .toList();
+                    .collect(java.util.stream.Collectors.toList());
             AgendaOperation winner = (deletions.isEmpty() ? heads : deletions)
                     .stream().max(ORDER).orElse(null);
 
@@ -222,7 +222,7 @@ final class AgendaSyncJournal {
         if (!raw.isEmpty() && !raw.endsWith("\n") && !raw.endsWith("\r")) {
             int lastBreak = Math.max(raw.lastIndexOf('\n'), raw.lastIndexOf('\r'));
             raw = lastBreak >= 0 ? raw.substring(0, lastBreak + 1) : "";
-            Files.writeString(operationsFile, raw, StandardCharsets.UTF_8,
+            Files.write(operationsFile, raw.getBytes(StandardCharsets.UTF_8),
                     StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
         }
         String[] lines = raw.split("\\R");
