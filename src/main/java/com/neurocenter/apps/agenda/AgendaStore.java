@@ -77,8 +77,15 @@ final class AgendaStore {
             // línea base desde la agenda que ya había en el dispositivo.
             syncJournal.enable(entries);
             if (!syncJournal.exportOperations().isEmpty()) {
+                Map<String, AgendaEntry> localEntries = new LinkedHashMap<>();
+                for (AgendaEntry entry : entries) localEntries.put(entry.id, entry);
+                List<AgendaEntry> reconstructed = syncJournal.materialize();
+                for (AgendaEntry entry : reconstructed) {
+                    AgendaEntry local = localEntries.get(entry.id);
+                    if (local != null) copyLocalReminderState(local, entry);
+                }
                 entries.clear();
-                entries.addAll(syncJournal.materialize());
+                entries.addAll(reconstructed);
                 writeSnapshot();
             }
         }
@@ -101,10 +108,10 @@ final class AgendaStore {
 
         for (Map.Entry<String, AgendaEntry> item : current.entrySet()) {
             String previousJson = lastSavedState.get(item.getKey());
-            String currentJson = gson.toJson(item.getValue());
+            String currentJson = gson.toJson(item.getValue().syncCopy());
             if (!currentJson.equals(previousJson)) syncJournal.recordUpsert(item.getValue());
         }
-        for (String previousId : previous.keySet()) {
+        for (String previousId : lastSavedState.keySet()) {
             if (!current.containsKey(previousId)) syncJournal.recordDelete(previousId);
         }
     }
@@ -118,9 +125,17 @@ final class AgendaStore {
     private void rememberSavedState() {
         Map<String, String> snapshot = new LinkedHashMap<>();
         for (AgendaEntry entry : entries) {
-            if (entry.id != null) snapshot.put(entry.id, gson.toJson(entry));
+            if (entry.id != null) snapshot.put(entry.id, gson.toJson(entry.syncCopy()));
         }
         lastSavedState = snapshot;
+    }
+
+    /** Los avisos ya mostrados son locales: cada dispositivo los gestiona por separado. */
+    private static void copyLocalReminderState(AgendaEntry source, AgendaEntry target) {
+        target.remind = source.remind;
+        target.notified = source.notified;
+        target.notifiedDayBefore = source.notifiedDayBefore;
+        target.notifiedCustom = source.notifiedCustom;
     }
 
     private void writeSnapshot() {
@@ -156,9 +171,16 @@ final class AgendaStore {
     /** Incorpora operaciones remotas y reconstruye el estado sin generar operaciones locales duplicadas. */
     void mergeOperations(List<AgendaOperation> incoming) {
         syncJournal.enable(entries);
+        Map<String, AgendaEntry> localEntries = new LinkedHashMap<>();
+        for (AgendaEntry entry : entries) localEntries.put(entry.id, entry);
         syncJournal.mergeOperations(incoming);
+        List<AgendaEntry> reconstructed = syncJournal.materialize();
+        for (AgendaEntry entry : reconstructed) {
+            AgendaEntry local = localEntries.get(entry.id);
+            if (local != null) copyLocalReminderState(local, entry);
+        }
         entries.clear();
-        entries.addAll(syncJournal.materialize());
+        entries.addAll(reconstructed);
         writeSnapshot();
         rememberSavedState();
     }
