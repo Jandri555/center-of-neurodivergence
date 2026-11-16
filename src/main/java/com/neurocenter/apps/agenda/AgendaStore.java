@@ -173,6 +173,11 @@ final class AgendaStore {
         return syncJournal.exportOperations();
     }
 
+    /** Exporta operaciones posteriores al reloj causal conocido por el otro dispositivo. */
+    List<AgendaOperation> exportOperationsAfter(Map<String, Long> remoteClock) {
+        return syncJournal.exportOperationsAfter(remoteClock);
+    }
+
     /** Incorpora operaciones remotas y reconstruye el estado sin generar operaciones locales duplicadas. */
     void mergeOperations(List<AgendaOperation> incoming) {
         if (!syncJournal.isEnabled() || syncJournal.needsBaseline()) {
