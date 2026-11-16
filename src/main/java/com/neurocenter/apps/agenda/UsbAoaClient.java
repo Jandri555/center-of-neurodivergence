@@ -35,7 +35,12 @@ import java.util.concurrent.atomic.AtomicReference;
 final class UsbAoaClient {
 
     private static final int AOA_VENDOR_ID = 0x18D1;
-    private static final int AOA_ACCESSORY_PRODUCT_ID = 0x2D00;
+    private static final int[] AOA_ACCESSORY_PRODUCT_IDS = {
+            0x2D00, // Accessory
+            0x2D01, // Accessory + ADB
+            0x2D04, // Accessory + Audio
+            0x2D05  // Accessory + Audio + ADB
+    };
 
     private static final byte REQUEST_TYPE_VENDOR_IN_DEVICE = (byte) 0xC0;
     private static final byte REQUEST_TYPE_VENDOR_OUT_DEVICE = 0x40;
@@ -106,10 +111,7 @@ final class UsbAoaClient {
                 check(LibUsb.getDeviceDescriptor(device, descriptor),
                         "No se pudo leer el descriptor de un dispositivo USB");
 
-                if (unsigned(descriptor.idVendor()) == AOA_VENDOR_ID
-                        && unsigned(descriptor.idProduct()) == AOA_ACCESSORY_PRODUCT_ID) {
-                    continue;
-                }
+                if (isAccessoryProduct(descriptor)) continue;
 
                 DeviceHandle handle = new DeviceHandle();
                 int open = LibUsb.open(device, handle);
@@ -213,8 +215,7 @@ final class UsbAoaClient {
             for (Device device : devices) {
                 DeviceDescriptor descriptor = new DeviceDescriptor();
                 if (LibUsb.getDeviceDescriptor(device, descriptor) != LibUsb.SUCCESS) continue;
-                if (unsigned(descriptor.idVendor()) != AOA_VENDOR_ID
-                        || unsigned(descriptor.idProduct()) != AOA_ACCESSORY_PRODUCT_ID) continue;
+                if (!isAccessoryProduct(descriptor)) continue;
 
                 DeviceHandle handle = new DeviceHandle();
                 if (LibUsb.open(device, handle) == LibUsb.SUCCESS) {
@@ -308,6 +309,15 @@ final class UsbAoaClient {
         }
     }
 
+    private static boolean isAccessoryProduct(DeviceDescriptor descriptor) {
+        if (unsigned(descriptor.idVendor()) != AOA_VENDOR_ID) return false;
+        int productId = unsigned(descriptor.idProduct());
+        for (int supported : AOA_ACCESSORY_PRODUCT_IDS) {
+            if (productId == supported) return true;
+        }
+        return false;
+    }
+
     private static int unsigned(short value) {
         return Short.toUnsignedInt(value);
     }
@@ -353,26 +363,28 @@ final class UsbAoaClient {
             }
             if (length == 0) return 0;
 
-            ByteBuffer buffer = ByteBuffer.allocateDirect(Math.min(length, BULK_BUFFER_SIZE));
-            transferred.clear();
-            int result = LibUsb.bulkTransfer(
-                    handle, endpoint, buffer, transferred, BULK_TIMEOUT_MS);
-            int count = transferred.get(0);
-            if (count > 0) {
-                buffer.position(0);
-                buffer.get(target, offset, Math.min(count, length));
-                return Math.min(count, length);
+            while (true) {
+                ByteBuffer buffer = ByteBuffer.allocateDirect(Math.min(length, BULK_BUFFER_SIZE));
+                transferred.clear();
+                int result = LibUsb.bulkTransfer(
+                        handle, endpoint, buffer, transferred, BULK_TIMEOUT_MS);
+                int count = transferred.get(0);
+                if (count > 0) {
+                    buffer.position(0);
+                    buffer.get(target, offset, Math.min(count, length));
+                    return Math.min(count, length);
+                }
+                if (result == LibUsb.ERROR_TIMEOUT) continue;
+                if (result < 0) check(result, "Error al recibir datos por USB");
+                return count;
             }
-            if (result == LibUsb.ERROR_TIMEOUT) return 0;
-            if (result < 0) check(result, "Error al recibir datos por USB");
-            return count;
         }
     }
 
     private static final class UsbOutputStream extends OutputStream {
         private final DeviceHandle handle;
         private final byte endpoint;
-        private final IntBuffer transferred = IntBuffer.allocate(1);
+        private final IntBuffer transferred = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder()).asIntBuffer();
 
         private UsbOutputStream(DeviceHandle handle, byte endpoint) {
             this.handle = handle;
