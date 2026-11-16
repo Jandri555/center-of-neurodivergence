@@ -71,15 +71,14 @@ public final class ThemeArchive {
             } catch (RuntimeException ex) {
                 throw new IOException("theme.json no contiene un JSON válido.", ex);
             }
-            if (json == null || !json.has("id") || !json.get("id").isJsonPrimitive()
-                    || !json.get("id").getAsJsonPrimitive().isString())
-                throw new IOException("El manifiesto debe incluir un identificador «id».");
+            if (!isString(json, "id"))
+                throw new IOException("El manifiesto debe incluir un identificador «id» de texto.");
             String id = json.get("id").getAsString();
             if (!id.matches("[A-Za-z0-9._-]{1,48}") || id.equals("light") || id.equals("dark"))
                 throw new IOException("Identificador no válido o reservado.");
-            if (!json.has("name") || !json.get("name").isJsonPrimitive() || json.get("name").getAsString().isBlank())
-                throw new IOException("El manifiesto debe incluir «name».");
-            String base = json.has("base") && json.get("base").isJsonPrimitive() ? json.get("base").getAsString() : "";
+            if (!isString(json, "name") || json.get("name").getAsString().isBlank())
+                throw new IOException("El manifiesto debe incluir «name» de texto.");
+            String base = isString(json, "base") ? json.get("base").getAsString() : "";
             if (!base.equals("light") && !base.equals("dark"))
                 throw new IOException("El campo «base» debe ser «light» o «dark».");
 
@@ -106,6 +105,11 @@ public final class ThemeArchive {
         if (!target.startsWith(root) || !Files.isDirectory(target)) throw new IOException("No se encuentra el tema.");
         deleteTree(target);
         ThemeManager.refreshThemes();
+    }
+
+    private static boolean isString(JsonObject json, String key) {
+        return json != null && json.has(key) && json.get(key).isJsonPrimitive()
+                && json.get(key).getAsJsonPrimitive().isString();
     }
 
     private static void validateName(String name) throws IOException {
