@@ -99,6 +99,7 @@ class AgendaSyncJournalTest {
         desktop.enableSync();
 
         AgendaStore phone = store("phone");
+        phone.enableSync();
         phone.mergeOperations(desktop.exportOperations());
         AgendaEntry copied = phone.all().get(0);
 
