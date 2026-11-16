@@ -30,7 +30,6 @@ import java.awt.CardLayout;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Cursor;
-import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -241,8 +240,7 @@ public final class MainWindow extends JFrame {
         scroll.getVerticalScrollBar().setUnitIncrement(16);
         root.add(scroll, BorderLayout.CENTER);
 
-        JLabel hint = new JLabel("<html>Para instalar o desinstalar apps, utiliza el gestor de <b>"
-                + esc(AppPaths.appsDir().toString()) + "</b> y reinicia la aplicación.</html>");
+        JLabel hint = new JLabel("<html>Puedes instalar o desinstalar apps desde <b>Ajustes generales → Gestionar apps</b>.</html>");
         root.add(hint, BorderLayout.SOUTH);
         return root;
     }
@@ -376,7 +374,7 @@ public final class MainWindow extends JFrame {
     }
 
     private void manageThemes() {
-        String[] options = {"Instalar tema (.tme)", "Desinstalar tema", "Abrir carpeta de temas", "Volver"};
+        String[] options = {"Instalar tema (.tme)", "Desinstalar tema", "Volver"};
         int choice = JOptionPane.showOptionDialog(this,
                 "Los temas son paquetes de apariencia. Solo se admiten archivos .tme con JSON y recursos; no ejecutan código.",
                 "Gestor de temas", JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE,
@@ -422,17 +420,11 @@ public final class MainWindow extends JFrame {
                             "Error al desinstalar", JOptionPane.ERROR_MESSAGE);
                 }
             }
-        } else if (choice == 2) {
-            try {
-                if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(AppPaths.themesDir().toFile());
-            } catch (java.io.IOException ex) {
-                JOptionPane.showMessageDialog(this, "No se pudo abrir la carpeta: " + ex.getMessage());
-            }
         }
     }
 
     private void manageApps() {
-        String[] options = {"Instalar app (.jar)", "Desinstalar app", "Abrir carpeta de apps", "Volver"};
+        String[] options = {"Instalar app (.jar)", "Desinstalar app", "Volver"};
         int choice = JOptionPane.showOptionDialog(this,
                 "Las operaciones se aplican al reiniciar. Instala solo apps de fuentes de confianza.",
                 "Gestor de apps", JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
@@ -470,12 +462,6 @@ public final class MainWindow extends JFrame {
                 }
             } catch (java.io.IOException ex) {
                 JOptionPane.showMessageDialog(this, "No se pudo gestionar la app: " + ex.getMessage());
-            }
-        } else if (choice == 2) {
-            try {
-                if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(AppPaths.appsDir().toFile());
-            } catch (java.io.IOException ex) {
-                JOptionPane.showMessageDialog(this, "No se pudo abrir la carpeta: " + ex.getMessage());
             }
         }
     }
