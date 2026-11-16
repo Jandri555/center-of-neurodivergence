@@ -327,7 +327,7 @@ final class UsbAoaClient {
     private static final class UsbInputStream extends InputStream {
         private final DeviceHandle handle;
         private final byte endpoint;
-        private final IntBuffer transferred = IntBuffer.allocate(1);
+        private final IntBuffer transferred = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder()).asIntBuffer();
 
         private UsbInputStream(DeviceHandle handle, byte endpoint) {
             this.handle = handle;
@@ -337,8 +337,12 @@ final class UsbAoaClient {
         @Override
         public int read() throws IOException {
             byte[] one = new byte[1];
-            int count = read(one, 0, 1);
-            return count < 0 ? -1 : one[0] & 0xFF;
+            while (true) {
+                int count = read(one, 0, 1);
+                if (count < 0) return -1;
+                if (count > 0) return one[0] & 0xFF;
+                // InputStream.read() cannot report a timeout as a zero byte.
+            }
         }
 
         @Override
