@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.example</groupId>
-    <artifactId>hello-plugin</artifactId>
+    <artifactId>hello-app</artifactId>
     <version>1.0.0</version>
 
     <properties>
@@ -14,7 +14,7 @@
     </properties>
 
     <dependencies>
-        <!-- La aplicación ya incluye la API: el plugin no debe empaquetarla (scope provided).
+        <!-- La aplicación ya incluye la API: la app no debe empaquetarla (scope provided).
              Antes, ejecuta "mvn install" en la carpeta raíz del proyecto principal. -->
         <dependency>
             <groupId>com.neurocenter</groupId>

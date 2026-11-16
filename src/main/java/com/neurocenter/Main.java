@@ -13,10 +13,13 @@ public final class Main {
     public static void main(String[] args) {
         AppPaths.ensureDirectories();
         PropertiesStore settings = new PropertiesStore(AppPaths.root().resolve("settings.properties"));
-        boolean dark = "dark".equals(settings.get("theme", "light"));
+        String themeId = settings.get("theme", "light");
 
         SwingUtilities.invokeLater(() -> {
-            ThemeManager.apply(dark);
+            ThemeManager.apply(themeId);
+            // En Windows 10/11 FlatLaf integra la barra de título automáticamente.
+            // No activar las decoraciones Java por defecto: en Windows puede
+            // sustituir el marco nativo y perder las esquinas redondeadas del sistema.
             // Botones de los diálogos en español
             UIManager.put("OptionPane.okButtonText", "Aceptar");
             UIManager.put("OptionPane.cancelButtonText", "Cancelar");

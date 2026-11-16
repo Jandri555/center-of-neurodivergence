@@ -1,4 +1,4 @@
-package com.neurocenter.programs.agenda;
+package com.neurocenter.apps.agenda;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;

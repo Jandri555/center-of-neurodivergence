@@ -1,12 +1,13 @@
-package com.neurocenter.programs.pdfreader;
+package com.neurocenter.apps.pdfreader;
 
-import com.neurocenter.api.ProgramContext;
+import com.neurocenter.api.AppContext;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 
 import javax.swing.AbstractAction;
+import javax.swing.AbstractButton;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
@@ -26,7 +27,9 @@ import javax.swing.JTextPane;
 import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.SpinnerNumberModel;
+import javax.swing.plaf.basic.BasicSpinnerUI;
 import javax.swing.SwingConstants;
+import javax.swing.UIManager;
 import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -34,6 +37,7 @@ import javax.swing.text.BadLocationException;
 import javax.swing.text.DefaultStyledDocument;
 import javax.swing.text.SimpleAttributeSet;
 import javax.swing.text.StyleConstants;
+import java.awt.Container;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
@@ -61,15 +65,21 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Lector de PDF con dos vistas:
- *  - Lectura: el texto de la página se recompone y se muestra con Bionic Reading.
- *  - Original: la página tal cual está en el PDF.
- * Recuerda el último PDF, la página por la que ibas y los ajustes de lectura.
+ * Lector de PDF con tres vistas:
+ * - Lectura: el texto se recompone y se muestra con Bionic Reading.
+ * - Original: la página tal cual está en el PDF.
+ * - Original + Bionic: conserva la página y refuerza visualmente el inicio de
+ * las palabras.
+ * Recuerda los ajustes de lectura y la página de cada documento, pero no reabre
+ * PDFs automáticamente.
  */
 final class PdfReaderPanel extends JPanel {
 
     private record ReadingTheme(String name, Color background, Color foreground) {
-        @Override public String toString() { return name; }
+        @Override
+        public String toString() {
+            return name;
+        }
     }
 
     private static final ReadingTheme[] THEMES = {
@@ -80,21 +90,29 @@ final class PdfReaderPanel extends JPanel {
             new ReadingTheme("Azul noche", new Color(0x14202E), new Color(0xD8E2EE)),
     };
 
-    /** Fracción de cada palabra que se pone en negrita según el control "Intensidad" (1 a 5). */
+    /**
+     * Fracción de cada palabra que se pone en negrita según el control "Intensidad"
+     * (1 a 5).
+     */
     private static final double[] RATIOS = { 0.25, 0.35, 0.5, 0.6, 0.7 };
 
     private static final String CARD_EMPTY = "empty";
     private static final String CARD_BIONIC = "bionic";
     private static final String CARD_ORIGINAL = "original";
+    private static final String CARD_HYBRID = "hybrid";
+    private static final String MODE_BIONIC = "bionic";
+    private static final String MODE_ORIGINAL = "original";
+    private static final String MODE_HYBRID = "hybrid";
 
-    private final ProgramContext ctx;
+    private final AppContext ctx;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "pdf-reader-worker");
         t.setDaemon(true);
         return t;
     });
 
-    // estado del documento (se toca solo desde el hilo de Swing; PDFBox solo desde "worker")
+    // estado del documento (se toca solo desde el hilo de Swing; PDFBox solo desde
+    // "worker")
     private PDDocument document;
     private Path currentFile;
     private int pageCount;
@@ -103,7 +121,7 @@ final class PdfReaderPanel extends JPanel {
     private boolean disposed;
     private boolean updatingPage;
     private double zoom;
-    private boolean bionicMode;
+    private String viewMode;
     private boolean textReady;
     private List<String> paragraphs = List.of();
     private int lastSide = -1;
@@ -113,6 +131,8 @@ final class PdfReaderPanel extends JPanel {
     private final JPanel content = new JPanel(cards);
     private final JLabel imageLabel = new JLabel();
     private final JScrollPane imageScroll = new JScrollPane(imageLabel);
+    private final JLabel hybridImageLabel = new JLabel();
+    private final JScrollPane hybridImageScroll = new JScrollPane(hybridImageLabel);
     private final JTextPane textPane = new JTextPane();
     private final JScrollPane textScroll = new JScrollPane(textPane);
     private final JPanel settingsSide = new JPanel(new BorderLayout());
@@ -124,6 +144,7 @@ final class PdfReaderPanel extends JPanel {
     private final JButton nextBtn = new JButton("›");
     private final JToggleButton bionicBtn = new JToggleButton("Lectura");
     private final JToggleButton originalBtn = new JToggleButton("Original");
+    private final JToggleButton hybridBtn = new JToggleButton("Original + Bionic");
     private final JToggleButton settingsToggle = new JToggleButton("Ajustes de lectura");
     private final JPanel zoomBox = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
     private final JComboBox<String> fontBox;
@@ -133,7 +154,7 @@ final class PdfReaderPanel extends JPanel {
     private final JSlider widthSlider;
     private final JComboBox<ReadingTheme> themeBox = new JComboBox<>(THEMES);
 
-    PdfReaderPanel(ProgramContext ctx) {
+    PdfReaderPanel(AppContext ctx) {
         super(new BorderLayout());
         this.ctx = ctx;
 
@@ -153,7 +174,10 @@ final class PdfReaderPanel extends JPanel {
         widthSlider = new JSlider(400, 1200, clamp(intPref("width", 760), 400, 1200));
         themeBox.setSelectedIndex(clamp(intPref("theme", 1), 0, THEMES.length - 1));
         zoom = Math.max(0.4, Math.min(3.0, doublePref("zoom", 1.0)));
-        bionicMode = !"original".equals(ctx.getSetting("mode", "bionic"));
+        viewMode = ctx.getSetting("mode", MODE_BIONIC);
+        if (!MODE_BIONIC.equals(viewMode) && !MODE_ORIGINAL.equals(viewMode)
+                && !MODE_HYBRID.equals(viewMode))
+            viewMode = MODE_BIONIC;
         settingsToggle.setSelected(!"false".equals(ctx.getSetting("settingsOpen", "true")));
 
         // --- interfaz
@@ -161,6 +185,7 @@ final class PdfReaderPanel extends JPanel {
         content.add(buildEmptyCard(), CARD_EMPTY);
         content.add(buildBionicCard(), CARD_BIONIC);
         content.add(buildOriginalCard(), CARD_ORIGINAL);
+        content.add(buildHybridCard(), CARD_HYBRID);
         add(content, BorderLayout.CENTER);
         cards.show(content, CARD_EMPTY);
 
@@ -171,45 +196,78 @@ final class PdfReaderPanel extends JPanel {
         wireReadingControls();
         installKeys();
 
-        // --- reabrir el último PDF
-        String last = ctx.getSetting("lastFile", "");
-        if (!last.isBlank()) {
-            try {
-                Path p = Path.of(last);
-                if (Files.isRegularFile(p)) openFile(p, true);
-            } catch (RuntimeException ignored) {
-                // ruta guardada no válida
-            }
-        }
     }
 
-    // ------------------------------------------------------------------ construcción de la interfaz
+    // ------------------------------------------------------------------
+    // construcción de la interfaz
 
     private JComponent buildTopBar() {
         JButton open = new JButton("Abrir PDF…");
+        styleToolbarButton(open);
         open.addActionListener(e -> chooseFile());
+
+        styleToolbarButton(prevBtn);
+        styleToolbarButton(nextBtn);
+        styleToolbarButton(bionicBtn);
+        styleToolbarButton(originalBtn);
+        styleToolbarButton(hybridBtn);
+        styleToolbarButton(settingsToggle);
+        styleToolbarToggle(bionicBtn);
+        styleToolbarToggle(originalBtn);
+        styleToolbarToggle(hybridBtn);
+        styleToolbarToggle(settingsToggle);
 
         prevBtn.setToolTipText("Página anterior (Alt + ←)");
         nextBtn.setToolTipText("Página siguiente (Alt + →)");
         prevBtn.addActionListener(e -> goToPage(pageIndex - 1));
         nextBtn.addActionListener(e -> goToPage(pageIndex + 1));
-        pageSpinner.setPreferredSize(new Dimension(72, pageSpinner.getPreferredSize().height));
+        // El selector usa una UI básica transparente y elimina las flechas internas:
+        // la barra ya tiene botones de página anterior/siguiente independientes.
+        pageSpinner.setUI(new BasicSpinnerUI() {
+            @Override
+            protected Component createNextButton() {
+                return hiddenSpinnerButton();
+            }
+
+            @Override
+            protected Component createPreviousButton() {
+                return hiddenSpinnerButton();
+            }
+        });
+        pageSpinner.setPreferredSize(new Dimension(54, pageSpinner.getPreferredSize().height));
+        pageSpinner.setOpaque(false);
+        pageSpinner.setBorder(null);
+        JComponent editor = pageSpinner.getEditor();
+        if (editor instanceof JSpinner.DefaultEditor spinnerEditor) {
+            spinnerEditor.setOpaque(false);
+            spinnerEditor.getTextField().setOpaque(false);
+            spinnerEditor.getTextField().setBorder(null);
+            spinnerEditor.getTextField().setHorizontalAlignment(SwingConstants.CENTER);
+            spinnerEditor.getTextField().setForeground(UIManager.getColor("Label.foreground"));
+        }
         pageSpinner.addChangeListener(e -> {
-            if (!updatingPage) goToPage(pageModel.getNumber().intValue() - 1);
+            if (!updatingPage)
+                goToPage(pageModel.getNumber().intValue() - 1);
         });
 
         ButtonGroup modes = new ButtonGroup();
         modes.add(bionicBtn);
         modes.add(originalBtn);
+        modes.add(hybridBtn);
         bionicBtn.setToolTipText("Texto recompuesto con Bionic Reading");
         originalBtn.setToolTipText("La página tal como es en el PDF");
-        bionicBtn.setSelected(bionicMode);
-        originalBtn.setSelected(!bionicMode);
-        bionicBtn.addActionListener(e -> setBionicMode(true));
-        originalBtn.addActionListener(e -> setBionicMode(false));
+        hybridBtn.setToolTipText("Conserva la página original y refuerza visualmente el inicio de las palabras");
+        bionicBtn.setSelected(MODE_BIONIC.equals(viewMode));
+        originalBtn.setSelected(MODE_ORIGINAL.equals(viewMode));
+        hybridBtn.setSelected(MODE_HYBRID.equals(viewMode));
+        bionicBtn.addActionListener(e -> setViewMode(MODE_BIONIC));
+        originalBtn.addActionListener(e -> setViewMode(MODE_ORIGINAL));
+        hybridBtn.addActionListener(e -> setViewMode(MODE_HYBRID));
 
         JButton zoomOut = new JButton("−");
         JButton zoomIn = new JButton("+");
+        styleToolbarButton(zoomOut);
+        styleToolbarButton(zoomIn);
         zoomOut.setToolTipText("Reducir");
         zoomIn.setToolTipText("Ampliar");
         zoomOut.addActionListener(e -> changeZoom(-0.15));
@@ -233,6 +291,7 @@ final class PdfReaderPanel extends JPanel {
         bar.add(Box.createHorizontalStrut(10));
         bar.add(bionicBtn);
         bar.add(originalBtn);
+        bar.add(hybridBtn);
         bar.add(Box.createHorizontalStrut(10));
         bar.add(zoomBox);
         bar.add(settingsToggle);
@@ -243,11 +302,41 @@ final class PdfReaderPanel extends JPanel {
         return north;
     }
 
+    private static Component hiddenSpinnerButton() {
+        JButton button = new JButton();
+        button.setVisible(false);
+        button.setFocusable(false);
+        button.setBorderPainted(false);
+        button.setContentAreaFilled(false);
+        button.setPreferredSize(new Dimension(0, 0));
+        button.setMinimumSize(new Dimension(0, 0));
+        button.setMaximumSize(new Dimension(0, 0));
+        return button;
+    }
+
+    private static void styleToolbarButton(AbstractButton button) {
+        // Botón de acción visible, con borde discreto y estados hover/pressed de
+        // FlatLaf.
+        button.putClientProperty("JButton.buttonType", "roundRect");
+        button.setFocusable(false);
+    }
+
+    /**
+     * Los modos de lectura se comportan como pestañas, no como botones de texto.
+     */
+    private static void styleToolbarToggle(JToggleButton button) {
+        button.putClientProperty("JButton.buttonType", "tab");
+        button.setFocusable(false);
+    }
+
     private JComponent buildEmptyCard() {
-        JLabel msg = new JLabel("<html><div style='text-align:center'><span style='font-size:18pt'><b>Abre un PDF para empezar</b></span>"
-                + "<br><br>En la vista de lectura, el principio de cada palabra va en negrita<br>"
-                + "para que resulte más fácil seguir el texto.</div></html>", SwingConstants.CENTER);
+        JLabel msg = new JLabel(
+                "<html><div style='text-align:center'><span style='font-size:18pt'><b>Abre un PDF para empezar</b></span>"
+                        + "<br><br>En la vista de lectura, el principio de cada palabra va en negrita<br>"
+                        + "para que resulte más fácil seguir el texto.</div></html>",
+                SwingConstants.CENTER);
         JButton open = new JButton("Abrir PDF…");
+        styleToolbarButton(open);
         open.addActionListener(e -> chooseFile());
         msg.setAlignmentX(Component.CENTER_ALIGNMENT);
         open.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -273,12 +362,25 @@ final class PdfReaderPanel extends JPanel {
         return imageScroll;
     }
 
+    private JComponent buildHybridCard() {
+        hybridImageLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        hybridImageLabel.setVerticalAlignment(SwingConstants.TOP);
+        hybridImageLabel.setBorder(new EmptyBorder(16, 16, 16, 16));
+        hybridImageScroll.setBorder(null);
+        hybridImageScroll.getVerticalScrollBar().setUnitIncrement(24);
+        hybridImageScroll.getHorizontalScrollBar().setUnitIncrement(24);
+        return hybridImageScroll;
+    }
+
     private JComponent buildBionicCard() {
         textPane.setEditable(false);
         textScroll.setBorder(null);
         textScroll.getVerticalScrollBar().setUnitIncrement(24);
         textScroll.getViewport().addComponentListener(new ComponentAdapter() {
-            @Override public void componentResized(ComponentEvent e) { applyTextWidth(); }
+            @Override
+            public void componentResized(ComponentEvent e) {
+                applyTextWidth();
+            }
         });
 
         // Panel de ajustes a la derecha
@@ -329,11 +431,13 @@ final class PdfReaderPanel extends JPanel {
         sizeSpin.addChangeListener(e -> readingPrefsChanged());
         spacingSpin.addChangeListener(e -> readingPrefsChanged());
         strengthSlider.addChangeListener(e -> {
-            if (!strengthSlider.getValueIsAdjusting()) readingPrefsChanged();
+            if (!strengthSlider.getValueIsAdjusting())
+                readingPrefsChanged();
         });
         widthSlider.addChangeListener(e -> {
             applyTextWidth();
-            if (!widthSlider.getValueIsAdjusting()) savePrefs();
+            if (!widthSlider.getValueIsAdjusting())
+                savePrefs();
         });
         themeBox.addActionListener(e -> {
             applyBackground();
@@ -342,17 +446,26 @@ final class PdfReaderPanel extends JPanel {
     }
 
     private void installKeys() {
-        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, InputEvent.ALT_DOWN_MASK), "nextPage");
-        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, InputEvent.ALT_DOWN_MASK), "prevPage");
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, InputEvent.ALT_DOWN_MASK),
+                "nextPage");
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, InputEvent.ALT_DOWN_MASK),
+                "prevPage");
         getActionMap().put("nextPage", new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) { goToPage(pageIndex + 1); }
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                goToPage(pageIndex + 1);
+            }
         });
         getActionMap().put("prevPage", new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) { goToPage(pageIndex - 1); }
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                goToPage(pageIndex - 1);
+            }
         });
     }
 
-    // ------------------------------------------------------------------ abrir documentos
+    // ------------------------------------------------------------------ abrir
+    // documentos
 
     private void chooseFile() {
         JFileChooser chooser = new JFileChooser(ctx.getSetting("lastDir", System.getProperty("user.home")));
@@ -364,7 +477,8 @@ final class PdfReaderPanel extends JPanel {
     }
 
     private void openFile(Path path, boolean silent) {
-        if (worker.isShutdown()) return;
+        if (worker.isShutdown())
+            return;
         ctx.setStatus("Abriendo " + path.getFileName() + "…");
         worker.submit(() -> {
             try {
@@ -390,11 +504,12 @@ final class PdfReaderPanel extends JPanel {
         document = loaded;
         currentFile = path;
         pageCount = loaded.getNumberOfPages();
-        if (previous != null) closeAsync(previous);
+        if (previous != null)
+            closeAsync(previous);
 
-        ctx.putSetting("lastFile", path.toString());
         Path parent = path.toAbsolutePath().getParent();
-        if (parent != null) ctx.putSetting("lastDir", parent.toString());
+        if (parent != null)
+            ctx.putSetting("lastDir", parent.toString());
 
         updatingPage = true;
         pageModel.setValue(1);
@@ -402,7 +517,7 @@ final class PdfReaderPanel extends JPanel {
         updatingPage = false;
         pageTotal.setText("/ " + pageCount);
         setNavEnabled(true);
-        cards.show(content, bionicMode ? CARD_BIONIC : CARD_ORIGINAL);
+        cards.show(content, cardForMode());
 
         int start = intPrefRaw(ctx.getSetting("page|" + path, "1"), 1);
         goToPage(start - 1); // sigue por donde lo dejaste
@@ -410,7 +525,8 @@ final class PdfReaderPanel extends JPanel {
 
     private void onLoadFailed(Path path, Throwable ex, boolean silent) {
         ctx.setStatus(" ");
-        if (silent || disposed) return;
+        if (silent || disposed)
+            return;
         String detail = ex.getClass().getSimpleName().contains("InvalidPassword")
                 ? "El PDF está protegido con contraseña (todavía no se admite)."
                 : String.valueOf(ex.getMessage());
@@ -426,13 +542,18 @@ final class PdfReaderPanel extends JPanel {
                 // nada que hacer
             }
         };
-        if (worker.isShutdown()) close.run(); else worker.submit(close);
+        if (worker.isShutdown())
+            close.run();
+        else
+            worker.submit(close);
     }
 
-    // ------------------------------------------------------------------ navegación y carga de páginas
+    // ------------------------------------------------------------------ navegación
+    // y carga de páginas
 
     private void goToPage(int index) {
-        if (document == null) return;
+        if (document == null)
+            return;
         pageIndex = Math.max(0, Math.min(pageCount - 1, index));
         updatingPage = true;
         pageModel.setValue(pageIndex + 1);
@@ -445,31 +566,47 @@ final class PdfReaderPanel extends JPanel {
     }
 
     private void loadCurrentPage() {
-        if (document == null || worker.isShutdown()) return;
+        if (document == null || worker.isShutdown())
+            return;
         final PDDocument doc = document;
         final int index = pageIndex;
-        final boolean bionic = bionicMode;
+        final String mode = viewMode;
         final float dpi = (float) (96.0 * zoom);
+        final double ratio = RATIOS[strengthSlider.getValue() - 1];
         final int myTicket = ++ticket;
-        if (bionic) textReady = false;
+        if (MODE_BIONIC.equals(mode))
+            textReady = false;
 
         worker.submit(() -> {
-            if (myTicket != ticket) return; // ya hay una petición más reciente
+            if (myTicket != ticket)
+                return; // ya hay una petición más reciente
             try {
-                if (bionic) {
+                if (MODE_BIONIC.equals(mode)) {
                     List<String> result = extractParagraphs(doc, index);
                     SwingUtilities.invokeLater(() -> {
-                        if (myTicket == ticket) showText(result);
+                        if (myTicket == ticket)
+                            showText(result);
+                    });
+                } else if (MODE_HYBRID.equals(mode)) {
+                    java.awt.Image image = BionicPageRenderer.render(doc, index, dpi, ratio);
+                    SwingUtilities.invokeLater(() -> {
+                        if (myTicket == ticket)
+                            showHybridImage(image);
                     });
                 } else {
-                    BufferedImage image = new PDFRenderer(doc).renderImageWithDPI(index, dpi);
+                    float renderScale = PdfImageQuality.renderScale(dpi);
+                    BufferedImage highResolution = new PDFRenderer(doc)
+                            .renderImageWithDPI(index, dpi * renderScale);
+                    java.awt.Image image = PdfImageQuality.downsample(highResolution, renderScale);
                     SwingUtilities.invokeLater(() -> {
-                        if (myTicket == ticket) showImage(image);
+                        if (myTicket == ticket)
+                            showImage(image);
                     });
                 }
             } catch (Throwable ex) {
                 SwingUtilities.invokeLater(() -> {
-                    if (myTicket == ticket) ctx.setStatus("No se pudo leer la página: " + ex.getMessage());
+                    if (myTicket == ticket)
+                        ctx.setStatus("No se pudo leer la página: " + ex.getMessage());
                 });
             }
         });
@@ -483,9 +620,14 @@ final class PdfReaderPanel extends JPanel {
         return BionicText.paragraphs(stripper.getText(doc));
     }
 
-    private void showImage(BufferedImage image) {
+    private void showImage(java.awt.Image image) {
         imageLabel.setIcon(new ImageIcon(image));
         SwingUtilities.invokeLater(() -> imageScroll.getVerticalScrollBar().setValue(0));
+    }
+
+    private void showHybridImage(java.awt.Image image) {
+        hybridImageLabel.setIcon(new ImageIcon(image));
+        SwingUtilities.invokeLater(() -> hybridImageScroll.getVerticalScrollBar().setValue(0));
     }
 
     private void showText(List<String> result) {
@@ -494,7 +636,8 @@ final class PdfReaderPanel extends JPanel {
         renderBionic();
     }
 
-    // ------------------------------------------------------------------ vista de lectura
+    // ------------------------------------------------------------------ vista de
+    // lectura
 
     private void renderBionic() {
         ReadingTheme theme = currentTheme();
@@ -514,7 +657,7 @@ final class PdfReaderPanel extends JPanel {
         try {
             if (paragraphs.isEmpty()) {
                 doc.insertString(0, "Esta página no tiene texto seleccionable (puede ser una imagen escaneada).\n"
-                        + "Cambia a la vista Original para verla.", normal);
+                        + "Cambia a la vista Original o Original + Bionic para verla.", normal);
             } else {
                 for (String p : paragraphs) {
                     BionicText.append(doc, p, ratio, normal, strong);
@@ -533,10 +676,14 @@ final class PdfReaderPanel extends JPanel {
         applyTextWidth();
     }
 
-    /** Limita el ancho de la columna de texto (las líneas muy largas cansan) y la centra. */
+    /**
+     * Limita el ancho de la columna de texto (las líneas muy largas cansan) y la
+     * centra.
+     */
     private void applyTextWidth() {
         int viewport = textScroll.getViewport().getWidth();
-        if (viewport <= 0) return;
+        if (viewport <= 0)
+            return;
         int textWidth = Math.min(widthSlider.getValue(), Math.max(240, viewport - 48));
         int side = Math.max(24, (viewport - textWidth) / 2);
         if (side != lastSide) {
@@ -558,7 +705,11 @@ final class PdfReaderPanel extends JPanel {
 
     private void readingPrefsChanged() {
         savePrefs();
-        if (bionicMode && textReady) renderBionic();
+        if (MODE_BIONIC.equals(viewMode) && textReady) {
+            renderBionic();
+        } else if (MODE_HYBRID.equals(viewMode) && document != null) {
+            loadCurrentPage();
+        }
     }
 
     private void savePrefs() {
@@ -570,29 +721,43 @@ final class PdfReaderPanel extends JPanel {
         ctx.putSetting("theme", String.valueOf(Math.max(0, themeBox.getSelectedIndex())));
     }
 
-    // ------------------------------------------------------------------ modos y zoom
+    // ------------------------------------------------------------------ modos y
+    // zoom
 
-    private void setBionicMode(boolean bionic) {
-        bionicMode = bionic;
-        ctx.putSetting("mode", bionic ? "bionic" : "original");
+    private String cardForMode() {
+        if (MODE_BIONIC.equals(viewMode))
+            return CARD_BIONIC;
+        if (MODE_HYBRID.equals(viewMode))
+            return CARD_HYBRID;
+        return CARD_ORIGINAL;
+    }
+
+    private void setViewMode(String mode) {
+        viewMode = mode;
+        ctx.putSetting("mode", mode);
+        bionicBtn.setSelected(MODE_BIONIC.equals(mode));
+        originalBtn.setSelected(MODE_ORIGINAL.equals(mode));
+        hybridBtn.setSelected(MODE_HYBRID.equals(mode));
         applyModeVisibility();
         if (document != null) {
-            cards.show(content, bionic ? CARD_BIONIC : CARD_ORIGINAL);
+            cards.show(content, cardForMode());
             loadCurrentPage();
         }
     }
 
     private void applyModeVisibility() {
-        zoomBox.setVisible(!bionicMode);
-        settingsToggle.setVisible(bionicMode);
-        settingsSide.setVisible(settingsToggle.isSelected());
+        boolean reading = MODE_BIONIC.equals(viewMode);
+        zoomBox.setVisible(!reading);
+        settingsToggle.setVisible(reading);
+        settingsSide.setVisible(reading && settingsToggle.isSelected());
     }
 
     private void changeZoom(double delta) {
         zoom = Math.max(0.4, Math.min(3.0, zoom + delta));
         ctx.putSetting("zoom", String.format(Locale.ROOT, "%.2f", zoom));
         updateZoomLabel();
-        if (document != null && !bionicMode) loadCurrentPage();
+        if (document != null && !MODE_BIONIC.equals(viewMode))
+            loadCurrentPage();
     }
 
     private void updateZoomLabel() {
@@ -605,14 +770,16 @@ final class PdfReaderPanel extends JPanel {
         pageSpinner.setEnabled(enabled);
     }
 
-    // ------------------------------------------------------------------ ciclo de vida
+    // ------------------------------------------------------------------ ciclo de
+    // vida
 
     void dispose() {
         disposed = true;
         ticket++;
         PDDocument doc = document;
         document = null;
-        if (doc != null) closeAsync(doc);
+        if (doc != null)
+            closeAsync(doc);
         worker.shutdown();
     }
 

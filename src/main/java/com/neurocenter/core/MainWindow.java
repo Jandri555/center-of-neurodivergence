@@ -1,9 +1,9 @@
 package com.neurocenter.core;
 
-import com.neurocenter.api.NeuroProgram;
-import com.neurocenter.api.ProgramContext;
-import com.neurocenter.programs.agenda.AgendaProgram;
-import com.neurocenter.programs.pdfreader.PdfReaderProgram;
+import com.neurocenter.api.NeuroApp;
+import com.neurocenter.api.AppContext;
+import com.neurocenter.apps.agenda.AgendaApp;
+import com.neurocenter.apps.pdfreader.PdfReaderApp;
 import com.neurocenter.ui.BadgeIcon;
 import com.neurocenter.ui.RoundedPanel;
 
@@ -15,6 +15,7 @@ import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
+import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -24,12 +25,14 @@ import javax.swing.JTextArea;
 import javax.swing.JToggleButton;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import javax.swing.border.EmptyBorder;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
+import java.awt.Color;
 import java.awt.Component;
+import java.awt.Container;
 import java.awt.Cursor;
-import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -54,17 +57,17 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Panel principal: menú lateral con todos los programas y una pantalla de inicio.
- * Los programas integrados se registran en el constructor; los plugins se leen de AppData.
+ * Panel principal: menú lateral con todos los apps y una pantalla de inicio.
+ * Los apps integrados se registran en el constructor; los apps se leen de AppData.
  */
 public final class MainWindow extends JFrame {
 
     private static final String HOME = "__home__";
 
     private final PropertiesStore appSettings;
-    private final Map<String, NeuroProgram> programs = new LinkedHashMap<>();
-    private final Set<String> pluginIds = new HashSet<>();
-    private final Map<String, ProgramContext> contexts = new HashMap<>();
+    private final Map<String, NeuroApp> apps = new LinkedHashMap<>();
+    private final Set<String> externalAppIds = new HashSet<>();
+    private final Map<String, AppContext> contexts = new HashMap<>();
     private final Map<String, JToggleButton> navButtons = new HashMap<>();
     private final Set<String> openedPanels = new HashSet<>();
     private final List<String> loadErrors = new ArrayList<>();
@@ -72,22 +75,25 @@ public final class MainWindow extends JFrame {
     private final CardLayout cards = new CardLayout();
     private final JPanel content = new JPanel(cards);
     private final JLabel statusLabel = new JLabel(" ");
-    private JButton themeButton;
+    private JButton settingsButton;
 
     public MainWindow(PropertiesStore appSettings) {
         super(AppInfo.NAME);
+        // En Windows 10/11 FlatLaf gestiona la barra de título mediante sus
+        // decoraciones nativas. No marcar el JFrame como undecorated manualmente:
+        // eso elimina el marco redondeado y el comportamiento de ventana de Windows.
         this.appSettings = appSettings;
 
-        // 1) Programas integrados en el propio .jar
-        register(new AgendaProgram(), false);
-        register(new PdfReaderProgram(), false);
+        // 1) Apps integradas en el propio .jar
+        register(new AgendaApp(), false);
+        register(new PdfReaderApp(), false);
 
-        // 2) Programas externos: .jar en AppData/CenterOfNeurodivergence/plugins
-        PluginLoader.Result plugins = PluginLoader.load(AppPaths.pluginsDir());
-        loadErrors.addAll(plugins.errors());
-        for (NeuroProgram p : plugins.programs()) register(p, true);
+        // 2) Apps externas: .jar en AppData/CenterOfNeurodivergence/apps
+        AppLoader.Result apps = AppLoader.load(AppPaths.appsDir());
+        loadErrors.addAll(apps.errors());
+        for (NeuroApp p : apps.apps()) register(p, true);
 
-        startPrograms();
+        startApps();
         buildUi();
 
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
@@ -97,52 +103,52 @@ public final class MainWindow extends JFrame {
         setMinimumSize(new Dimension(960, 620));
         setSize(1240, 800);
         setLocationRelativeTo(null);
-        showProgram(HOME);
+        showApp(HOME);
 
         if (!loadErrors.isEmpty()) SwingUtilities.invokeLater(this::showLoadErrors);
     }
 
     // ------------------------------------------------------------------ registro y arranque
 
-    private void register(NeuroProgram program, boolean plugin) {
+    private void register(NeuroApp app, boolean external) {
         try {
-            String id = program.id();
-            String name = program.name();
+            String id = app.id();
+            String name = app.name();
             if (id == null || id.isBlank()) throw new IllegalArgumentException("el id está vacío");
             if (name == null || name.isBlank()) throw new IllegalArgumentException("el nombre está vacío");
-            if (programs.containsKey(id)) {
-                loadErrors.add("Hay dos programas con el id «" + id + "»: se ignora «" + name + "».");
+            if (apps.containsKey(id)) {
+                loadErrors.add("Hay dos apps con el id «" + id + "»: se ignora «" + name + "».");
                 return;
             }
-            programs.put(id, program);
-            if (plugin) pluginIds.add(id);
+            apps.put(id, app);
+            if (external) externalAppIds.add(id);
         } catch (Throwable t) {
-            loadErrors.add(program.getClass().getName() + ": " + t);
+            loadErrors.add(app.getClass().getName() + ": " + t);
         }
     }
 
-    private void startPrograms() {
-        for (NeuroProgram p : new ArrayList<>(programs.values())) {
-            ProgramContext ctx = new Ctx(p);
+    private void startApps() {
+        for (NeuroApp p : new ArrayList<>(apps.values())) {
+            AppContext ctx = new Ctx(p);
             contexts.put(p.id(), ctx);
             try {
                 p.start(ctx);
             } catch (Throwable t) {
                 loadErrors.add(p.name() + ": error al iniciar (" + t + ")");
-                programs.remove(p.id());
+                apps.remove(p.id());
                 contexts.remove(p.id());
             }
         }
     }
 
     private void showLoadErrors() {
-        StringBuilder sb = new StringBuilder("Algunos programas no se han podido cargar:\n");
+        StringBuilder sb = new StringBuilder("Algunos apps no se han podido cargar:\n");
         for (String e : loadErrors) sb.append("\n• ").append(e);
         JOptionPane.showMessageDialog(this, sb.toString(), AppInfo.NAME, JOptionPane.WARNING_MESSAGE);
     }
 
     private void shutdown() {
-        for (NeuroProgram p : programs.values()) {
+        for (NeuroApp p : apps.values()) {
             try {
                 p.stop();
             } catch (Throwable t) {
@@ -158,6 +164,19 @@ public final class MainWindow extends JFrame {
     private void buildUi() {
         setLayout(new BorderLayout());
         add(buildSidebar(), BorderLayout.WEST);
+
+        settingsButton = new JButton("⚙");
+        settingsButton.setToolTipText("Ajustes generales");
+        settingsButton.setFont(settingsButton.getFont().deriveFont(Font.PLAIN, 25f));
+        settingsButton.setPreferredSize(new Dimension(48, 44));
+        settingsButton.setMargin(new Insets(4, 8, 4, 8));
+        settingsButton.setFocusable(false);
+        settingsButton.putClientProperty("JButton.buttonType", "toolBarButton");
+        settingsButton.setOpaque(false);
+        settingsButton.addActionListener(e -> openSettings());
+        JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 8));
+        topBar.add(settingsButton);
+        add(topBar, BorderLayout.NORTH);
 
         content.add(buildHome(), HOME);
         add(content, BorderLayout.CENTER);
@@ -185,23 +204,11 @@ public final class MainWindow extends JFrame {
         side.add(Box.createVerticalStrut(22));
 
         addNav(side, HOME, "Inicio", new BadgeIcon("I", HOME, 24));
-        for (NeuroProgram p : programs.values()) {
+        for (NeuroApp p : apps.values()) {
             addNav(side, p.id(), p.name(), iconFor(p, 24));
         }
 
         side.add(Box.createVerticalGlue());
-
-        JButton pluginsButton = new JButton("Carpeta de plugins");
-        pluginsButton.addActionListener(e -> openPluginsFolder());
-        themeButton = new JButton();
-        updateThemeButtonText();
-        themeButton.addActionListener(e -> toggleTheme());
-        for (JButton b : new JButton[] { pluginsButton, themeButton }) {
-            b.setAlignmentX(Component.LEFT_ALIGNMENT);
-            b.setMaximumSize(new Dimension(Integer.MAX_VALUE, b.getPreferredSize().height));
-            side.add(b);
-            side.add(Box.createVerticalStrut(6));
-        }
 
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.add(side, BorderLayout.CENTER);
@@ -214,10 +221,16 @@ public final class MainWindow extends JFrame {
         b.setHorizontalAlignment(SwingConstants.LEFT);
         b.setIconTextGap(12);
         b.setMargin(new Insets(8, 10, 8, 10));
-        b.putClientProperty("JButton.buttonType", "toolBarButton"); // estilo plano de FlatLaf
+        b.putClientProperty("JButton.buttonType", "toolBarButton");
+        b.setContentAreaFilled(false);
+        b.setOpaque(false);
+        b.setFocusable(false);
+        b.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 3, 0, 0, UIManager.getColor("Panel.background")),
+                new EmptyBorder(8, 7, 8, 10)));
         b.setAlignmentX(Component.LEFT_ALIGNMENT);
         b.setMaximumSize(new Dimension(Integer.MAX_VALUE, b.getPreferredSize().height + 4));
-        b.addActionListener(e -> showProgram(id));
+        b.addActionListener(e -> showApp(id));
         navGroup.add(b);
         navButtons.put(id, b);
         side.add(b);
@@ -228,12 +241,12 @@ public final class MainWindow extends JFrame {
         JPanel root = new JPanel(new BorderLayout(0, 24));
         root.setBorder(new EmptyBorder(36, 44, 24, 44));
 
-        JLabel heading = new JLabel("<html><div style='font-size:22pt'><b>Tus programas</b></div>"
+        JLabel heading = new JLabel("<html><div style='font-size:22pt'><b>Tus apps</b></div>"
                 + "<div style='margin-top:6px'>Elige uno para empezar.</div></html>");
         root.add(heading, BorderLayout.NORTH);
 
         JPanel grid = new JPanel(new GridLayout(0, 2, 16, 16));
-        for (NeuroProgram p : programs.values()) grid.add(buildCard(p));
+        for (NeuroApp p : apps.values()) grid.add(buildCard(p));
         JPanel gridTop = new JPanel(new BorderLayout());
         gridTop.add(grid, BorderLayout.NORTH);
         JScrollPane scroll = new JScrollPane(gridTop);
@@ -241,28 +254,28 @@ public final class MainWindow extends JFrame {
         scroll.getVerticalScrollBar().setUnitIncrement(16);
         root.add(scroll, BorderLayout.CENTER);
 
-        JLabel hint = new JLabel("<html>Para añadir más programas, copia su archivo .jar en <b>"
-                + esc(AppPaths.pluginsDir().toString()) + "</b> y reinicia la aplicación.</html>");
+        JLabel hint = new JLabel("<html>Puedes instalar o desinstalar apps desde <b>Ajustes generales → Gestionar apps</b>.</html>");
         root.add(hint, BorderLayout.SOUTH);
         return root;
     }
 
-    private JComponent buildCard(NeuroProgram p) {
+    private JComponent buildCard(NeuroApp p) {
         RoundedPanel card = new RoundedPanel(new BorderLayout(16, 0), 18);
         card.setBorder(new EmptyBorder(18, 18, 18, 18));
         card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         JLabel icon = new JLabel(iconFor(p, 40));
+        icon.putClientProperty("theme.appId", p.id());
         icon.setVerticalAlignment(SwingConstants.TOP);
 
-        String kind = pluginIds.contains(p.id()) ? "Plugin, versión " + safeVersion(p) : "Integrado";
+        String kind = externalAppIds.contains(p.id()) ? "App externa, versión " + safeVersion(p) : "Integrado";
         JLabel text = new JLabel("<html><body style='width:220px'><b style='font-size:13pt'>" + esc(p.name())
                 + "</b><br>" + esc(p.description())
                 + "<br><br><span style='color:gray'>" + esc(kind) + "</span></body></html>");
         text.setVerticalAlignment(SwingConstants.TOP);
 
         JButton open = new JButton("Abrir");
-        open.addActionListener(e -> showProgram(p.id()));
+        open.addActionListener(e -> showApp(p.id()));
         JPanel south = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         south.setOpaque(false);
         south.setBorder(new EmptyBorder(12, 0, 0, 0));
@@ -272,16 +285,16 @@ public final class MainWindow extends JFrame {
         card.add(text, BorderLayout.CENTER);
         card.add(south, BorderLayout.SOUTH);
         card.addMouseListener(new MouseAdapter() {
-            @Override public void mouseClicked(MouseEvent e) { showProgram(p.id()); }
+            @Override public void mouseClicked(MouseEvent e) { showApp(p.id()); }
             @Override public void mouseEntered(MouseEvent e) { card.setHighlighted(true); }
             @Override public void mouseExited(MouseEvent e) { card.setHighlighted(false); }
         });
         return card;
     }
 
-    private void showProgram(String id) {
+    private void showApp(String id) {
         if (!HOME.equals(id) && !openedPanels.contains(id)) {
-            NeuroProgram p = programs.get(id);
+            NeuroApp p = apps.get(id);
             if (p == null) return;
             JComponent panel;
             try {
@@ -296,10 +309,28 @@ public final class MainWindow extends JFrame {
         cards.show(content, id);
         JToggleButton b = navButtons.get(id);
         if (b != null) b.setSelected(true);
+        updateNavAppearance();
         statusLabel.setText(" ");
     }
 
-    private JComponent errorPanel(NeuroProgram p, Throwable t) {
+    /** Resalta la app activa con una línea lateral, sin rellenar toda la fila. */
+    private void updateNavAppearance() {
+        Color panel = UIManager.getColor("Panel.background");
+        Color accent = UIManager.getColor("Component.focusColor");
+        if (panel == null) panel = getBackground();
+        if (accent == null) accent = UIManager.getColor("Component.accentColor");
+        if (accent == null) accent = UIManager.getColor("Button.foreground");
+        for (JToggleButton button : navButtons.values()) {
+            Color marker = button.isSelected() ? accent : panel;
+            button.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createMatteBorder(0, 3, 0, 0, marker),
+                    new EmptyBorder(8, 7, 8, 10)));
+            button.setContentAreaFilled(false);
+            button.setOpaque(false);
+        }
+    }
+
+    private JComponent errorPanel(NeuroApp p, Throwable t) {
         StringWriter sw = new StringWriter();
         t.printStackTrace(new PrintWriter(sw));
         JTextArea area = new JTextArea("«" + p.name() + "» no se ha podido abrir.\n\n" + sw);
@@ -313,42 +344,201 @@ public final class MainWindow extends JFrame {
 
     // ------------------------------------------------------------------ acciones
 
-    private void openPluginsFolder() {
-        Path dir = AppPaths.pluginsDir();
-        try {
-            if (!Desktop.isDesktopSupported()) throw new UnsupportedOperationException();
-            Desktop.getDesktop().open(dir.toFile());
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "La carpeta de plugins está en:\n" + dir,
-                    AppInfo.NAME, JOptionPane.INFORMATION_MESSAGE);
+    private void openSettings() {
+        // Diálogo propio en lugar de JOptionPane: este último asigna foco
+        // automáticamente al primer botón y FlatLaf lo resalta como predeterminado.
+        JDialog dialog = new JDialog(this, "Ajustes", true);
+        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        JPanel root = new JPanel(new BorderLayout(0, 18));
+        root.setBorder(new EmptyBorder(18, 18, 14, 18));
+
+        JLabel message = new JLabel("Ajustes generales");
+        root.add(message, BorderLayout.CENTER);
+
+        JPanel buttons = new JPanel(new GridLayout(1, 4, 8, 0));
+        String[] labels = {"Cambiar tema", "Gestionar temas", "Gestionar apps", "Cerrar"};
+        Runnable[] actions = {
+                this::chooseTheme,
+                this::manageThemes,
+                this::manageApps,
+                dialog::dispose
+        };
+        for (int i = 0; i < labels.length; i++) {
+            final int index = i;
+            JButton button = new JButton(labels[i]);
+            // Sin foco inicial: todos los botones conservan el mismo aspecto neutro.
+            button.setFocusable(false);
+            button.addActionListener(e -> {
+                dialog.dispose();
+                actions[index].run();
+            });
+            buttons.add(button);
+        }
+
+        root.add(buttons, BorderLayout.SOUTH);
+        dialog.setContentPane(root);
+        dialog.pack();
+        dialog.setMinimumSize(new Dimension(500, dialog.getPreferredSize().height));
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
+    private void chooseTheme() {
+        List<ThemeManager.ThemeInfo> themes = ThemeManager.availableThemes();
+        String[] names = themes.stream().map(ThemeManager.ThemeInfo::name).toArray(String[]::new);
+        String currentId = appSettings.get("theme", "light");
+        int selected = 0;
+        for (int i = 0; i < themes.size(); i++) {
+            if (themes.get(i).id().equals(currentId)) {
+                selected = i;
+                break;
+            }
+        }
+
+        int choice = JOptionPane.showOptionDialog(this,
+                "Selecciona el aspecto de la aplicación:", "Temas",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, names, names[selected]);
+        if (choice >= 0 && choice < themes.size()) {
+            String themeId = themes.get(choice).id();
+            if (!themeId.equals(currentId)) {
+                appSettings.put("theme", themeId);
+                ThemeManager.apply(themeId);
+                SwingUtilities.updateComponentTreeUI(this);
+                for (Window window : getOwnedWindows()) {
+                    SwingUtilities.updateComponentTreeUI(window);
+                }
+                refreshThemeIcons();
+            }
         }
     }
 
-    private void toggleTheme() {
-        boolean dark = !"dark".equals(appSettings.get("theme", "light"));
-        appSettings.put("theme", dark ? "dark" : "light");
-        ThemeManager.apply(dark);
-        updateThemeButtonText();
+    private void refreshThemeIcons() {
+        for (Map.Entry<String, JToggleButton> entry : navButtons.entrySet()) {
+            NeuroApp app = apps.get(entry.getKey());
+            if (app != null) entry.getValue().setIcon(iconFor(app, 24));
+        }
+        refreshThemeIcons(this);
     }
 
-    private void updateThemeButtonText() {
-        boolean dark = "dark".equals(appSettings.get("theme", "light"));
-        themeButton.setText(dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro");
+    private void refreshThemeIcons(Container parent) {
+        for (Component component : parent.getComponents()) {
+            if (component instanceof JLabel label
+                    && label.getClientProperty("theme.appId") instanceof String appId) {
+                NeuroApp app = apps.get(appId);
+                if (app != null) label.setIcon(iconFor(app, 40));
+            }
+            if (component instanceof Container nested) refreshThemeIcons(nested);
+        }
+    }
+
+    private void manageThemes() {
+        String[] options = {"Instalar tema (.tme)", "Desinstalar tema", "Volver"};
+        int choice = JOptionPane.showOptionDialog(this,
+                "Los temas son paquetes de apariencia. Solo se admiten archivos .tme con JSON y recursos; no ejecutan código.",
+                "Gestor de temas", JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE,
+                null, options, options[0]);
+        if (choice == 0) {
+            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Temas (*.tme)", "tme"));
+            if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                try {
+                    String id = ThemeArchive.install(chooser.getSelectedFile().toPath());
+                    JOptionPane.showMessageDialog(this, "Tema «" + id + "» instalado. Ya puedes seleccionarlo en Cambiar tema.");
+                } catch (java.io.IOException ex) {
+                    JOptionPane.showMessageDialog(this, "No se pudo instalar el tema: " + ex.getMessage(),
+                            "Error al instalar", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        } else if (choice == 1) {
+            List<ThemeManager.ThemeInfo> installed = ThemeManager.availableThemes().stream()
+                    .filter(theme -> !theme.builtIn()).toList();
+            if (installed.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "No hay temas externos instalados.");
+                return;
+            }
+            ThemeManager.ThemeInfo[] themes = installed.toArray(ThemeManager.ThemeInfo[]::new);
+            ThemeManager.ThemeInfo selected = (ThemeManager.ThemeInfo) JOptionPane.showInputDialog(
+                    this, "Selecciona el tema que quieres desinstalar:", "Desinstalar tema",
+                    JOptionPane.WARNING_MESSAGE, null, themes, themes[0]);
+            if (selected != null && JOptionPane.showConfirmDialog(this,
+                    "Se eliminará el tema «" + selected.name() + "». ¿Continuar?",
+                    "Confirmar desinstalación", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+                try {
+                    boolean active = selected.id().equals(appSettings.get("theme", "light"));
+                    ThemeArchive.uninstall(selected.id());
+                    if (active) {
+                        appSettings.put("theme", "light");
+                        ThemeManager.apply("light");
+                        SwingUtilities.updateComponentTreeUI(this);
+                        refreshThemeIcons();
+                    }
+                    JOptionPane.showMessageDialog(this, "Tema desinstalado.");
+                } catch (java.io.IOException ex) {
+                    JOptionPane.showMessageDialog(this, "No se pudo desinstalar el tema: " + ex.getMessage(),
+                            "Error al desinstalar", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }
+    }
+
+    private void manageApps() {
+        String[] options = {"Instalar app (.jar)", "Desinstalar app", "Volver"};
+        int choice = JOptionPane.showOptionDialog(this,
+                "Las operaciones se aplican al reiniciar. Instala solo apps de fuentes de confianza.",
+                "Gestor de apps", JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
+        if (choice == 0) {
+            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Apps Java (*.jar)", "jar"));
+            if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                java.nio.file.Path source = chooser.getSelectedFile().toPath();
+                try {
+                    java.nio.file.Path target = AppPaths.appsDir().resolve(source.getFileName());
+                    if (java.nio.file.Files.exists(target)) throw new java.io.IOException("Ya existe una app con ese nombre.");
+                    java.nio.file.Files.copy(source, target);
+                    JOptionPane.showMessageDialog(this, "App instalada. Estará disponible al reiniciar.");
+                } catch (java.io.IOException ex) {
+                    JOptionPane.showMessageDialog(this, "No se pudo instalar la app: " + ex.getMessage());
+                }
+            }
+        } else if (choice == 1) {
+            try (var stream = java.nio.file.Files.list(AppPaths.appsDir())) {
+                String[] jars = stream.filter(p -> p.toString().toLowerCase().endsWith(".jar"))
+                        .map(p -> p.getFileName().toString()).toArray(String[]::new);
+                if (jars.length == 0) {
+                    JOptionPane.showMessageDialog(this, "No hay apps externas instaladas.");
+                    return;
+                }
+                String selected = (String) JOptionPane.showInputDialog(this, "Selecciona una app:",
+                        "Desinstalar app", JOptionPane.WARNING_MESSAGE, null, jars, jars[0]);
+                if (selected != null && JOptionPane.showConfirmDialog(this,
+                        "Se eliminará al próximo inicio. ¿Continuar?", "Confirmar",
+                        JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+                    java.nio.file.Files.writeString(AppPaths.root().resolve("pending-uninstall.txt"),
+                            selected + System.lineSeparator(), java.nio.file.StandardOpenOption.CREATE,
+                            java.nio.file.StandardOpenOption.APPEND);
+                    JOptionPane.showMessageDialog(this, "Desinstalación programada para el próximo inicio.");
+                }
+            } catch (java.io.IOException ex) {
+                JOptionPane.showMessageDialog(this, "No se pudo gestionar la app: " + ex.getMessage());
+            }
+        }
     }
 
     // ------------------------------------------------------------------ utilidades
 
-    private static Icon iconFor(NeuroProgram p, int size) {
+    private static Icon iconFor(NeuroApp p, int size) {
+        Icon fallback;
         try {
-            Icon icon = p.icon();
-            if (icon != null) return icon;
+            fallback = p.icon();
+            if (fallback == null) fallback = new BadgeIcon(p.name(), p.id(), size);
         } catch (Throwable ignored) {
-            // un plugin con un icono roto no debe romper el panel
+            // una app con un icono roto no debe romper el panel
+            fallback = new BadgeIcon(p.name(), p.id(), size);
         }
-        return new BadgeIcon(p.name(), p.id(), size);
+        return ThemeManager.appIcon(p.id(), fallback, size);
     }
 
-    private static String safeVersion(NeuroProgram p) {
+    private static String safeVersion(NeuroApp p) {
         try {
             return p.version();
         } catch (Throwable t) {
@@ -360,14 +550,14 @@ public final class MainWindow extends JFrame {
         return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
-    /** Lo que cada programa recibe del panel. */
-    private final class Ctx implements ProgramContext {
-        private final NeuroProgram program;
+    /** Lo que cada app recibe del panel. */
+    private final class Ctx implements AppContext {
+        private final NeuroApp app;
         private PropertiesStore store;
 
-        Ctx(NeuroProgram program) { this.program = program; }
+        Ctx(NeuroApp app) { this.app = app; }
 
-        @Override public Path dataDir() { return AppPaths.programDataDir(program.id()); }
+        @Override public Path dataDir() { return AppPaths.appDataDir(app.id()); }
 
         private synchronized PropertiesStore store() {
             if (store == null) store = new PropertiesStore(dataDir().resolve("settings.properties"));
@@ -384,8 +574,8 @@ public final class MainWindow extends JFrame {
             else SwingUtilities.invokeLater(() -> statusLabel.setText(text));
         }
 
-        @Override public void openProgram(String programId) {
-            if (programs.containsKey(programId)) showProgram(programId);
+        @Override public void openApp(String appId) {
+            if (apps.containsKey(appId)) showApp(appId);
         }
 
         @Override public Window window() { return MainWindow.this; }

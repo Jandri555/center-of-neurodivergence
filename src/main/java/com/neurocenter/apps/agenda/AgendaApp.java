@@ -1,7 +1,7 @@
-package com.neurocenter.programs.agenda;
+package com.neurocenter.apps.agenda;
 
-import com.neurocenter.api.NeuroProgram;
-import com.neurocenter.api.ProgramContext;
+import com.neurocenter.api.NeuroApp;
+import com.neurocenter.api.AppContext;
 
 import javax.swing.JComponent;
 import javax.swing.JOptionPane;
@@ -16,10 +16,10 @@ import java.util.List;
  * Agenda con calendario mensual y tareas por día.
  * Los avisos de los eventos funcionan desde que arranca la aplicación (no hace falta abrir la agenda).
  */
-public final class AgendaProgram implements NeuroProgram {
+public final class AgendaApp implements NeuroApp {
 
     private AgendaStore store;
-    private ProgramContext context;
+    private AppContext context;
     private Timer reminderTimer;
 
     @Override public String id() { return "agenda"; }
@@ -30,7 +30,7 @@ public final class AgendaProgram implements NeuroProgram {
     }
 
     @Override
-    public void start(ProgramContext ctx) {
+    public void start(AppContext ctx) {
         this.context = ctx;
         store = new AgendaStore(ctx.dataDir().resolve("agenda.json"));
         store.load();
@@ -41,7 +41,7 @@ public final class AgendaProgram implements NeuroProgram {
     }
 
     @Override
-    public JComponent createPanel(ProgramContext ctx) {
+    public JComponent createPanel(AppContext ctx) {
         return new AgendaPanel(store, ctx);
     }
 

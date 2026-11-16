@@ -1,4 +1,4 @@
-package com.neurocenter.programs.agenda;
+package com.neurocenter.apps.agenda;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;

@@ -1,9 +1,10 @@
-package com.neurocenter.programs.agenda;
+package com.neurocenter.apps.agenda;
 
-import com.neurocenter.api.ProgramContext;
+import com.neurocenter.api.AppContext;
 import com.neurocenter.ui.BadgeIcon;
 import com.neurocenter.ui.RoundedPanel;
 
+import javax.swing.AbstractButton;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
@@ -80,7 +81,7 @@ final class AgendaPanel extends JPanel {
     private static final Color OVERDUE = new Color(0xDB4B4B);
 
     private final AgendaStore store;
-    private final ProgramContext ctx;
+    private final AppContext ctx;
 
     private YearMonth month = YearMonth.now();
     private LocalDate selected = LocalDate.now();
@@ -100,7 +101,7 @@ final class AgendaPanel extends JPanel {
     private final JLabel pendingSummary = new JLabel(" ");
     private final JPanel pendingList = new JPanel(new GridBagLayout());
 
-    AgendaPanel(AgendaStore store, ProgramContext ctx) {
+    AgendaPanel(AgendaStore store, AppContext ctx) {
         super(new BorderLayout(0, 18));
         this.store = store;
         this.ctx = ctx;
@@ -120,6 +121,8 @@ final class AgendaPanel extends JPanel {
         ButtonGroup group = new ButtonGroup();
         group.add(pendingBtn);
         group.add(calendarBtn);
+        styleAgendaToggle(pendingBtn);
+        styleAgendaToggle(calendarBtn);
         pendingBtn.setSelected(true);
         pendingBtn.addActionListener(e -> showView(true));
         calendarBtn.addActionListener(e -> showView(false));
@@ -129,8 +132,10 @@ final class AgendaPanel extends JPanel {
         left.add(calendarBtn);
 
         JButton newTask = new JButton("Nueva tarea");
+        styleAgendaButton(newTask);
         newTask.addActionListener(e -> addEntry(AgendaEntry.TASK));
         JButton newEvent = new JButton("Nuevo evento");
+        styleAgendaButton(newEvent);
         newEvent.addActionListener(e -> addEntry(AgendaEntry.EVENT));
 
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
@@ -141,6 +146,19 @@ final class AgendaPanel extends JPanel {
         bar.add(left, BorderLayout.WEST);
         bar.add(right, BorderLayout.EAST);
         return bar;
+    }
+
+    /** Mantiene los controles de Agenda planos y coherentes con la barra de Bionic PDF. */
+    private static void styleAgendaButton(AbstractButton button) {
+        // Botón normal: conserva el borde sutil y recupera los estados hover/pressed de FlatLaf.
+        button.putClientProperty("JButton.buttonType", "roundRect");
+        button.setFocusable(false);
+    }
+
+    private static void styleAgendaToggle(JToggleButton button) {
+        // Las vistas son pestañas: subrayado al seleccionar y fondo al pasar el ratón.
+        button.putClientProperty("JButton.buttonType", "tab");
+        button.setFocusable(false);
     }
 
     private void showView(boolean pending) {
@@ -158,6 +176,8 @@ final class AgendaPanel extends JPanel {
     private JComponent buildCalendarSide() {
         JButton prev = new JButton("◀");
         JButton next = new JButton("▶");
+        styleAgendaButton(prev);
+        styleAgendaButton(next);
         prev.addActionListener(e -> { month = month.minusMonths(1); refresh(); });
         next.addActionListener(e -> { month = month.plusMonths(1); refresh(); });
         monthLabel.setFont(monthLabel.getFont().deriveFont(Font.BOLD, 17f));
@@ -181,6 +201,7 @@ final class AgendaPanel extends JPanel {
         grid.add(daysGrid, BorderLayout.CENTER);
 
         JButton today = new JButton("Ir a hoy");
+        styleAgendaButton(today);
         today.addActionListener(e -> {
             selected = LocalDate.now();
             month = YearMonth.from(selected);
@@ -217,12 +238,18 @@ final class AgendaPanel extends JPanel {
     /** Cabecera fija arriba y, debajo, una lista con scroll vertical que se adapta al ancho. */
     private static JComponent scrollingSide(JComponent head, JPanel list) {
         JPanel holder = new WidthTrackingPanel();
+        holder.setOpaque(false);
+        list.setOpaque(false);
         holder.add(list, BorderLayout.NORTH);
+
         JScrollPane scroll = new JScrollPane(holder);
         scroll.setBorder(null);
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
         scroll.getVerticalScrollBar().setUnitIncrement(16);
 
         JPanel side = new JPanel(new BorderLayout(0, 16));
+        side.setOpaque(false);
         side.add(head, BorderLayout.NORTH);
         side.add(scroll, BorderLayout.CENTER);
         return side;
@@ -384,8 +411,10 @@ final class AgendaPanel extends JPanel {
         }
 
         JButton edit = new JButton("Editar");
+        styleAgendaButton(edit);
         edit.addActionListener(ev -> editEntry(e));
         JButton delete = new JButton("Borrar");
+        styleAgendaButton(delete);
         delete.addActionListener(ev -> deleteEntry(e));
 
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
