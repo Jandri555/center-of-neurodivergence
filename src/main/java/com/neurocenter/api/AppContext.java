@@ -17,6 +17,14 @@ public interface AppContext {
     /** Carpeta privada del app (AppData/CenterOfNeurodivergence/data/&lt;id&gt;). Ya existe. */
     Path dataDir();
 
+    /**
+     * Acceso mediado al sistema de archivos. Las rutas relativas se resuelven
+     * desde {@link #dataDir()}; las rutas externas pueden requerir permiso.
+     */
+    default AppStorage storage() {
+        throw new UnsupportedOperationException("Esta versión del panel no ofrece acceso mediado al almacenamiento.");
+    }
+
     /** Lee un ajuste guardado del app (se guarda en su carpeta de datos). */
     String getSetting(String key, String defaultValue);
 
