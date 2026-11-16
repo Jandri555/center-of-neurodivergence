@@ -7,6 +7,7 @@ import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 
 import javax.swing.AbstractAction;
+import javax.swing.AbstractButton;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
@@ -188,7 +189,15 @@ final class PdfReaderPanel extends JPanel {
 
     private JComponent buildTopBar() {
         JButton open = new JButton("Abrir PDF…");
+        styleToolbarButton(open);
         open.addActionListener(e -> chooseFile());
+
+        styleToolbarButton(prevBtn);
+        styleToolbarButton(nextBtn);
+        styleToolbarButton(bionicBtn);
+        styleToolbarButton(originalBtn);
+        styleToolbarButton(hybridBtn);
+        styleToolbarButton(settingsToggle);
 
         prevBtn.setToolTipText("Página anterior (Alt + ←)");
         nextBtn.setToolTipText("Página siguiente (Alt + →)");
@@ -215,6 +224,8 @@ final class PdfReaderPanel extends JPanel {
 
         JButton zoomOut = new JButton("−");
         JButton zoomIn = new JButton("+");
+        styleToolbarButton(zoomOut);
+        styleToolbarButton(zoomIn);
         zoomOut.setToolTipText("Reducir");
         zoomIn.setToolTipText("Ampliar");
         zoomOut.addActionListener(e -> changeZoom(-0.15));
@@ -247,6 +258,13 @@ final class PdfReaderPanel extends JPanel {
         north.add(bar, BorderLayout.CENTER);
         north.add(new JSeparator(), BorderLayout.SOUTH);
         return north;
+    }
+
+    /** Botones planos integrados visualmente en la barra de herramientas de FlatLaf. */
+    private static void styleToolbarButton(AbstractButton button) {
+        button.putClientProperty("JButton.buttonType", "toolBarButton");
+        button.setFocusable(false);
+        button.setOpaque(false);
     }
 
     private JComponent buildEmptyCard() {
