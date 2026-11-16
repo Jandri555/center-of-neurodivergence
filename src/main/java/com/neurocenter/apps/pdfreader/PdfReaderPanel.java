@@ -28,6 +28,7 @@ import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
+import javax.swing.UIManager;
 import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -208,21 +209,23 @@ final class PdfReaderPanel extends JPanel {
         prevBtn.addActionListener(e -> goToPage(pageIndex - 1));
         nextBtn.addActionListener(e -> goToPage(pageIndex + 1));
         pageSpinner.setPreferredSize(new Dimension(72, pageSpinner.getPreferredSize().height));
-        pageSpinner.putClientProperty("JComponent.roundRect", true);
+        // JSpinner pinta su propio fondo y el panel de flechas aunque el editor
+        // sea transparente. Igualamos el fondo al de la barra y desactivamos
+        // el pintado opaco de todos los contenedores internos.
+        Color toolbarBackground = UIManager.getColor("Panel.background");
+        if (toolbarBackground != null) pageSpinner.setBackground(toolbarBackground);
+        pageSpinner.setOpaque(false);
         pageSpinner.setBorder(null);
         JComponent editor = pageSpinner.getEditor();
         if (editor instanceof JSpinner.DefaultEditor spinnerEditor) {
+            spinnerEditor.setOpaque(false);
             spinnerEditor.getTextField().setOpaque(false);
+            spinnerEditor.getTextField().setBackground(toolbarBackground);
+            spinnerEditor.getTextField().setForeground(UIManager.getColor("Label.foreground"));
             spinnerEditor.getTextField().setBorder(null);
             spinnerEditor.getTextField().setHorizontalAlignment(SwingConstants.CENTER);
         }
-        for (Component child : pageSpinner.getComponents()) {
-            if (child instanceof JButton arrow) {
-                styleToolbarButton(arrow);
-                arrow.setBorderPainted(false);
-                arrow.setContentAreaFilled(false);
-            }
-        }
+        makeSpinnerChildrenTransparent(pageSpinner, toolbarBackground);
         pageSpinner.addChangeListener(e -> {
             if (!updatingPage) goToPage(pageModel.getNumber().intValue() - 1);
         });
@@ -280,6 +283,26 @@ final class PdfReaderPanel extends JPanel {
     }
 
     /** Botones planos integrados visualmente en la barra de herramientas de FlatLaf. */
+    private static void makeSpinnerChildrenTransparent(Container parent, Color background) {
+        for (Component child : parent.getComponents()) {
+            if (child instanceof JComponent component) {
+                component.setOpaque(false);
+                if (component instanceof AbstractButton button) {
+                    button.setContentAreaFilled(false);
+                    button.setBorderPainted(false);
+                    button.setFocusable(false);
+                    button.putClientProperty("JButton.buttonType", "toolBarButton");
+                }
+                if (background != null && component instanceof JSpinner.DefaultEditor) {
+                    component.setBackground(background);
+                }
+            }
+            if (child instanceof Container container) {
+                makeSpinnerChildrenTransparent(container, background);
+            }
+        }
+    }
+
     private static void styleToolbarButton(AbstractButton button) {
         button.putClientProperty("JButton.buttonType", "toolBarButton");
         button.setFocusable(false);
