@@ -80,6 +80,9 @@ public final class AppRegistry {
         String version = "Desconocida";
 
         try (JarFile jarFile = new JarFile(jar.toFile())) {
+            if (jarFile.getJarEntry("META-INF/services/com.neurocenter.api.NeuroApp") == null) {
+                throw new IOException("El JAR no declara ninguna app NeuroApp. Falta META-INF/services/com.neurocenter.api.NeuroApp.");
+            }
             Manifest manifest = jarFile.getManifest();
             if (manifest != null) {
                 Attributes attributes = manifest.getMainAttributes();
