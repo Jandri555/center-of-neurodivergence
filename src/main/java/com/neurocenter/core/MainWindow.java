@@ -235,7 +235,7 @@ public final class MainWindow extends JFrame {
         b.setFocusable(false);
         b.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(0, 3, 0, 0, UIManager.getColor("Panel.background")),
-                new EmptyBorder(8, 7, 8, 10)));
+                new EmptyBorder(8, 12, 8, 10)));
         b.setAlignmentX(Component.LEFT_ALIGNMENT);
         b.setMaximumSize(new Dimension(Integer.MAX_VALUE, b.getPreferredSize().height + 4));
         b.addActionListener(e -> showApp(id));
@@ -332,7 +332,7 @@ public final class MainWindow extends JFrame {
             Color marker = button.isSelected() ? accent : panel;
             button.setBorder(BorderFactory.createCompoundBorder(
                     BorderFactory.createMatteBorder(0, 3, 0, 0, marker),
-                    new EmptyBorder(8, 7, 8, 10)));
+                    new EmptyBorder(8, 12, 8, 10)));
             button.setContentAreaFilled(false);
             button.setOpaque(false);
         }
