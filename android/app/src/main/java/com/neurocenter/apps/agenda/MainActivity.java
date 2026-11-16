@@ -691,13 +691,14 @@ public final class MainActivity extends Activity {
             } catch (Exception ex) {
                 failure = ex.getMessage() == null ? ex.toString() : ex.getMessage();
             } finally {
+                boolean closedByUser = server.isClosed();
                 try {
                     server.close();
                 } catch (IOException ignored) {
                     // Ya se está cerrando la conexión.
                 }
                 if (bluetoothServer == server) bluetoothServer = null;
-                final String error = server.isClosed() ? null : failure;
+                final String error = closedByUser ? null : failure;
                 runOnUiThread(() -> {
                     bluetoothButton.setEnabled(true);
                     bluetoothButton.setText("Esperar conexión Bluetooth");
