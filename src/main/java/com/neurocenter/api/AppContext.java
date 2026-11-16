@@ -3,7 +3,15 @@ package com.neurocenter.api;
 import java.awt.Window;
 import java.nio.file.Path;
 
-/** Lo que el panel ofrece a cada app. Todos los métodos deben llamarse desde el hilo de Swing. */
+/**
+ * Servicios que el panel ofrece a cada app.
+ *
+ * <p>Los métodos de datos pueden usarse desde el hilo de trabajo del app.
+ * {@link #setStatus(String)}, {@link #openApp(String)} y
+ * {@link #requestAttention()} despachan internamente las operaciones de interfaz
+ * al hilo de Swing. Los componentes Swing y los diálogos deben manipularse
+ * únicamente desde ese hilo.</p>
+ */
 public interface AppContext {
 
     /** Carpeta privada del app (AppData/CenterOfNeurodivergence/data/&lt;id&gt;). Ya existe. */
