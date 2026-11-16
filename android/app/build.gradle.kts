@@ -19,20 +19,19 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // Reutiliza el mismo modelo y el mismo historial de operaciones que el escritorio.
+    // El motor compartido vive en el proyecto de escritorio. Se añade solo
+    // su carpeta y se excluyen las dos clases de interfaz Swing.
     sourceSets {
         getByName("main") {
-            java.srcDir("../../src/main/java")
-            java.include(
-                "com/neurocenter/apps/agenda/AgendaEntry.java",
-                "com/neurocenter/apps/agenda/AgendaOperation.java",
-                "com/neurocenter/apps/agenda/AgendaSyncJournal.java",
-                "com/neurocenter/apps/agenda/AgendaSyncProtocol.java",
-                "com/neurocenter/apps/agenda/AgendaStore.java",
-                "com/neurocenter/apps/agenda/MainActivity.java"
-            )
+            java.directories.add("../../src/main/java/com/neurocenter/apps/agenda")
         }
     }
+}
+
+// AGP 9.4 expone AndroidSourceDirectorySet sin PatternFilterable.
+// Excluimos los archivos Swing a nivel de tarea de compilación Java.
+tasks.withType<JavaCompile>().configureEach {
+    exclude("**/AgendaApp.java", "**/AgendaPanel.java")
 }
 
 dependencies {
