@@ -23,6 +23,8 @@ public final class AppPaths {
 
     public static Path appsDir() { return ROOT.resolve("apps"); }
 
+    public static Path themesDir() { return ROOT.resolve("themes"); }
+
     public static Path dataDir() { return ROOT.resolve("data"); }
 
     /** Carpeta de datos de una app; se crea si no existe. */
@@ -41,6 +43,7 @@ public final class AppPaths {
     public static void ensureDirectories() {
         try {
             Files.createDirectories(appsDir());
+            Files.createDirectories(themesDir());
             Files.createDirectories(dataDir());
             Path legacy = ROOT.resolve("plugins");
             if (Files.isDirectory(legacy)) {
