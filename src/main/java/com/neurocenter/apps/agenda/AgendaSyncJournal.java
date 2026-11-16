@@ -72,9 +72,10 @@ final class AgendaSyncJournal {
      * No altera ni borra el archivo de agenda existente.
      */
     synchronized void enable(List<AgendaEntry> currentEntries) {
-        if (metadata.enabled) return;
-        metadata.enabled = true;
-        saveMetadataUnchecked();
+        if (!metadata.enabled) {
+            metadata.enabled = true;
+            saveMetadataUnchecked();
+        }
         if (operations.isEmpty()) {
             for (AgendaEntry entry : currentEntries) recordUpsert(entry);
         }
