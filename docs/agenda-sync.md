@@ -74,8 +74,8 @@ En Android:
 
 En Windows:
 1. Empareja primero el teléfono desde la configuración Bluetooth.
-2. En las opciones avanzadas de Bluetooth, crea o habilita un puerto COM saliente para el servicio serie Bluetooth del móvil (SPP).
-3. En la Agenda de escritorio, activa el historial, pulsa **Sincronizar Bluetooth** y selecciona el puerto COM saliente.
+2. En las opciones avanzadas de Bluetooth, crea o habilita una sola vez un puerto COM saliente para el servicio serie Bluetooth del móvil (SPP).
+3. La primera vez, selecciona ese puerto en la Agenda de escritorio. Tras una sincronización correcta, la aplicación recuerda el puerto y lo utiliza automáticamente en las siguientes ocasiones. Si Windows cambia el número o deja de estar disponible, habrá que seleccionarlo de nuevo.
 
 El escritorio usa jSerialComm para abrir el puerto serie que Windows presenta. La implementación está lista para pruebas, pero todavía necesita validación física con teléfonos y adaptadores concretos. No se debe dar por garantizada la disponibilidad del perfil SPP en todos los modelos ni controladores.
 
