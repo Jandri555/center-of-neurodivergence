@@ -37,6 +37,8 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Frame;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.Toolkit;
@@ -225,7 +227,25 @@ public final class MainWindow extends JFrame {
     }
 
     private void addNav(JPanel side, String id, String text, Icon icon) {
-        JToggleButton b = new JToggleButton(text, icon);
+        // El indicador de selección se pinta dentro del propio botón.
+        // Así no depende de un MatteBorder exterior, que puede quedar recortado.
+        JToggleButton b = new JToggleButton(text, icon) {
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                super.paintComponent(graphics);
+
+                Color marker = navMarkerColor(isSelected());
+                if (marker == null) return;
+
+                Graphics2D g2 = (Graphics2D) graphics.create();
+                try {
+                    g2.setColor(marker);
+                    g2.fillRect(0, 0, 3, getHeight());
+                } finally {
+                    g2.dispose();
+                }
+            }
+        };
         b.setHorizontalAlignment(SwingConstants.LEFT);
         b.setIconTextGap(12);
         b.setMargin(new Insets(8, 10, 8, 10));
@@ -233,9 +253,9 @@ public final class MainWindow extends JFrame {
         b.setContentAreaFilled(false);
         b.setOpaque(false);
         b.setFocusable(false);
-        b.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 3, 0, 0, UIManager.getColor("Panel.background")),
-                new EmptyBorder(8, 12, 8, 10)));
+        // Reservamos dentro del botón el mismo espacio que ocupaban el borde
+        // de 3 px y el margen interior anterior.
+        b.setBorder(new EmptyBorder(8, 15, 8, 10));
         b.setAlignmentX(Component.LEFT_ALIGNMENT);
         b.setMaximumSize(new Dimension(Integer.MAX_VALUE, b.getPreferredSize().height + 4));
         b.addActionListener(e -> showApp(id));
@@ -322,19 +342,22 @@ public final class MainWindow extends JFrame {
     }
 
     /** Resalta la app activa con una línea lateral, sin rellenar toda la fila. */
-    private void updateNavAppearance() {
+    private Color navMarkerColor(boolean selected) {
         Color panel = UIManager.getColor("Panel.background");
+        if (!selected) return panel != null ? panel : getBackground();
+
         Color accent = UIManager.getColor("Component.focusColor");
-        if (panel == null) panel = getBackground();
         if (accent == null) accent = UIManager.getColor("Component.accentColor");
         if (accent == null) accent = UIManager.getColor("Button.foreground");
+        return accent != null ? accent : getForeground();
+    }
+
+    private void updateNavAppearance() {
         for (JToggleButton button : navButtons.values()) {
-            Color marker = button.isSelected() ? accent : panel;
-            button.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createMatteBorder(0, 3, 0, 0, marker),
-                    new EmptyBorder(8, 12, 8, 10)));
+            button.setBorder(new EmptyBorder(8, 15, 8, 10));
             button.setContentAreaFilled(false);
             button.setOpaque(false);
+            button.repaint();
         }
     }
 
