@@ -617,13 +617,12 @@ public final class MainWindow extends JFrame {
         JLabel message = new JLabel("Ajustes generales");
         root.add(message, BorderLayout.CENTER);
 
-        JPanel buttons = new JPanel(new GridLayout(1, 4, 8, 0));
-        String[] labels = {"Cambiar tema", "Gestionar temas", "Gestionar apps", "Cerrar"};
+        JPanel buttons = new JPanel(new GridLayout(1, 3, 8, 0));
+        String[] labels = {"Cambiar tema", "Gestionar temas", "Gestionar apps"};
         Runnable[] actions = {
                 this::chooseTheme,
                 this::manageThemes,
-                this::manageApps,
-                dialog::dispose
+                this::manageApps
         };
         for (int i = 0; i < labels.length; i++) {
             final int index = i;
@@ -751,7 +750,7 @@ public final class MainWindow extends JFrame {
             return;
         }
 
-        String[] options = {"Instalar app (.jar)", "Configurar inicio automático", "Desinstalar app", "Volver"};
+        String[] options = {"Instalar app (.jar)", "Desinstalar app", "Configurar inicio automático"};
         int choice = JOptionPane.showOptionDialog(this,
                 "Gestiona las aplicaciones externas instaladas. Los cambios de instalación y desinstalación "
                         + "se aplican al reiniciar.",
@@ -784,9 +783,9 @@ public final class MainWindow extends JFrame {
                 }
             }
         } else if (choice == 1) {
-            configureAppAutorun();
-        } else if (choice == 2) {
             uninstallExternalApp();
+        } else if (choice == 2) {
+            configureAppAutorun();
         }
     }
 
