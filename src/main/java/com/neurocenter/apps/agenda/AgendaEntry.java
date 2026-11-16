@@ -37,6 +37,26 @@ final class AgendaEntry {
     boolean remind;
     boolean notified;
 
+    /** Copia independiente para editar sin alterar la entrada original si se cancela. */
+    AgendaEntry copy() {
+        AgendaEntry copy = new AgendaEntry();
+        copy.id = id;
+        copy.type = type;
+        copy.date = date;
+        copy.time = time;
+        copy.title = title;
+        copy.notes = notes;
+        copy.done = done;
+        copy.remindDayBefore = remindDayBefore;
+        copy.notifiedDayBefore = notifiedDayBefore;
+        copy.remindCustom = remindCustom;
+        copy.remindBeforeMinutes = remindBeforeMinutes;
+        copy.notifiedCustom = notifiedCustom;
+        copy.remind = remind;
+        copy.notified = notified;
+        return copy;
+    }
+
     boolean isEvent() {
         return EVENT.equals(type);
     }
