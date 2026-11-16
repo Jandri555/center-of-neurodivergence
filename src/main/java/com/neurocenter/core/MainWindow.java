@@ -106,18 +106,18 @@ public final class MainWindow extends JFrame {
 
     private void register(NeuroApp app, boolean plugin) {
         try {
-            String id = program.id();
-            String name = program.name();
+            String id = app.id();
+            String name = app.name();
             if (id == null || id.isBlank()) throw new IllegalArgumentException("el id está vacío");
             if (name == null || name.isBlank()) throw new IllegalArgumentException("el nombre está vacío");
             if (apps.containsKey(id)) {
                 loadErrors.add("Hay dos apps con el id «" + id + "»: se ignora «" + name + "».");
                 return;
             }
-            apps.put(id, program);
+            apps.put(id, app);
             if (plugin) externalAppIds.add(id);
         } catch (Throwable t) {
-            loadErrors.add(program.getClass().getName() + ": " + t);
+            loadErrors.add(app.getClass().getName() + ": " + t);
         }
     }
 
@@ -400,9 +400,9 @@ public final class MainWindow extends JFrame {
         private final NeuroApp app;
         private PropertiesStore store;
 
-        Ctx(NeuroApp app) { this.program = program; }
+        Ctx(NeuroApp app) { this.app = app; }
 
-        @Override public Path dataDir() { return AppPaths.appDataDir(program.id()); }
+        @Override public Path dataDir() { return AppPaths.appDataDir(app.id()); }
 
         private synchronized PropertiesStore store() {
             if (store == null) store = new PropertiesStore(dataDir().resolve("settings.properties"));
