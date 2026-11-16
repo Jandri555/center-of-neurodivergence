@@ -23,12 +23,61 @@ Los datos se guardan en `CenterOfNeurodivergence`:
 - macOS: `~/Library/Application Support/CenterOfNeurodivergence/`
 - Linux: `~/.local/share/CenterOfNeurodivergence/`
 
-La carpeta `apps/` contiene las apps externas instaladas y `data/` sus datos. La carpeta antigua `plugins/` se migra automáticamente a `apps/` al iniciar.
+La carpeta `apps/` contiene las apps externas instaladas, `themes/` los temas `.tme` instalados y `data/` los datos de cada app. La carpeta antigua `plugins/` se migra automáticamente a `apps/` al iniciar.
 
 ## Gestionar apps externas
 Abre **Ajustes** (⚙) en el panel y entra en **Gestionar apps**. Desde ahí puedes instalar un archivo JAR o programar su desinstalación. Los cambios se aplican al reiniciar, porque una app cargada puede mantener su JAR bloqueado en Windows.
 
 **Seguridad:** una app externa es código Java ejecutado con los permisos de tu usuario. Instala únicamente JAR de fuentes de confianza.
+
+## Temas externos (.tme)
+
+Desde **Ajustes → Gestionar temas** puedes instalar o desinstalar temas. Un archivo `.tme` es un ZIP renombrado: contiene un `theme.json` en la raíz y, opcionalmente, una carpeta `resources/`. No contiene ni ejecuta código Java, JavaScript o CSS. Los estilos se declaran como colores en JSON; esto evita que un tema pueda ejecutar código al instalarse.
+
+Ejemplo de estructura:
+
+```text
+MiTema.tme
+├── theme.json
+└── resources/
+    └── icons/
+        ├── agenda.png
+        └── pdf-reader.png
+```
+
+Ejemplo de `theme.json`:
+
+```json
+{
+  "id": "mi-tema",
+  "name": "Mi tema",
+  "author": "Tu nombre",
+  "version": "1.0",
+  "base": "dark",
+  "colors": {
+    "background": "#171923",
+    "surface": "#222635",
+    "foreground": "#F2F4F8",
+    "text": "#F2F4F8",
+    "primary": "#8B9CFF",
+    "selection": "#46558F",
+    "selectionText": "#FFFFFF",
+    "border": "#41485C",
+    "button": "#30384D",
+    "buttonText": "#FFFFFF",
+    "input": "#202536",
+    "inputText": "#F2F4F8"
+  },
+  "appIcons": {
+    "agenda": "resources/icons/agenda.png",
+    "pdf-reader": "resources/icons/pdf-reader.png"
+  }
+}
+```
+
+`base` debe ser `light` u `dark` y determina el aspecto base de FlatLaf; `colors` sobrescribe los colores indicados. `appIcons` es opcional y usa los identificadores internos de las apps. Las rutas de iconos deben estar dentro de `resources/`. Se admiten imágenes que Java pueda leer, preferiblemente PNG.
+
+Por seguridad, el instalador rechaza rutas ZIP inseguras, archivos fuera de `theme.json` y `resources/`, más de 200 entradas o más de 20 MB descomprimidos. Los temas se guardan en la carpeta de datos de usuario y pueden quitarse desde el gestor.
 
 ## Crear una app externa
 Mira `example-app/`. Implementa `com.neurocenter.api.NeuroApp` y registra la clase mediante el servicio:
