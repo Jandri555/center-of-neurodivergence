@@ -315,7 +315,7 @@ public final class MainWindow extends JFrame {
     private void openSettings() {
         String[] options = {"Cambiar tema", "Gestionar temas", "Gestionar apps", "Cerrar"};
         int choice = JOptionPane.showOptionDialog(this, "Ajustes generales", "Ajustes",
-                JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
+                JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, options, null);
         if (choice == 0) {
             chooseTheme();
         } else if (choice == 1) {
