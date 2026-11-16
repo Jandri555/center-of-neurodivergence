@@ -45,6 +45,16 @@ La API de extensiones actual es `NeuroApp` con su contexto `AppContext`. Los JAR
 
 **Seguridad:** una app externa es código Java ejecutado con los permisos de tu usuario. No existe aislamiento de seguridad entre una app externa y la aplicación principal. Instala únicamente JAR de fuentes de confianza.
 
+## Sincronización de Agenda con Android (en desarrollo)
+
+La Agenda puede preparar un historial de operaciones desde el botón **Preparar sincronización**. Al activarlo, registra altas, modificaciones, cambios de estado y borrados en `agenda-operations.jsonl`, manteniendo `agenda.json` como copia local de trabajo. Los datos que ya existían se incorporan mediante una línea base.
+
+El historial utiliza identificadores idempotentes y relojes causales. Los borrados se conservan como operaciones explícitas para evitar que una entrada antigua reaparezca al sincronizar. Los avisos ya entregados permanecen locales a cada dispositivo.
+
+**Importante:** en esta fase todavía no se transfieren datos entre dispositivos. La aplicación Android y los transportes USB/Bluetooth están pendientes. No borres `agenda-operations.jsonl` ni `agenda-sync.json` mientras la sincronización esté preparada.
+
+El diseño y las fases están documentados en [docs/agenda-sync.md](docs/agenda-sync.md).
+
 ## Temas externos (.tme)
 
 Desde **Ajustes → Gestionar temas** puedes instalar o desinstalar temas. Un archivo `.tme` es un ZIP renombrado: contiene un `theme.json` en la raíz y, opcionalmente, una carpeta `resources/`. No contiene ni ejecuta código Java, JavaScript o CSS. Los estilos se declaran como colores en JSON.
