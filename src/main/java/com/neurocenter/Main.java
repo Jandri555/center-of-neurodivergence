@@ -6,6 +6,8 @@ import com.neurocenter.core.PropertiesStore;
 import com.neurocenter.core.ThemeManager;
 
 import javax.swing.SwingUtilities;
+import javax.swing.JFrame;
+import javax.swing.JDialog;
 import javax.swing.UIManager;
 
 public final class Main {
@@ -17,6 +19,10 @@ public final class Main {
 
         SwingUtilities.invokeLater(() -> {
             ThemeManager.apply(themeId);
+            // Utiliza las decoraciones de ventana de FlatLaf para integrar
+            // la barra de título y sus controles con el tema activo.
+            JFrame.setDefaultLookAndFeelDecorated(true);
+            JDialog.setDefaultLookAndFeelDecorated(true);
             // Botones de los diálogos en español
             UIManager.put("OptionPane.okButtonText", "Aceptar");
             UIManager.put("OptionPane.cancelButtonText", "Cancelar");
