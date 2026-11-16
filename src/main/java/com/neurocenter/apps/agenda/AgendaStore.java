@@ -60,7 +60,7 @@ final class AgendaStore {
         entries.clear();
         if (Files.isRegularFile(file)) {
             try {
-                List<AgendaEntry> loaded = gson.fromJson(Files.readString(file, StandardCharsets.UTF_8), LIST_TYPE);
+                List<AgendaEntry> loaded = gson.fromJson(new String(Files.readAllBytes(file), StandardCharsets.UTF_8), LIST_TYPE);
                 if (loaded != null) entries.addAll(loaded);
             } catch (JsonParseException | IOException e) {
                 // Archivo dañado: lo apartamos (no se pierde nada) y empezamos con la agenda vacía.
@@ -143,7 +143,7 @@ final class AgendaStore {
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, gson.toJson(entries, LIST_TYPE), StandardCharsets.UTF_8);
+            Files.write(tmp, gson.toJson(entries, LIST_TYPE).getBytes(StandardCharsets.UTF_8));
             try {
                 Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             } catch (AtomicMoveNotSupportedException e) {
@@ -191,12 +191,22 @@ final class AgendaStore {
     }
 
     List<AgendaEntry> on(LocalDate day) {
-        return entries.stream().filter(e -> day.equals(e.localDate())).sorted(ORDER).toList();
+        List<AgendaEntry> result = new ArrayList<>();
+        for (AgendaEntry entry : entries) {
+            if (day.equals(entry.localDate())) result.add(entry);
+        }
+        result.sort(ORDER);
+        return Collections.unmodifiableList(result);
     }
 
     /** Todas las tareas sin hacer, la de fecha límite más cercana primero. */
     List<AgendaEntry> pendingTasks() {
-        return entries.stream().filter(e -> !e.isEvent() && !e.done).sorted(BY_DEADLINE).toList();
+        List<AgendaEntry> result = new ArrayList<>();
+        for (AgendaEntry entry : entries) {
+            if (!entry.isEvent() && !entry.done) result.add(entry);
+        }
+        result.sort(BY_DEADLINE);
+        return Collections.unmodifiableList(result);
     }
 
     void add(AgendaEntry entry) {
