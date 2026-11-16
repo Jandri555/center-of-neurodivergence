@@ -86,6 +86,7 @@ final class AgendaPanel extends JPanel {
     private final AgendaStore store;
     private final AppContext ctx;
     private JButton bluetoothSyncButton;
+    private JButton usbSyncButton;
 
     private YearMonth month = YearMonth.now();
     private LocalDate selected = LocalDate.now();
@@ -153,6 +154,7 @@ final class AgendaPanel extends JPanel {
                 prepareSync.setText("Historial activo");
                 prepareSync.setEnabled(false);
                 bluetoothSyncButton.setEnabled(true);
+                usbSyncButton.setEnabled(true);
             }
         });
 
@@ -162,9 +164,16 @@ final class AgendaPanel extends JPanel {
         bluetoothSyncButton.setToolTipText("Conecta con Android mediante el puerto COM Bluetooth del sistema");
         bluetoothSyncButton.addActionListener(e -> syncBluetooth());
 
+        usbSyncButton = new JButton("Sincronizar USB");
+        styleAgendaButton(usbSyncButton);
+        usbSyncButton.setEnabled(store.isSyncEnabled());
+        usbSyncButton.setToolTipText("Conecta un Android por cable USB (Android Open Accessory)");
+        usbSyncButton.addActionListener(e -> syncUsb());
+
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         right.add(prepareSync);
         right.add(bluetoothSyncButton);
+        right.add(usbSyncButton);
         right.add(newTask);
         right.add(newEvent);
 
@@ -205,6 +214,73 @@ final class AgendaPanel extends JPanel {
         int portIndex = java.util.Arrays.asList(labels).indexOf(selected);
         if (portIndex < 0) return;
         performBluetoothSync(ports[portIndex]);
+    }
+
+    private void syncUsb() {
+        if (!store.isSyncEnabled()) {
+            JOptionPane.showMessageDialog(ctx.window(),
+                    "Activa primero el historial de sincronización en ambos dispositivos.",
+                    "Sincronización USB", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        int answer = JOptionPane.showConfirmDialog(
+                ctx.window(),
+                "Conecta el móvil al ordenador con un cable de datos y desbloquéalo. "
+                        + "El PC intentará cambiarlo a Android Open Accessory (AOA). "
+                        + "En Android, selecciona Agenda cuando aparezca el aviso.\\n\\n"
+                        + "En Windows puede ser necesario instalar un controlador WinUSB/libusbK "
+                        + "compatible con el accesorio. Si falta, la conexión fallará sin borrar el historial.\\n\\n"
+                        + "¿Iniciar la conexión USB?",
+                "Sincronizar Agenda por USB",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.INFORMATION_MESSAGE);
+        if (answer != JOptionPane.YES_OPTION) return;
+        performUsbSync();
+    }
+
+    private void performUsbSync() {
+        JDialog progress = new JDialog(
+                SwingUtilities.getWindowAncestor(this),
+                "Sincronizando agenda por USB",
+                Dialog.ModalityType.APPLICATION_MODAL);
+        JPanel panel = new JPanel(new BorderLayout(0, 12));
+        panel.setBorder(new EmptyBorder(18, 22, 18, 22));
+        panel.add(new JLabel("Buscando el teléfono y negociando Android Open Accessory…"), BorderLayout.NORTH);
+        JProgressBar bar = new JProgressBar();
+        bar.setIndeterminate(true);
+        panel.add(bar, BorderLayout.CENTER);
+        progress.setContentPane(panel);
+        progress.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+        progress.pack();
+        progress.setLocationRelativeTo(ctx.window());
+
+        Thread worker = new Thread(() -> {
+            String failure = null;
+            try {
+                UsbAoaClient.synchronize(store);
+            } catch (Exception ex) {
+                failure = ex.getMessage() == null ? ex.toString() : ex.getMessage();
+            }
+
+            final String error = failure;
+            SwingUtilities.invokeLater(() -> {
+                progress.dispose();
+                if (error == null) {
+                    refresh();
+                    JOptionPane.showMessageDialog(ctx.window(),
+                            "La agenda se ha sincronizado correctamente por USB.",
+                            "Sincronización completada", JOptionPane.INFORMATION_MESSAGE);
+                } else {
+                    JOptionPane.showMessageDialog(ctx.window(),
+                            "No se pudo sincronizar por USB:\\n" + error,
+                            "Error de sincronización", JOptionPane.ERROR_MESSAGE);
+                }
+            });
+        }, "agenda-usb-sync");
+        worker.setDaemon(true);
+        worker.start();
+        progress.setVisible(true);
     }
 
     private void performBluetoothSync(com.fazecast.jSerialComm.SerialPort port) {
