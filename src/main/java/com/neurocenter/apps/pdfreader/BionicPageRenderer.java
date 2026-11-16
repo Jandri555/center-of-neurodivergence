@@ -50,10 +50,12 @@ final class BionicPageRenderer {
         PDFTextStripper stripper = new PDFTextStripper() {
             @Override
             protected void processTextPosition(TextPosition text) {
+                super.processTextPosition(text);
                 positions.add(text);
             }
         };
         stripper.setSortByPosition(false);
+        stripper.setSuppressDuplicateOverlappingText(false);
         stripper.setStartPage(pageIndex + 1);
         stripper.setEndPage(pageIndex + 1);
         stripper.getText(document);
