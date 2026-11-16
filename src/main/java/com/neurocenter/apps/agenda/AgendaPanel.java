@@ -508,9 +508,11 @@ final class AgendaPanel extends JPanel {
     }
 
     private void editEntry(AgendaEntry e) {
-        if (askEntry(e, e.type) == null) return;
+        AgendaEntry updated = askEntry(e, e.type);
+        if (updated == null) return;
+        store.replace(e, updated);
         persist();
-        jumpTo(e);
+        jumpTo(updated);
         refresh();
     }
 
@@ -661,7 +663,7 @@ final class AgendaPanel extends JPanel {
                 }
             }
 
-            AgendaEntry e = existing != null ? existing : new AgendaEntry();
+            AgendaEntry e = existing != null ? existing.copy() : new AgendaEntry();
             boolean hasTime = event || withTime.isSelected();
             e.type = type;
             e.title = ttl;
