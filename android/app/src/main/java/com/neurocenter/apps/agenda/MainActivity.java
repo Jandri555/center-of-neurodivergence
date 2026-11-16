@@ -411,7 +411,7 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle("Preparar sincronización")
                 .setMessage("Se registrarán las altas, modificaciones y borrados para poder intercambiarlos "
-                        + "con el ordenador. La conexión USB/Bluetooth todavía está en desarrollo. ¿Activar?")
+                        + "con el ordenador. Bluetooth ya tiene un modo de conexión; la conexión por cable USB todavía está en desarrollo. ¿Activar?")
                 .setNegativeButton("Cancelar", null)
                 .setPositiveButton("Activar", (dialog, which) -> {
                     try {
