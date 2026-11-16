@@ -6,12 +6,29 @@ android {
     namespace = "com.neurocenter.apps.agenda"
     compileSdk = 36
 
+    // Clave de depuración estable para que los APK de CI puedan actualizarse
+    // entre ejecuciones. Es una clave DEBUG pública; nunca usarla para releases.
+    signingConfigs {
+        create("stableDebug") {
+            storeFile = rootProject.file("agenda-debug.keystore")
+            storePassword = "android"
+            keyAlias = "agenda-debug"
+            keyPassword = "android"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.neurocenter.agenda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("stableDebug")
+        }
     }
 
     compileOptions {
