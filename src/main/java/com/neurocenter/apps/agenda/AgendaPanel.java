@@ -143,7 +143,13 @@ final class AgendaPanel extends JPanel {
         styleAgendaButton(prepareSync);
         prepareSync.setEnabled(!store.isSyncEnabled());
         prepareSync.setToolTipText("Activa el registro de cambios para futuras conexiones con Android");
-        prepareSync.addActionListener(e -> prepareSync());
+        prepareSync.addActionListener(e -> {
+            prepareSync();
+            if (store.isSyncEnabled()) {
+                prepareSync.setText("Historial de sincronización activo");
+                prepareSync.setEnabled(false);
+            }
+        });
 
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         right.add(prepareSync);
