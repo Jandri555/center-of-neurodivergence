@@ -11,6 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -70,6 +71,75 @@ class AgendaSyncProtocolTest {
             serverInput.close();
             serverOutput.close();
         }
+    }
+
+    @Test
+    void persistentSessionSynchronizesNewEntriesAutomaticallyInBothDirections() throws Exception {
+        AgendaStore desktop = newStore("desktop-live");
+        AgendaStore phone = newStore("phone-live");
+        desktop.enableSync();
+        phone.enableSync();
+
+        PipedOutputStream clientOutput = new PipedOutputStream();
+        PipedInputStream serverInput = new PipedInputStream(clientOutput, 64 * 1024);
+        PipedOutputStream serverOutput = new PipedOutputStream();
+        PipedInputStream clientInput = new PipedInputStream(serverOutput, 64 * 1024);
+
+        AtomicBoolean connected = new AtomicBoolean(true);
+        java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(2);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> server = executor.submit(() -> {
+                AgendaSyncProtocol.runServerSession(
+                        serverInput, serverOutput, phone, phone::mergeOperations,
+                        connected::get, ready::countDown);
+                return null;
+            });
+            Future<?> client = executor.submit(() -> {
+                AgendaSyncProtocol.runClientSession(
+                        clientInput, clientOutput, desktop, desktop::mergeOperations,
+                        connected::get, ready::countDown);
+                return null;
+            });
+
+            assertTrue(ready.await(5, TimeUnit.SECONDS), "Both devices should complete the initial handshake");
+
+            AgendaEntry desktopEntry = task("Tarea creada en el PC");
+            desktop.add(desktopEntry);
+            desktop.save();
+            await(() -> phone.all().size() == 1, 5_000);
+
+            AgendaEntry phoneEntry = task("Tarea creada en Android");
+            phone.add(phoneEntry);
+            phone.save();
+            await(() -> desktop.all().size() == 2, 5_000);
+
+            assertTrue(phone.all().stream().anyMatch(e -> "Tarea creada en el PC".equals(e.title)));
+            assertTrue(desktop.all().stream().anyMatch(e -> "Tarea creada en Android".equals(e.title)));
+            assertFalse(client.isDone(), "The desktop session should remain connected");
+            assertFalse(server.isDone(), "The Android session should remain connected");
+
+            connected.set(false);
+            client.get(5, TimeUnit.SECONDS);
+            server.get(5, TimeUnit.SECONDS);
+        } finally {
+            connected.set(false);
+            executor.shutdownNow();
+            clientInput.close();
+            clientOutput.close();
+            serverInput.close();
+            serverOutput.close();
+        }
+    }
+
+    private static void await(java.util.function.BooleanSupplier condition, long timeoutMillis)
+            throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) return;
+            Thread.sleep(25);
+        }
+        assertTrue(condition.getAsBoolean(), "Timed out waiting for automatic synchronization");
     }
 
     @Test
