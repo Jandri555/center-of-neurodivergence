@@ -47,11 +47,18 @@ La API de extensiones actual es `NeuroApp` con su contexto `AppContext`. Los JAR
 
 ## Sincronización de Agenda con Android (en desarrollo)
 
-La Agenda puede preparar un historial de operaciones desde el botón **Preparar sincronización**. Al activarlo, registra altas, modificaciones, cambios de estado y borrados en `agenda-operations.jsonl`, manteniendo `agenda.json` como copia local de trabajo. Los datos que ya existían se incorporan mediante una línea base.
+La Agenda ya puede registrar un historial persistente de operaciones al activar **Preparar sincronización**. Registra altas, modificaciones, cambios de estado y borrados en `agenda-operations.jsonl`, manteniendo `agenda.json` como copia local de trabajo. Los datos previos se incorporan mediante una línea base.
 
-El historial utiliza identificadores idempotentes y relojes causales. Los borrados se conservan como operaciones explícitas para evitar que una entrada antigua reaparezca al sincronizar. Los avisos ya entregados permanecen locales a cada dispositivo.
+El historial utiliza identificadores idempotentes y relojes causales. Los borrados se conservan como operaciones explícitas para evitar que una entrada antigua reaparezca. Los avisos ya entregados permanecen locales a cada dispositivo.
 
-**Importante:** en esta fase todavía no se transfieren datos entre dispositivos. La aplicación Android y los transportes USB/Bluetooth están pendientes. No borres `agenda-operations.jsonl` ni `agenda-sync.json` mientras la sincronización esté preparada.
+Se ha creado una primera app Android nativa que comparte el mismo motor de datos. También está implementado el intercambio bidireccional sobre un protocolo común y una primera vía Bluetooth clásico RFCOMM/SPP:
+- En Android, activa el historial y pulsa **Esperar conexión Bluetooth**.
+- En Windows, empareja antes el teléfono y habilita un puerto COM Bluetooth saliente para ese dispositivo.
+- En la Agenda de escritorio, activa el historial, pulsa **Sincronizar Bluetooth** y selecciona ese puerto COM.
+
+La conexión por cable USB mediante Android Open Accessory (AOA) todavía está pendiente. Bluetooth requiere pruebas con teléfonos y adaptadores reales; el CI solo valida la compilación.
+
+**Importante:** no borres `agenda-operations.jsonl` ni `agenda-sync.json` mientras la sincronización esté preparada. El historial no se compacta automáticamente: se conservará hasta disponer de confirmaciones seguras de todos los dispositivos emparejados.
 
 El diseño y las fases están documentados en [docs/agenda-sync.md](docs/agenda-sync.md).
 
