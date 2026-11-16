@@ -56,7 +56,7 @@ final class AgendaStore {
         }
     }
 
-    void load() {
+    synchronized void load() {
         entries.clear();
         if (Files.isRegularFile(file)) {
             try {
@@ -92,7 +92,7 @@ final class AgendaStore {
     }
 
     /** Escritura segura: primero a un archivo temporal y luego se sustituye el original. */
-    void save() {
+    synchronized void save() {
         if (syncJournal.isEnabled()) recordChanges();
         writeSnapshot();
         rememberSavedState();
@@ -154,32 +154,32 @@ final class AgendaStore {
     }
 
     /** Activa la captura de operaciones y crea una línea base de la agenda existente. */
-    void enableSync() {
+    synchronized void enableSync() {
         syncJournal.enable(entries);
         rememberSavedState();
     }
 
-    boolean isSyncEnabled() {
+    synchronized boolean isSyncEnabled() {
         return syncJournal.isEnabled();
     }
 
     /** Estado causal que se comparte durante el protocolo de sincronización. */
-    Map<String, Long> syncVectorClock() {
+    synchronized Map<String, Long> syncVectorClock() {
         return syncJournal.vectorClock();
     }
 
     /** Historial completo, listo para intercambiar por USB o Bluetooth. */
-    List<AgendaOperation> exportOperations() {
+    synchronized List<AgendaOperation> exportOperations() {
         return syncJournal.exportOperations();
     }
 
     /** Exporta operaciones posteriores al reloj causal conocido por el otro dispositivo. */
-    List<AgendaOperation> exportOperationsAfter(Map<String, Long> remoteClock) {
+    synchronized List<AgendaOperation> exportOperationsAfter(Map<String, Long> remoteClock) {
         return syncJournal.exportOperationsAfter(remoteClock);
     }
 
     /** Incorpora operaciones remotas y reconstruye el estado sin generar operaciones locales duplicadas. */
-    void mergeOperations(List<AgendaOperation> incoming) {
+    synchronized void mergeOperations(List<AgendaOperation> incoming) {
         if (!syncJournal.isEnabled() || syncJournal.needsBaseline()) {
             throw new IllegalStateException("Activa la sincronización y completa la línea base antes de recibir operaciones.");
         }
@@ -197,11 +197,11 @@ final class AgendaStore {
         rememberSavedState();
     }
 
-    List<AgendaEntry> all() {
-        return Collections.unmodifiableList(entries);
+    synchronized List<AgendaEntry> all() {
+        return Collections.unmodifiableList(new ArrayList<>(entries));
     }
 
-    List<AgendaEntry> on(LocalDate day) {
+    synchronized List<AgendaEntry> on(LocalDate day) {
         List<AgendaEntry> result = new ArrayList<>();
         for (AgendaEntry entry : entries) {
             if (day.equals(entry.localDate())) result.add(entry);
@@ -211,7 +211,7 @@ final class AgendaStore {
     }
 
     /** Todas las tareas sin hacer, la de fecha límite más cercana primero. */
-    List<AgendaEntry> pendingTasks() {
+    synchronized List<AgendaEntry> pendingTasks() {
         List<AgendaEntry> result = new ArrayList<>();
         for (AgendaEntry entry : entries) {
             if (!entry.isEvent() && !entry.done) result.add(entry);
@@ -220,16 +220,16 @@ final class AgendaStore {
         return Collections.unmodifiableList(result);
     }
 
-    void add(AgendaEntry entry) {
+    synchronized void add(AgendaEntry entry) {
         entries.add(entry);
     }
 
-    void replace(AgendaEntry existing, AgendaEntry updated) {
+    synchronized void replace(AgendaEntry existing, AgendaEntry updated) {
         int index = entries.indexOf(existing);
         if (index >= 0) entries.set(index, updated);
     }
 
-    void remove(AgendaEntry entry) {
+    synchronized void remove(AgendaEntry entry) {
         entries.remove(entry);
     }
 }
