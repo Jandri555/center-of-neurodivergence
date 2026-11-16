@@ -47,18 +47,17 @@ La API de extensiones actual es `NeuroApp` con su contexto `AppContext`. Los JAR
 
 ## Sincronización de Agenda con Android (en desarrollo)
 
-La Agenda ya puede registrar un historial persistente de operaciones al activar **Preparar sincronización**. Registra altas, modificaciones, cambios de estado y borrados en `agenda-operations.jsonl`, manteniendo `agenda.json` como copia local de trabajo. Los datos previos se incorporan mediante una línea base.
+La Agenda ya puede preparar un historial persistente de operaciones al activar **Preparar sincronización**. Registra altas, modificaciones, cambios de estado y borrados en `agenda-operations.jsonl`, manteniendo `agenda.json` como copia local. Las entradas que ya existían se incorporan mediante una línea base creada una sola vez en cada dispositivo.
 
 El historial utiliza identificadores idempotentes y relojes causales. Los borrados se conservan como operaciones explícitas para evitar que una entrada antigua reaparezca. Los avisos ya entregados permanecen locales a cada dispositivo.
 
-Se ha creado una primera app Android nativa que comparte el mismo motor de datos. También está implementado el intercambio bidireccional sobre un protocolo común y una primera vía Bluetooth clásico RFCOMM/SPP:
-- En Android, activa el historial y pulsa **Esperar conexión Bluetooth**.
-- En Windows, empareja antes el teléfono y habilita un puerto COM Bluetooth saliente para ese dispositivo.
-- En la Agenda de escritorio, activa el historial, pulsa **Sincronizar Bluetooth** y selecciona ese puerto COM.
+Hay una primera app Android nativa que comparte el motor de datos y el protocolo de sincronización con el escritorio. Las dos vías de transporte tienen ya una implementación de código:
+- **Bluetooth clásico RFCOMM/SPP:** Android espera la conexión; en Windows hay que emparejar el teléfono y configurar un puerto COM Bluetooth saliente. Después, en Agenda, pulsa **Sincronizar Bluetooth** y selecciona ese puerto.
+- **Cable USB mediante Android Open Accessory (AOA):** el PC intenta iniciar el modo accesorio y Android abre el canal USB. En Windows puede hacer falta asociar la interfaz AOA a un controlador compatible con libusb (WinUSB o libusbK).
 
-La conexión por cable USB mediante Android Open Accessory (AOA) todavía está pendiente. Bluetooth requiere pruebas con teléfonos y adaptadores reales; el CI solo valida la compilación.
+**Estado real:** las compilaciones de escritorio y Android han pasado en CI en revisiones recientes, pero todavía no he probado la conexión con un móvil y un adaptador físicos. La disponibilidad de SPP y AOA depende del teléfono, el controlador y el cable. El USB no es necesariamente plug-and-play.
 
-**Importante:** no borres `agenda-operations.jsonl` ni `agenda-sync.json` mientras la sincronización esté preparada. El historial no se compacta automáticamente: se conservará hasta disponer de confirmaciones seguras de todos los dispositivos emparejados.
+**Limitaciones actuales:** la app Android todavía no tiene paridad completa con los avisos de eventos del escritorio. El historial se conserva después de sincronizar y aún no se compacta; no borres `agenda-operations.jsonl` ni `agenda-sync.json` mientras la sincronización esté preparada.
 
 El diseño y las fases están documentados en [docs/agenda-sync.md](docs/agenda-sync.md).
 
