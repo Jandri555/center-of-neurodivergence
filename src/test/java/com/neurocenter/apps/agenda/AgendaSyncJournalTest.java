@@ -105,6 +105,57 @@ class AgendaSyncJournalTest {
                 "La entrega del aviso es local; cada dispositivo debe poder notificar.");
     }
 
+    @Test
+    void operationJournalReconstructsAgendaAfterRestart() {
+        AgendaStore desktop = store("restart");
+        AgendaEntry task = new AgendaEntry();
+        task.title = "Comprar material";
+        task.date = LocalDate.of(2026, 11, 22).toString();
+        desktop.add(task);
+        desktop.save();
+        desktop.enableSync();
+
+        task.title = "Comprar material de clase";
+        desktop.save();
+
+        AgendaStore reopened = new AgendaStore(
+                temporaryDirectory.resolve("restart").resolve("agenda.json"));
+        reopened.load();
+
+        assertTrue(reopened.isSyncEnabled());
+        assertEquals(2, reopened.exportOperations().size());
+        assertEquals("Comprar material de clase", reopened.all().get(0).title);
+    }
+
+    @Test
+    void changingReminderScheduleResetsLocalDeliveryState() {
+        AgendaStore desktop = store("reminder-desktop");
+        AgendaEntry event = new AgendaEntry();
+        event.type = AgendaEntry.EVENT;
+        event.title = "Médico";
+        event.date = LocalDate.of(2026, 12, 2).toString();
+        event.time = "09:00";
+        event.remindDayBefore = true;
+        event.notifiedDayBefore = true;
+        desktop.add(event);
+        desktop.save();
+        desktop.enableSync();
+
+        AgendaStore phone = store("reminder-phone");
+        phone.mergeOperations(desktop.exportOperations());
+        AgendaEntry phoneEvent = phone.all().get(0);
+        phoneEvent.notifiedDayBefore = true;
+        phone.save();
+
+        event.date = LocalDate.of(2026, 12, 3).toString();
+        desktop.save();
+        phone.mergeOperations(desktop.exportOperations());
+
+        assertEquals("2026-12-03", phone.all().get(0).date);
+        assertFalse(phone.all().get(0).notifiedDayBefore,
+                "Un cambio en fecha/hora debe habilitar el recordatorio local para la nueva fecha.");
+    }
+
     private AgendaStore store(String name) {
         AgendaStore store = new AgendaStore(temporaryDirectory.resolve(name).resolve("agenda.json"));
         store.load();
