@@ -219,8 +219,8 @@ final class AgendaSyncJournal {
         String raw = Files.readString(operationsFile, StandardCharsets.UTF_8);
         // Una interrupción durante el último append puede dejar una línea final
         // incompleta. Solo se descarta ese fragmento; las líneas confirmadas se conservan.
-        if (!raw.isEmpty() && !raw.endsWith("\\n") && !raw.endsWith("\\r")) {
-            int lastBreak = Math.max(raw.lastIndexOf('\\n'), raw.lastIndexOf('\\r'));
+        if (!raw.isEmpty() && !raw.endsWith("\n") && !raw.endsWith("\r")) {
+            int lastBreak = Math.max(raw.lastIndexOf('\n'), raw.lastIndexOf('\r'));
             raw = lastBreak >= 0 ? raw.substring(0, lastBreak + 1) : "";
             Files.writeString(operationsFile, raw, StandardCharsets.UTF_8,
                     StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
