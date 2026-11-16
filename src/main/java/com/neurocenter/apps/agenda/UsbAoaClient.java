@@ -57,7 +57,7 @@ final class UsbAoaClient {
 
     private UsbAoaClient() {}
 
-    static void synchronize(AgendaStore store, BooleanSupplier keepAlive, Runnable onConnected) throws IOException {
+    static void synchronize(AgendaStore store, BooleanSupplier keepAlive, Runnable onConnected, Runnable onRemoteChange) throws IOException {
         if (store == null || !store.isSyncEnabled()) {
             throw new IOException("Activa primero el historial de sincronización de la agenda.");
         }
@@ -85,7 +85,10 @@ final class UsbAoaClient {
                     UsbOutputStream output = new UsbOutputStream(handle, endpoints.outputEndpoint());
                     AgendaSyncProtocol.runClientSession(
                             input, output, store,
-                            operations -> mergeOnEdt(store, operations),
+                            operations -> {
+                                mergeOnEdt(store, operations);
+                                if (onRemoteChange != null) SwingUtilities.invokeLater(onRemoteChange);
+                            },
                             keepAlive,
                             onConnected);
                 } finally {
