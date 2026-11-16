@@ -217,12 +217,18 @@ final class AgendaPanel extends JPanel {
     /** Cabecera fija arriba y, debajo, una lista con scroll vertical que se adapta al ancho. */
     private static JComponent scrollingSide(JComponent head, JPanel list) {
         JPanel holder = new WidthTrackingPanel();
+        holder.setOpaque(false);
+        list.setOpaque(false);
         holder.add(list, BorderLayout.NORTH);
+
         JScrollPane scroll = new JScrollPane(holder);
         scroll.setBorder(null);
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
         scroll.getVerticalScrollBar().setUnitIncrement(16);
 
         JPanel side = new JPanel(new BorderLayout(0, 16));
+        side.setOpaque(false);
         side.add(head, BorderLayout.NORTH);
         side.add(scroll, BorderLayout.CENTER);
         return side;
