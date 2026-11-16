@@ -43,7 +43,20 @@ La API de extensiones actual es `NeuroApp` con su contexto `AppContext`. Los JAR
 
 `META-INF/services/com.neurocenter.api.NeuroApp`
 
-**Seguridad:** una app externa es código Java ejecutado con los permisos de tu usuario. No existe aislamiento de seguridad entre una app externa y la aplicación principal. Instala únicamente JAR de fuentes de confianza.
+### Permisos de almacenamiento
+
+Las apps externas pueden utilizar `context.storage()` para acceder a archivos. Las rutas relativas se resuelven desde la carpeta privada de datos de la app, que no requiere autorización. Al operar sobre una ruta externa, el panel muestra el diálogo de permisos:
+
+- **Permitir una vez:** autoriza la carpeta solicitada durante la sesión actual de esa app. Al cerrar la app, el permiso temporal se revoca.
+- **Permitir siempre:** guarda una autorización permanente para acceder al almacenamiento externo.
+- **No volver a preguntar:** guarda una denegación permanente. La app no volverá a mostrar el aviso hasta que se restablezca el permiso.
+- **Solo en carpetas elegidas…:** permite seleccionar una o varias carpetas. La app solo podrá operar dentro de esas carpetas; la restricción se conserva hasta restablecer el permiso.
+
+Los permisos permanentes se almacenan en la tabla `app_permissions` de `apps.db`. Desde **Ajustes → Gestionar permisos** puedes consultar las decisiones guardadas y restablecer cualquiera de ellas. Al restablecer un permiso, la siguiente solicitud vuelve a mostrar el diálogo. Los permisos de una app se eliminan también al desinstalarla.
+
+Para respetar estas decisiones, las apps deben utilizar los métodos de `AppStorage` (`list`, `openRead`, `openWrite`, `createDirectories`, `delete`, `exists`) en lugar de acceder directamente a `java.nio.file.Files`.
+
+**Límite de seguridad importante:** este sistema es una API cooperativa, no un sandbox. Los JAR externos se ejecutan dentro del mismo proceso y con los permisos del usuario; una app maliciosa puede saltarse `AppStorage` y llamar directamente a las APIs de Java o del sistema operativo. Por eso, estos avisos ayudan a controlar apps que respetan la API, pero no convierten en seguro ejecutar JAR desconocidos. Para aislar realmente código no confiable habría que ejecutar cada app en otro proceso con restricciones del sistema operativo.
 
 ## Temas externos (.tme)
 
