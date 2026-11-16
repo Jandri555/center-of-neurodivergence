@@ -59,7 +59,9 @@ public final class AppPaths {
             Path pending = ROOT.resolve("pending-uninstall.txt");
             if (Files.isRegularFile(pending)) {
                 for (String name : Files.readAllLines(pending)) {
-                    if (name.isBlank() || name.contains("/") || name.contains("\\\\")) continue;
+                    if (name.isBlank() || name.equals(".") || name.equals("..")) continue;
+                    Path fileName = Path.of(name).getFileName();
+                    if (fileName == null || !fileName.toString().equals(name)) continue;
                     Files.deleteIfExists(appsDir().resolve(name));
                 }
                 Files.deleteIfExists(pending);
