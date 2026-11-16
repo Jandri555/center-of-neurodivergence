@@ -41,8 +41,10 @@ class AgendaSyncProtocolTest {
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Future<?> server = executor.submit(() ->
-                    AgendaSyncProtocol.runServer(serverInput, serverOutput, phone));
+            Future<?> server = executor.submit(() -> {
+                AgendaSyncProtocol.runServer(serverInput, serverOutput, phone);
+                return null;
+            });
 
             AgendaSyncProtocol.runClient(clientInput, clientOutput, desktop);
             server.get(10, TimeUnit.SECONDS);
@@ -53,8 +55,10 @@ class AgendaSyncProtocolTest {
             assertTrue(phone.all().stream().anyMatch(e -> "Preparar presentación".equals(e.title)));
 
             // La misma operación puede volver a circular sin duplicar resultados.
-            Future<?> secondServer = executor.submit(() ->
-                    AgendaSyncProtocol.runServer(serverInput, serverOutput, phone));
+            Future<?> secondServer = executor.submit(() -> {
+                AgendaSyncProtocol.runServer(serverInput, serverOutput, phone);
+                return null;
+            });
             AgendaSyncProtocol.runClient(clientInput, clientOutput, desktop);
             secondServer.get(10, TimeUnit.SECONDS);
             assertEquals(2, desktop.all().size());
