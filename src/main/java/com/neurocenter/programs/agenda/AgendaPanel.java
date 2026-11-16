@@ -1,6 +1,6 @@
 package com.neurocenter.programs.agenda;
 
-import com.neurocenter.api.ProgramContext;
+import com.neurocenter.api.AppContext;
 import com.neurocenter.ui.BadgeIcon;
 import com.neurocenter.ui.RoundedPanel;
 
@@ -80,7 +80,7 @@ final class AgendaPanel extends JPanel {
     private static final Color OVERDUE = new Color(0xDB4B4B);
 
     private final AgendaStore store;
-    private final ProgramContext ctx;
+    private final AppContext ctx;
 
     private YearMonth month = YearMonth.now();
     private LocalDate selected = LocalDate.now();
@@ -100,7 +100,7 @@ final class AgendaPanel extends JPanel {
     private final JLabel pendingSummary = new JLabel(" ");
     private final JPanel pendingList = new JPanel(new GridBagLayout());
 
-    AgendaPanel(AgendaStore store, ProgramContext ctx) {
+    AgendaPanel(AgendaStore store, AppContext ctx) {
         super(new BorderLayout(0, 18));
         this.store = store;
         this.ctx = ctx;
