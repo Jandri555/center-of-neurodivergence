@@ -6,6 +6,7 @@ import javax.swing.SwingUtilities;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.prefs.Preferences;
 
 /**
@@ -47,7 +48,7 @@ final class BluetoothSerialClient {
         return port.getSystemPortName() + " — " + description;
     }
 
-    static void synchronize(SerialPort port, AgendaStore store) throws IOException {
+    static void synchronize(SerialPort port, AgendaStore store, BooleanSupplier keepAlive, Runnable onConnected) throws IOException {
         if (port == null) throw new IOException("No se ha seleccionado ningún puerto serie.");
         if (!store.isSyncEnabled()) {
             throw new IOException("Activa primero el historial de sincronización de la agenda.");
@@ -66,12 +67,16 @@ final class BluetoothSerialClient {
         }
 
         try {
-            AgendaSyncProtocol.runClient(
+            AgendaSyncProtocol.runClientSession(
                     port.getInputStream(),
                     port.getOutputStream(),
                     store,
-                    operations -> mergeOnEdt(store, operations));
-            PREFERENCES.put(LAST_PORT_KEY, port.getSystemPortName());
+                    operations -> mergeOnEdt(store, operations),
+                    keepAlive,
+                    () -> {
+                        PREFERENCES.put(LAST_PORT_KEY, port.getSystemPortName());
+                        if (onConnected != null) onConnected.run();
+                    });
         } finally {
             port.closePort();
         }
