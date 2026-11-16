@@ -23,15 +23,15 @@ Los datos se guardan en `CenterOfNeurodivergence`:
 - macOS: `~/Library/Application Support/CenterOfNeurodivergence/`
 - Linux: `~/.local/share/CenterOfNeurodivergence/`
 
-La carpeta `apps/` contiene las apps externas instaladas y `data/` sus datos. La carpeta antigua `plugins/` se migra automáticamente a `apps/` al iniciar.
+La carpeta `apps/` contiene las apps externas instaladas y `data/` sus datos. La carpeta antigua `apps/` se migra automáticamente a `apps/` al iniciar.
 
 ## Gestionar apps externas
-Abre **Ajustes** (⚙) en el panel y entra en **Gestionar apps**. Desde ahí puedes instalar un archivo JAR o programar su desinstalación. Los cambios se aplican al reiniciar, porque una app cargada puede mantener su JAR bloqueado en Windows.
+Abre **Ajustes** (⚙) en el panel y entra en **Gestionar apps**. Desde ahí puedes instalar un archivo JAR o appr su desinstalación. Los cambios se aplican al reiniciar, porque una app cargada puede mantener su JAR bloqueado en Windows.
 
 **Seguridad:** una app externa es código Java ejecutado con los permisos de tu usuario. Instala únicamente JAR de fuentes de confianza.
 
 ## Crear una app externa
-Mira `example-plugin/`. Implementa `com.neurocenter.api.NeuroApp` y registra la clase mediante el servicio:
+Mira `example-app/`. Implementa `com.neurocenter.api.NeuroApp` y registra la clase mediante el servicio:
 
 `META-INF/services/com.neurocenter.api.NeuroApp`
 
@@ -43,7 +43,7 @@ com.neurocenter
 ├── api/       NeuroApp, AppContext
 ├── core/      MainWindow, AppLoader, AppPaths, PropertiesStore, ThemeManager
 ├── ui/        RoundedPanel, BadgeIcon
-└── programs/  Agenda y Lector PDF
+└── apps/  Agenda y Lector PDF
 ```
 
 ## Limitaciones conocidas
