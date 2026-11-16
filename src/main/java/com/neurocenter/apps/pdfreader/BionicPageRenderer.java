@@ -255,10 +255,14 @@ final class BionicPageRenderer {
 
                 float fontScale = Math.max(Math.abs(textRenderingMatrix.getScaleX()),
                         Math.abs(textRenderingMatrix.getScaleY()));
-                float strokeWidth = Math.max(0.30f, Math.min(0.75f, fontScale * 0.045f));
-                graphics.setStroke(new BasicStroke(strokeWidth,
-                        BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                graphics.draw(glyph);
+                float emboldenWidth = Math.max(0.18f, Math.min(0.55f, fontScale * 0.035f));
+
+                // Convertimos el engrosado del contorno en una superficie rellena.
+                // draw(glyph) solo pintaba el borde y dejaba un efecto de letra hueca.
+                Shape emboldenedGlyph = new BasicStroke(emboldenWidth,
+                        BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+                        .createStrokedShape(glyph);
+                graphics.fill(emboldenedGlyph);
             } finally {
                 graphics.dispose();
             }
