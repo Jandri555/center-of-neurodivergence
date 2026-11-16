@@ -97,7 +97,7 @@ final class UsbAoaClient {
     private static void enableAccessoryMode(Context context) throws IOException {
         DeviceList devices = new DeviceList();
         int count = LibUsb.getDeviceList(context, devices);
-        check(count, "No se pudieron enumerar los dispositivos USB");
+        if (count < 0) check(count, "No se pudieron enumerar los dispositivos USB");
 
         boolean supportedDeviceFound = false;
         try {
@@ -206,7 +206,7 @@ final class UsbAoaClient {
     private static DeviceHandle findAccessory(Context context) throws IOException {
         DeviceList devices = new DeviceList();
         int count = LibUsb.getDeviceList(context, devices);
-        check(count, "No se pudieron enumerar los dispositivos USB");
+        if (count < 0) check(count, "No se pudieron enumerar los dispositivos USB");
 
         DeviceHandle result = null;
         try {
