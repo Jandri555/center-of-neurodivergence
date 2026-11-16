@@ -42,6 +42,28 @@ public final class AppPaths {
         try {
             Files.createDirectories(appsDir());
             Files.createDirectories(dataDir());
+            Path legacy = ROOT.resolve("plugins");
+            if (Files.isDirectory(legacy)) {
+                try (var jars = Files.list(legacy)) {
+                    jars.filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar"))
+                            .forEach(p -> {
+                                try {
+                                    Path target = appsDir().resolve(p.getFileName());
+                                    if (!Files.exists(target)) Files.copy(p, target);
+                                } catch (IOException ex) {
+                                    System.err.println("No se pudo migrar " + p + ": " + ex.getMessage());
+                                }
+                            });
+                }
+            }
+            Path pending = ROOT.resolve("pending-uninstall.txt");
+            if (Files.isRegularFile(pending)) {
+                for (String name : Files.readAllLines(pending)) {
+                    if (name.isBlank() || name.contains("/") || name.contains("\\\\")) continue;
+                    Files.deleteIfExists(appsDir().resolve(name));
+                }
+                Files.deleteIfExists(pending);
+            }
         } catch (IOException e) {
             throw new UncheckedIOException("No se pudo crear la carpeta de datos en " + ROOT, e);
         }
