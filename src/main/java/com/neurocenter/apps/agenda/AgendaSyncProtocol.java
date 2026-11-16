@@ -83,11 +83,22 @@ final class AgendaSyncProtocol {
      * Sincroniza desde el lado que espera una conexión (por ejemplo, Android).
      */
     static void runServer(InputStream input, OutputStream output, AgendaStore store) throws IOException {
+        runServer(input, output, store, store::mergeOperations);
+    }
+
+    /**
+     * Variante que permite aplicar las operaciones en el hilo propietario de la agenda.
+     */
+    static void runServer(
+            InputStream input,
+            OutputStream output,
+            AgendaStore store,
+            OperationMerger merger) throws IOException {
         requireEnabled(store);
 
         SyncMessage request = receive(input);
         requireKind(request, "SYNC_REQUEST");
-        store.mergeOperations(request.operations);
+        merger.merge(request.operations);
 
         // La respuesta ya incluye tanto el historial propio como el recibido.
         send(output, message("SYNC_RESPONSE", store));
