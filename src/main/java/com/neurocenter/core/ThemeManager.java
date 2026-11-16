@@ -110,6 +110,10 @@ public final class ThemeManager {
         if ("dark".equals(theme.base())) FlatDarkLaf.setup();
         else FlatLightLaf.setup();
 
+        // Evita que la barra de título use el fondo unificado del RootPane:
+        // así puede recibir el color TitlePane.background definido por el tema.
+        UIManager.put("TitlePane.unifiedBackground", false);
+
         // Los botones predeterminados de JOptionPane no deben destacar en azul
         // solo por ser la primera opción del diálogo.
         Color normalButton = UIManager.getColor("Button.background");
