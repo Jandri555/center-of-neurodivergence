@@ -142,6 +142,7 @@ public final class ThemeManager {
                 Map.entry("surface", "Panel.background"),
                 Map.entry("foreground", "Component.foreground"),
                 Map.entry("text", "Label.foreground"),
+                Map.entry("primary", "Component.accentColor"),
                 Map.entry("selection", "List.selectionBackground"),
                 Map.entry("selectionText", "List.selectionForeground"),
                 Map.entry("border", "Component.borderColor"),
