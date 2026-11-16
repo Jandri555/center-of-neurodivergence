@@ -769,6 +769,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        usbSyncActive = false;
         BluetoothSyncServer server = bluetoothServer;
         if (server != null) {
             try {
