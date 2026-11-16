@@ -71,8 +71,10 @@ public final class MainWindow extends JFrame {
     private static final String HOME = "__home__";
 
     private final PropertiesStore appSettings;
+    private AppRegistry appRegistry;
     private final Map<String, NeuroApp> apps = new LinkedHashMap<>();
     private final Set<String> externalAppIds = new HashSet<>();
+    private final Map<String, String> externalJarByAppId = new HashMap<>();
     private final Map<String, JToggleButton> navButtons = new HashMap<>();
     private final Map<String, JPanel> navMarkers = new HashMap<>();
     private final Map<String, JPanel> navRows = new HashMap<>();
@@ -98,10 +100,20 @@ public final class MainWindow extends JFrame {
         register(new AgendaApp(), false);
         register(new PdfReaderApp(), false);
 
-        // 2) Apps externas: .jar en AppData/CenterOfNeurodivergence/apps
-        AppLoader.Result apps = AppLoader.load(AppPaths.appsDir());
-        loadErrors.addAll(apps.errors());
-        for (NeuroApp p : apps.apps()) register(p, true);
+        // 2) Apps externas: solo se cargan los JAR inscritos en el registro SQLite.
+        Set<String> autorunJars = new HashSet<>();
+        try {
+            appRegistry = new AppRegistry(AppPaths.root().resolve("apps.db"));
+            AppLoader.Result externalApps = AppLoader.load(
+                    AppPaths.appsDir(), appRegistry.installedJarFilenames());
+            loadErrors.addAll(externalApps.errors());
+            autorunJars.addAll(appRegistry.autorunJarFilenames());
+            for (AppLoader.LoadedApp loaded : externalApps.apps()) {
+                register(loaded.app(), true, loaded.jarFilename());
+            }
+        } catch (Exception ex) {
+            loadErrors.add("No se pudo abrir el registro de aplicaciones (apps.db): " + ex.getMessage());
+        }
 
         buildUi();
 
@@ -114,12 +126,18 @@ public final class MainWindow extends JFrame {
         setLocationRelativeTo(null);
         showApp(HOME);
 
+        // Las apps con autorun arrancan en segundo plano, pero Inicio permanece
+        // como pantalla activa al abrir el panel.
+        for (Map.Entry<String, String> entry : externalJarByAppId.entrySet()) {
+            if (autorunJars.contains(entry.getValue())) launchApp(entry.getKey(), false);
+        }
+
         if (!loadErrors.isEmpty()) SwingUtilities.invokeLater(this::showLoadErrors);
     }
 
     // ------------------------------------------------------------------ registro y arranque
 
-    private void register(NeuroApp app, boolean external) {
+    private void register(NeuroApp app, boolean external, String jarFilename) {
         try {
             String id = app.id();
             String name = app.name();
@@ -130,7 +148,10 @@ public final class MainWindow extends JFrame {
                 return;
             }
             apps.put(id, app);
-            if (external) externalAppIds.add(id);
+            if (external) {
+                externalAppIds.add(id);
+                externalJarByAppId.put(id, jarFilename);
+            }
         } catch (Throwable t) {
             loadErrors.add(app.getClass().getName() + ": " + t);
         }
@@ -370,22 +391,28 @@ public final class MainWindow extends JFrame {
             statusLabel.setText(" ");
             return;
         }
+        launchApp(id, true);
+    }
 
+    /** Inicia una app; activate=false permite arrancarla sin abandonar Inicio. */
+    private void launchApp(String id, boolean activate) {
         NeuroApp app = apps.get(id);
         if (app == null) return;
 
         AppSession existing = appSessions.get(id);
         if (existing != null) {
             if (existing.closing) {
-                statusLabel.setText("La aplicación se está cerrando…");
+                if (activate) statusLabel.setText("La aplicación se está cerrando…");
                 return;
             }
-            activeAppId = id;
-            cards.show(content, id);
-            JToggleButton button = navButtons.get(id);
-            if (button != null) button.setSelected(true);
-            updateNavAppearance();
-            statusLabel.setText(" ");
+            if (activate) {
+                activeAppId = id;
+                cards.show(content, id);
+                JToggleButton button = navButtons.get(id);
+                if (button != null) button.setSelected(true);
+                updateNavAppearance();
+                statusLabel.setText(" ");
+            }
             return;
         }
 
@@ -398,12 +425,14 @@ public final class MainWindow extends JFrame {
         content.add(loading, id);
 
         addNav(openAppsList, id, app.name(), iconFor(app, 24), true);
-        activeAppId = id;
-        cards.show(content, id);
-        JToggleButton button = navButtons.get(id);
-        if (button != null) button.setSelected(true);
+        if (activate) {
+            activeAppId = id;
+            cards.show(content, id);
+            JToggleButton button = navButtons.get(id);
+            if (button != null) button.setSelected(true);
+            statusLabel.setText(" ");
+        }
         updateNavAppearance();
-        statusLabel.setText(" ");
 
         // Cada app dispone de una cola/hilo propio para su ciclo de vida.
         // La creación y manipulación de componentes Swing sigue reservada al EDT.
@@ -712,45 +741,107 @@ public final class MainWindow extends JFrame {
     }
 
     private void manageApps() {
-        String[] options = {"Instalar app (.jar)", "Desinstalar app", "Volver"};
+        if (appRegistry == null) {
+            JOptionPane.showMessageDialog(this, "El registro SQLite de aplicaciones no está disponible.",
+                    "Gestionar apps", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        String[] options = {"Instalar app (.jar)", "Configurar inicio automático", "Desinstalar app", "Volver"};
         int choice = JOptionPane.showOptionDialog(this,
-                "Las operaciones se aplican al reiniciar. Instala solo apps de fuentes de confianza.",
-                "Gestor de apps", JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
+                "Gestiona las aplicaciones externas instaladas. Los cambios de instalación y desinstalación "
+                        + "se aplican al reiniciar.",
+                "Gestor de apps", JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE,
+                null, options, options[0]);
+
         if (choice == 0) {
             javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
             chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Apps Java (*.jar)", "jar"));
             if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
                 java.nio.file.Path source = chooser.getSelectedFile().toPath();
+                java.nio.file.Path target = AppPaths.appsDir().resolve(source.getFileName());
                 try {
-                    java.nio.file.Path target = AppPaths.appsDir().resolve(source.getFileName());
-                    if (java.nio.file.Files.exists(target)) throw new java.io.IOException("Ya existe una app con ese nombre.");
+                    if (java.nio.file.Files.exists(target)) {
+                        throw new java.io.IOException("Ya existe un archivo con ese nombre.");
+                    }
                     java.nio.file.Files.copy(source, target);
-                    JOptionPane.showMessageDialog(this, "App instalada. Estará disponible al reiniciar.");
-                } catch (java.io.IOException ex) {
-                    JOptionPane.showMessageDialog(this, "No se pudo instalar la app: " + ex.getMessage());
+                    try {
+                        appRegistry.registerJar(target);
+                    } catch (Exception ex) {
+                        java.nio.file.Files.deleteIfExists(target);
+                        throw ex;
+                    }
+                    JOptionPane.showMessageDialog(this,
+                            "App instalada. Estará disponible al reiniciar.\n"
+                                    + "El inicio automático se puede configurar desde este mismo gestor.");
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(this, "No se pudo instalar la app: " + ex.getMessage(),
+                            "Error al instalar", JOptionPane.ERROR_MESSAGE);
                 }
             }
         } else if (choice == 1) {
-            try (var stream = java.nio.file.Files.list(AppPaths.appsDir())) {
-                String[] jars = stream.filter(p -> p.toString().toLowerCase().endsWith(".jar"))
-                        .map(p -> p.getFileName().toString()).toArray(String[]::new);
-                if (jars.length == 0) {
-                    JOptionPane.showMessageDialog(this, "No hay apps externas instaladas.");
-                    return;
-                }
-                String selected = (String) JOptionPane.showInputDialog(this, "Selecciona una app:",
-                        "Desinstalar app", JOptionPane.WARNING_MESSAGE, null, jars, jars[0]);
-                if (selected != null && JOptionPane.showConfirmDialog(this,
-                        "Se eliminará al próximo inicio. ¿Continuar?", "Confirmar",
-                        JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
-                    java.nio.file.Files.writeString(AppPaths.root().resolve("pending-uninstall.txt"),
-                            selected + System.lineSeparator(), java.nio.file.StandardOpenOption.CREATE,
-                            java.nio.file.StandardOpenOption.APPEND);
-                    JOptionPane.showMessageDialog(this, "Desinstalación programada para el próximo inicio.");
-                }
-            } catch (java.io.IOException ex) {
-                JOptionPane.showMessageDialog(this, "No se pudo gestionar la app: " + ex.getMessage());
+            configureAppAutorun();
+        } else if (choice == 2) {
+            uninstallExternalApp();
+        }
+    }
+
+    private void configureAppAutorun() {
+        try {
+            List<AppRegistry.AppRecord> installed = appRegistry.listApps();
+            if (installed.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "No hay apps externas instaladas.");
+                return;
             }
+            AppRegistry.AppRecord selected = (AppRegistry.AppRecord) JOptionPane.showInputDialog(
+                    this, "Selecciona la aplicación:", "Inicio automático",
+                    JOptionPane.QUESTION_MESSAGE, null,
+                    installed.toArray(AppRegistry.AppRecord[]::new), installed.get(0));
+            if (selected == null) return;
+
+            boolean enable = !selected.autorun();
+            int answer = JOptionPane.showConfirmDialog(this,
+                    "¿Quieres que «" + selected.name() + "» se "
+                            + (enable ? "inicie automáticamente al abrir el panel" : "deje de iniciarse automáticamente")
+                            + "?",
+                    "Inicio automático", JOptionPane.YES_NO_OPTION);
+            if (answer == JOptionPane.YES_OPTION) {
+                appRegistry.setAutorun(selected.id(), enable);
+                JOptionPane.showMessageDialog(this,
+                        enable ? "La aplicación se iniciará automáticamente la próxima vez."
+                                : "Se ha desactivado el inicio automático.");
+            }
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "No se pudo cambiar el inicio automático: " + ex.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void uninstallExternalApp() {
+        try {
+            List<AppRegistry.AppRecord> installed = appRegistry.listApps();
+            if (installed.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "No hay apps externas instaladas.");
+                return;
+            }
+            AppRegistry.AppRecord selected = (AppRegistry.AppRecord) JOptionPane.showInputDialog(
+                    this, "Selecciona la aplicación que quieres desinstalar:", "Desinstalar app",
+                    JOptionPane.WARNING_MESSAGE, null,
+                    installed.toArray(AppRegistry.AppRecord[]::new), installed.get(0));
+            if (selected == null) return;
+
+            if (JOptionPane.showConfirmDialog(this,
+                    "Se eliminará «" + selected.name() + "» al próximo inicio. ¿Continuar?",
+                    "Confirmar desinstalación", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
+
+            java.nio.file.Files.writeString(AppPaths.root().resolve("pending-uninstall.txt"),
+                    selected.jarFilename() + System.lineSeparator(),
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+            appRegistry.removeByFilename(selected.jarFilename());
+            JOptionPane.showMessageDialog(this, "Desinstalación programada para el próximo inicio.");
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "No se pudo gestionar la app: " + ex.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
