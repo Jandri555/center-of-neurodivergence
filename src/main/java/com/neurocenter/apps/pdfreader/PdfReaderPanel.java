@@ -549,7 +549,10 @@ final class PdfReaderPanel extends JPanel {
                         if (myTicket == ticket) showHybridImage(image);
                     });
                 } else {
-                    BufferedImage image = new PDFRenderer(doc).renderImageWithDPI(index, dpi);
+                    float renderScale = PdfImageQuality.renderScale(dpi);
+                    BufferedImage highResolution = new PDFRenderer(doc)
+                            .renderImageWithDPI(index, dpi * renderScale);
+                    BufferedImage image = PdfImageQuality.downsample(highResolution, renderScale);
                     SwingUtilities.invokeLater(() -> {
                         if (myTicket == ticket) showImage(image);
                     });
