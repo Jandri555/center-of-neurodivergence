@@ -333,24 +333,15 @@ public final class MainWindow extends JFrame {
                 dialog::dispose
         };
         for (int i = 0; i < labels.length; i++) {
+            final int index = i;
             JButton button = new JButton(labels[i]);
             // Sin foco inicial: todos los botones conservan el mismo aspecto neutro.
             button.setFocusable(false);
             button.addActionListener(e -> {
                 dialog.dispose();
-                actions[buttons.getComponentCount() - 1].run();
-            });
-            buttons.add(button);
-        }
-        // Asocia cada botón con su acción sin depender del foco ni del orden de selección.
-        for (int i = 0; i < buttons.getComponentCount(); i++) {
-            final int index = i;
-            JButton button = (JButton) buttons.getComponent(i);
-            for (var listener : button.getActionListeners()) button.removeActionListener(listener);
-            button.addActionListener(e -> {
-                dialog.dispose();
                 actions[index].run();
             });
+            buttons.add(button);
         }
 
         root.add(buttons, BorderLayout.SOUTH);
