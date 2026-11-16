@@ -28,6 +28,7 @@ import javax.swing.border.EmptyBorder;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Component;
+import java.awt.Container;
 import java.awt.Cursor;
 import java.awt.Desktop;
 import java.awt.Dimension;
@@ -252,6 +253,7 @@ public final class MainWindow extends JFrame {
         card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         JLabel icon = new JLabel(iconFor(p, 40));
+        icon.putClientProperty("theme.appId", p.id());
         icon.setVerticalAlignment(SwingConstants.TOP);
 
         String kind = externalAppIds.contains(p.id()) ? "App externa, versión " + safeVersion(p) : "Integrado";
@@ -349,7 +351,27 @@ public final class MainWindow extends JFrame {
                 for (Window window : getOwnedWindows()) {
                     SwingUtilities.updateComponentTreeUI(window);
                 }
+                refreshThemeIcons();
             }
+        }
+    }
+
+    private void refreshThemeIcons() {
+        for (Map.Entry<String, JToggleButton> entry : navButtons.entrySet()) {
+            NeuroApp app = apps.get(entry.getKey());
+            if (app != null) entry.getValue().setIcon(iconFor(app, 24));
+        }
+        refreshThemeIcons(this);
+    }
+
+    private void refreshThemeIcons(Container parent) {
+        for (Component component : parent.getComponents()) {
+            if (component instanceof JLabel label
+                    && label.getClientProperty("theme.appId") instanceof String appId) {
+                NeuroApp app = apps.get(appId);
+                if (app != null) label.setIcon(iconFor(app, 40));
+            }
+            if (component instanceof Container nested) refreshThemeIcons(nested);
         }
     }
 
@@ -392,6 +414,7 @@ public final class MainWindow extends JFrame {
                         appSettings.put("theme", "light");
                         ThemeManager.apply("light");
                         SwingUtilities.updateComponentTreeUI(this);
+                        refreshThemeIcons();
                     }
                     JOptionPane.showMessageDialog(this, "Tema desinstalado.");
                 } catch (java.io.IOException ex) {
