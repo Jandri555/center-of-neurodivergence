@@ -1,89 +1,54 @@
 # Center of Neurodivergence
 
-Panel de escritorio en Java (Swing + FlatLaf) con varios programas dentro:
+Panel de escritorio en Java (Swing + FlatLaf) con varias apps integradas y extensibles.
 
-| Programa | Qué hace |
+| App | Qué hace |
 |---|---|
-| **Agenda** | Dos vistas: *Calendario* (mes + lo que hay cada día) y *Pendientes* (todas las tareas sin hacer, ordenadas por fecha límite, con las vencidas en rojo). Dos tipos de entrada: **tareas** (fecha límite, hora opcional, notas, aviso y casilla de hecha) y **eventos** (solo título, fecha y hora). Los avisos de las tareas saltan con la app abierta, aunque no tengas la agenda a la vista. |
-| **Lector PDF** | Vista *Lectura* (texto recompuesto con Bionic Reading: negrita al inicio de cada palabra) y vista *Original*. Fuente, tamaño, interlineado, intensidad de la negrita, ancho de columna y color de fondo ajustables. Recuerda el último PDF y la página. |
-
-Además, cualquier `.jar` que dejes en la carpeta `plugins` aparece como un programa más.
+| **Agenda** | Calendario, tareas, eventos y avisos mientras la aplicación está abierta. |
+| **Lector PDF** | Vista Original y vista Lectura con Bionic Reading. Sus ajustes de lectura (fuente, tamaño, interlineado y fondo) son independientes del tema general. |
 
 ## Requisitos
 - JDK 17 o superior
 - Maven 3.9 o superior
 
 ## Compilar y ejecutar
-```
+```bash
 mvn package
 java -jar target/center-of-neurodivergence.jar
 ```
-Genera un único `.jar` con todas las librerías dentro.
 
-## Dónde guarda los datos
-| Sistema | Carpeta |
-|---|---|
-| Windows | `%APPDATA%\CenterOfNeurodivergence\` |
-| macOS | `~/Library/Application Support/CenterOfNeurodivergence/` |
-| Linux | `~/.local/share/CenterOfNeurodivergence/` |
+## Datos de usuario
+Los datos se guardan en `CenterOfNeurodivergence`:
+- Windows: `%APPDATA%\CenterOfNeurodivergence\`
+- macOS: `~/Library/Application Support/CenterOfNeurodivergence/`
+- Linux: `~/.local/share/CenterOfNeurodivergence/`
 
-```
-CenterOfNeurodivergence/
-├── settings.properties     tema claro/oscuro
-├── plugins/                aquí van los .jar de programas nuevos
-└── data/
-    ├── agenda/agenda.json
-    ├── pdf-reader/settings.properties
-    └── <id-de-tu-programa>/
-```
-El botón **Carpeta de plugins** del menú lateral abre la carpeta.
+La carpeta `apps/` contiene las apps externas instaladas y `data/` sus datos. La carpeta antigua `plugins/` se migra automáticamente a `apps/` al iniciar.
 
-## Crear un programa nuevo (plugin)
-Mira `example-plugin/`. Resumen:
+## Gestionar apps externas
+Abre **Ajustes** (⚙) en el panel y entra en **Gestionar apps**. Desde ahí puedes instalar un archivo JAR o programar su desinstalación. Los cambios se aplican al reiniciar, porque una app cargada puede mantener su JAR bloqueado en Windows.
 
-1. Implementa `com.neurocenter.api.NeuroProgram` (`id`, `name`, `createPanel`; el resto es opcional).
-2. Crea el archivo `src/main/resources/META-INF/services/com.neurocenter.api.NeuroProgram`
-   con el nombre completo de tu clase en una línea.
-3. Compila con la app como dependencia `provided` (no la empaquetes):
-   ```
-   # una vez, en la carpeta de la app principal:
-   mvn install
-   # en la carpeta de tu plugin:
-   mvn package
-   ```
-4. Copia el `.jar` de `target/` a la carpeta `plugins` y reinicia la app.
+**Seguridad:** una app externa es código Java ejecutado con los permisos de tu usuario. Instala únicamente JAR de fuentes de confianza.
 
-Tu plugin recibe un `ProgramContext` con:
-- `dataDir()` carpeta propia para sus archivos
-- `getSetting / putSetting` ajustes sencillos que se guardan solos
-- `setStatus` mensaje en la barra inferior
-- `openProgram(id)` saltar a otro programa
-- `window()` ventana principal para diálogos
-- `requestAttention()` trae la ventana al frente
+## Crear una app externa
+Mira `example-plugin/`. Implementa `com.neurocenter.api.NeuroApp` y registra la clase mediante el servicio:
 
-Los plugins comparten las librerías de la app (Swing, FlatLaf, Gson, PDFBox) y pueden usar
-`com.neurocenter.ui.RoundedPanel` y `BadgeIcon`.
-`start()` se ejecuta al arrancar la app (útil para servicios en segundo plano) y
-`stop()` al cerrarla. Si un plugin falla al cargar, la app lo avisa y sigue funcionando.
+`META-INF/services/com.neurocenter.api.NeuroApp`
+
+La app recibe un `AppContext` con acceso a su carpeta de datos, ajustes, barra de estado, ventana principal y navegación mediante `openApp(id)`. Compila contra la aplicación como dependencia `provided`; no empaquetes las librerías de la aplicación dentro del JAR de la app.
 
 ## Estructura del código
 ```
 com.neurocenter
-├── Main                       arranque y tema
-├── api/                       NeuroProgram, ProgramContext  (lo que ven los plugins)
-├── core/                      MainWindow, PluginLoader, AppPaths, PropertiesStore, ThemeManager
-├── ui/                        RoundedPanel, BadgeIcon
-└── programs/
-    ├── agenda/                AgendaProgram, AgendaPanel, AgendaStore, AgendaEntry
-    └── pdfreader/             PdfReaderProgram, PdfReaderPanel, BionicText
+├── api/       NeuroApp, AppContext
+├── core/      MainWindow, AppLoader, AppPaths, PropertiesStore, ThemeManager
+├── ui/        RoundedPanel, BadgeIcon
+└── programs/  Agenda y Lector PDF
 ```
-Para añadir un programa integrado nuevo: crea su paquete en `programs/` y regístralo
-en el constructor de `MainWindow` (`register(new MiPrograma(), false);`).
-El nombre visible de la app está en `core/AppInfo.java`.
 
-## Limitaciones conocidas (v0.1)
-- Los avisos de la agenda solo saltan con la aplicación abierta, y solo existen para tareas (los eventos no avisan).
-- Los PDF escaneados (imágenes sin texto) solo se pueden ver en la vista *Original*.
+## Limitaciones conocidas
+- Los avisos de la agenda solo funcionan con la aplicación abierta.
+- Los PDF escaneados solo se pueden ver en la vista Original.
 - No se admiten PDF protegidos con contraseña.
-- Para detectar un plugin nuevo hay que reiniciar la app. En Windows el `.jar` queda bloqueado mientras la app está abierta.
-- El reflujo de texto del PDF usa heurísticas simples: en maquetaciones de varias columnas, tablas o notas al pie puede mezclar el orden.
+- Los cambios de instalación y desinstalación requieren reiniciar la aplicación.
+- El reflujo de texto del PDF usa heurísticas y puede alterar el orden en documentos complejos.
