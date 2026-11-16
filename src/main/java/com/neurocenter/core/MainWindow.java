@@ -750,7 +750,7 @@ public final class MainWindow extends JFrame {
             return;
         }
 
-        String[] options = {"Instalar app (.jar)", "Desinstalar app", "Configurar inicio automático"};
+        String[] options = {"Instalar app", "Desinstalar app", "Configurar inicio automático"};
         int choice = JOptionPane.showOptionDialog(this,
                 "Gestiona las aplicaciones externas instaladas. Los cambios de instalación y desinstalación "
                         + "se aplican al reiniciar.",
