@@ -31,7 +31,7 @@ Abre **Ajustes** (⚙) en el panel y entra en **Gestionar apps**. Desde ahí pue
 **Seguridad:** una app externa es código Java ejecutado con los permisos de tu usuario. Instala únicamente JAR de fuentes de confianza.
 
 ## Crear una app externa
-Mira `example-plugin/`. Implementa `com.neurocenter.api.NeuroApp` y registra la clase mediante el servicio:
+Mira `example-app/`. Implementa `com.neurocenter.api.NeuroApp` y registra la clase mediante el servicio:
 
 `META-INF/services/com.neurocenter.api.NeuroApp`
 
