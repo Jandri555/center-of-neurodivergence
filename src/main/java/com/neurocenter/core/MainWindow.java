@@ -15,6 +15,7 @@ import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
+import javax.swing.JRootPane;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -77,6 +78,10 @@ public final class MainWindow extends JFrame {
 
     public MainWindow(PropertiesStore appSettings) {
         super(AppInfo.NAME);
+        // Fuerza las decoraciones propias de FlatLaf. setDefaultLookAndFeelDecorated()
+        // por sí solo no sustituye la barra nativa en todas las configuraciones de Windows.
+        setUndecorated(true);
+        getRootPane().setWindowDecorationStyle(JRootPane.FRAME);
         this.appSettings = appSettings;
 
         // 1) Apps integradas en el propio .jar
