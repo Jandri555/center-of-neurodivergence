@@ -21,13 +21,13 @@ public final class AppPaths {
 
     public static Path root() { return ROOT; }
 
-    public static Path pluginsDir() { return ROOT.resolve("plugins"); }
+    public static Path appsDir() { return ROOT.resolve("apps"); }
 
     public static Path dataDir() { return ROOT.resolve("data"); }
 
-    /** Carpeta de datos de un programa; se crea si no existe. */
-    public static Path programDataDir(String programId) {
-        String safe = programId.replaceAll("[^A-Za-z0-9._-]", "_");
+    /** Carpeta de datos de un app; se crea si no existe. */
+    public static Path appDataDir(String appId) {
+        String safe = appId.replaceAll("[^A-Za-z0-9._-]", "_");
         if (safe.isBlank() || safe.chars().allMatch(c -> c == '.')) safe = "_";
         Path dir = dataDir().resolve(safe);
         try {
@@ -40,7 +40,7 @@ public final class AppPaths {
 
     public static void ensureDirectories() {
         try {
-            Files.createDirectories(pluginsDir());
+            Files.createDirectories(appsDir());
             Files.createDirectories(dataDir());
         } catch (IOException e) {
             throw new UncheckedIOException("No se pudo crear la carpeta de datos en " + ROOT, e);
