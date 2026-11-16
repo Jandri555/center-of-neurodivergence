@@ -2,6 +2,12 @@ package com.neurocenter.apps.agenda;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.Manifest;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothManager;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -14,6 +20,13 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.io.IOException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import java.io.UncheckedIOException;
 import java.time.LocalDate;
@@ -36,6 +49,16 @@ public final class MainActivity extends Activity {
     private boolean calendarView;
     private YearMonth month = YearMonth.now();
     private LocalDate selectedDate = LocalDate.now();
+
+    private static final int REQUEST_BT_PERMISSIONS = 7101;
+    private static final int REQUEST_ENABLE_BT = 7102;
+    private static final int REQUEST_DISCOVERABLE = 7103;
+    private static final int DISCOVERABLE_SECONDS = 300;
+    private final ExecutorService syncExecutor = Executors.newSingleThreadExecutor();
+    private volatile BluetoothSyncServer bluetoothServer;
+    private BluetoothAdapter bluetoothAdapter;
+    private Button bluetoothButton;
+    private TextView syncStatus;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -100,6 +123,18 @@ public final class MainActivity extends Activity {
         prepareSync.setOnClickListener(v -> prepareSync());
         root.addView(prepareSync, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        bluetoothButton = button("Esperar conexión Bluetooth");
+        bluetoothButton.setOnClickListener(v -> startBluetoothSync());
+        root.addView(bluetoothButton, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        syncStatus = text(store.isSyncEnabled()
+                ? "Historial preparado. Elige Bluetooth para conectar con el ordenador."
+                : "Activa la sincronización en ambos dispositivos para transferir cambios.",
+                12, false);
+        syncStatus.setPadding(0, dp(6), 0, dp(4));
+        root.addView(syncStatus);
 
         ScrollView scroll = new ScrollView(this);
         content = new LinearLayout(this);
@@ -386,6 +421,169 @@ public final class MainActivity extends Activity {
                     }
                 })
                 .show();
+    }
+
+    private void startBluetoothSync() {
+        if (!store.isSyncEnabled()) {
+            Toast.makeText(this,
+                    "Primero activa «Preparar sincronización» en ambos dispositivos.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            String[] required = {
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.BLUETOOTH_ADVERTISE
+            };
+            List<String> missing = new ArrayList<>();
+            for (String permission : required) {
+                if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+                    missing.add(permission);
+                }
+            }
+            if (!missing.isEmpty()) {
+                requestPermissions(missing.toArray(new String[0]), REQUEST_BT_PERMISSIONS);
+                return;
+            }
+        }
+        requestBluetoothDiscoverability();
+    }
+
+    private void requestBluetoothDiscoverability() {
+        BluetoothManager manager = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
+        bluetoothAdapter = manager == null ? null : manager.getAdapter();
+        if (bluetoothAdapter == null) {
+            Toast.makeText(this, "Este dispositivo no tiene Bluetooth.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        try {
+            if (!bluetoothAdapter.isEnabled()) {
+                startActivityForResult(
+                        new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE), REQUEST_ENABLE_BT);
+                return;
+            }
+            Intent discoverable = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+            discoverable.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, DISCOVERABLE_SECONDS);
+            startActivityForResult(discoverable, REQUEST_DISCOVERABLE);
+        } catch (SecurityException ex) {
+            Toast.makeText(this, "Falta permiso para usar Bluetooth: " + ex.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_BT_PERMISSIONS) return;
+
+        boolean granted = grantResults.length > 0;
+        for (int result : grantResults) granted &= result == PackageManager.PERMISSION_GRANTED;
+        if (granted) requestBluetoothDiscoverability();
+        else Toast.makeText(this, "Necesito permiso para anunciar y aceptar la conexión Bluetooth.",
+                Toast.LENGTH_LONG).show();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_ENABLE_BT) {
+            if (resultCode == RESULT_OK) requestBluetoothDiscoverability();
+            else Toast.makeText(this, "Bluetooth no se ha activado.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (requestCode == REQUEST_DISCOVERABLE) {
+            if (resultCode > 0) startBluetoothServer();
+            else Toast.makeText(this, "No se ha permitido que el móvil sea visible.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void startBluetoothServer() {
+        final BluetoothSyncServer server;
+        try {
+            server = new BluetoothSyncServer(bluetoothAdapter);
+            bluetoothServer = server;
+        } catch (IOException | SecurityException ex) {
+            Toast.makeText(this, "No se pudo preparar Bluetooth: " + ex.getMessage(),
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        bluetoothButton.setEnabled(false);
+        syncStatus.setText("Esperando al ordenador… Mantén esta pantalla abierta. "
+                + "La visibilidad estará activa durante " + (DISCOVERABLE_SECONDS / 60) + " minutos.");
+        syncExecutor.execute(() -> {
+            String failure = null;
+            try {
+                server.waitForOneSync(store, this::mergeOnMainThread);
+            } catch (Exception ex) {
+                failure = ex.getMessage() == null ? ex.toString() : ex.getMessage();
+            } finally {
+                try {
+                    server.close();
+                } catch (IOException ignored) {
+                    // Ya se está cerrando la conexión.
+                }
+                if (bluetoothServer == server) bluetoothServer = null;
+                final String error = failure;
+                runOnUiThread(() -> {
+                    bluetoothButton.setEnabled(true);
+                    if (error == null) {
+                        syncStatus.setText("Agenda sincronizada correctamente.");
+                        Toast.makeText(this, "Agenda sincronizada.", Toast.LENGTH_LONG).show();
+                        refresh();
+                    } else {
+                        syncStatus.setText("No se pudo completar la sincronización.");
+                        Toast.makeText(this, "Error de sincronización: " + error,
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
+            }
+        });
+    }
+
+    /** El protocolo se ejecuta en segundo plano, pero la lista se modifica en el hilo de UI. */
+    private void mergeOnMainThread(List<AgendaOperation> operations) throws IOException {
+        CountDownLatch finished = new CountDownLatch(1);
+        AtomicReference<RuntimeException> failure = new AtomicReference<>();
+        runOnUiThread(() -> {
+            try {
+                store.mergeOperations(operations);
+                refresh();
+            } catch (RuntimeException ex) {
+                failure.set(ex);
+            } finally {
+                finished.countDown();
+            }
+        });
+
+        try {
+            if (!finished.await(30, TimeUnit.SECONDS)) {
+                throw new IOException("La interfaz tardó demasiado en aplicar los cambios recibidos.");
+            }
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Se interrumpió la aplicación de los cambios recibidos.", ex);
+        }
+
+        if (failure.get() != null) {
+            throw new IOException("No se pudo aplicar el historial recibido.", failure.get());
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        BluetoothSyncServer server = bluetoothServer;
+        if (server != null) {
+            try {
+                server.close();
+            } catch (IOException ignored) {
+                // La actividad está finalizando.
+            }
+        }
+        syncExecutor.shutdownNow();
+        super.onDestroy();
     }
 
     private void save() {
