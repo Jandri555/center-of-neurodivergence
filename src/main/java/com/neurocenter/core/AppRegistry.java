@@ -33,7 +33,12 @@ public final class AppRegistry {
             String jarFilename,
             String installedAt,
             long sizeBytes,
-            boolean autorun) {}
+            boolean autorun) {
+        @Override
+        public String toString() {
+            return name + (autorun ? " — inicio automático: sí" : " — inicio automático: no");
+        }
+    }
 
     public AppRegistry(Path databaseFile) throws SQLException, IOException {
         Path parent = databaseFile.toAbsolutePath().getParent();
@@ -78,7 +83,7 @@ public final class AppRegistry {
             Manifest manifest = jarFile.getManifest();
             if (manifest != null) {
                 Attributes attributes = manifest.getMainAttributes();
-                id = value(attributes, "NeuroCenter-App-Id", id);
+                id = safeId(value(attributes, "NeuroCenter-App-Id", id));
                 name = value(attributes, Attributes.Name.IMPLEMENTATION_TITLE, name);
                 author = value(attributes, Attributes.Name.IMPLEMENTATION_VENDOR,
                         value(attributes, Attributes.Name.SPECIFICATION_VENDOR,
