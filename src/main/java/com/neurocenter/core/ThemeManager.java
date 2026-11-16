@@ -169,7 +169,15 @@ public final class ThemeManager {
                 Map.entry("buttonHover", "Button.hoverBackground"),
                 Map.entry("buttonPressed", "Button.pressedBackground"),
                 Map.entry("buttonDisabled", "Button.disabledBackground"),
-                Map.entry("buttonDisabledText", "Button.disabledText")
+                Map.entry("buttonDisabledText", "Button.disabledText"),
+                Map.entry("titleBar", "TitlePane.background"),
+                Map.entry("titleBarText", "TitlePane.foreground"),
+                Map.entry("titleBarInactive", "TitlePane.inactiveBackground"),
+                Map.entry("titleBarInactiveText", "TitlePane.inactiveForeground"),
+                Map.entry("titleBarButton", "TitlePane.buttonBackground"),
+                Map.entry("titleBarButtonText", "TitlePane.buttonForeground"),
+                Map.entry("titleBarButtonHover", "TitlePane.buttonHoverBackground"),
+                Map.entry("titleBarButtonPressed", "TitlePane.buttonPressedBackground")
         );
         for (Map.Entry<String, String> entry : keys.entrySet()) {
             JsonElement value = colors.get(entry.getKey());
