@@ -66,15 +66,20 @@ import java.util.concurrent.Executors;
 
 /**
  * Lector de PDF con tres vistas:
- *  - Lectura: el texto se recompone y se muestra con Bionic Reading.
- *  - Original: la página tal cual está en el PDF.
- *  - Original + Bionic: conserva la página y refuerza visualmente el inicio de las palabras.
- * Recuerda los ajustes de lectura y la página de cada documento, pero no reabre PDFs automáticamente.
+ * - Lectura: el texto se recompone y se muestra con Bionic Reading.
+ * - Original: la página tal cual está en el PDF.
+ * - Original + Bionic: conserva la página y refuerza visualmente el inicio de
+ * las palabras.
+ * Recuerda los ajustes de lectura y la página de cada documento, pero no reabre
+ * PDFs automáticamente.
  */
 final class PdfReaderPanel extends JPanel {
 
     private record ReadingTheme(String name, Color background, Color foreground) {
-        @Override public String toString() { return name; }
+        @Override
+        public String toString() {
+            return name;
+        }
     }
 
     private static final ReadingTheme[] THEMES = {
@@ -85,7 +90,10 @@ final class PdfReaderPanel extends JPanel {
             new ReadingTheme("Azul noche", new Color(0x14202E), new Color(0xD8E2EE)),
     };
 
-    /** Fracción de cada palabra que se pone en negrita según el control "Intensidad" (1 a 5). */
+    /**
+     * Fracción de cada palabra que se pone en negrita según el control "Intensidad"
+     * (1 a 5).
+     */
     private static final double[] RATIOS = { 0.25, 0.35, 0.5, 0.6, 0.7 };
 
     private static final String CARD_EMPTY = "empty";
@@ -103,7 +111,8 @@ final class PdfReaderPanel extends JPanel {
         return t;
     });
 
-    // estado del documento (se toca solo desde el hilo de Swing; PDFBox solo desde "worker")
+    // estado del documento (se toca solo desde el hilo de Swing; PDFBox solo desde
+    // "worker")
     private PDDocument document;
     private Path currentFile;
     private int pageCount;
@@ -167,7 +176,8 @@ final class PdfReaderPanel extends JPanel {
         zoom = Math.max(0.4, Math.min(3.0, doublePref("zoom", 1.0)));
         viewMode = ctx.getSetting("mode", MODE_BIONIC);
         if (!MODE_BIONIC.equals(viewMode) && !MODE_ORIGINAL.equals(viewMode)
-                && !MODE_HYBRID.equals(viewMode)) viewMode = MODE_BIONIC;
+                && !MODE_HYBRID.equals(viewMode))
+            viewMode = MODE_BIONIC;
         settingsToggle.setSelected(!"false".equals(ctx.getSetting("settingsOpen", "true")));
 
         // --- interfaz
@@ -188,7 +198,8 @@ final class PdfReaderPanel extends JPanel {
 
     }
 
-    // ------------------------------------------------------------------ construcción de la interfaz
+    // ------------------------------------------------------------------
+    // construcción de la interfaz
 
     private JComponent buildTopBar() {
         JButton open = new JButton("Abrir PDF…");
@@ -235,7 +246,8 @@ final class PdfReaderPanel extends JPanel {
             spinnerEditor.getTextField().setForeground(UIManager.getColor("Label.foreground"));
         }
         pageSpinner.addChangeListener(e -> {
-            if (!updatingPage) goToPage(pageModel.getNumber().intValue() - 1);
+            if (!updatingPage)
+                goToPage(pageModel.getNumber().intValue() - 1);
         });
 
         ButtonGroup modes = new ButtonGroup();
@@ -303,21 +315,26 @@ final class PdfReaderPanel extends JPanel {
     }
 
     private static void styleToolbarButton(AbstractButton button) {
-        // Botón de acción visible, con borde discreto y estados hover/pressed de FlatLaf.
+        // Botón de acción visible, con borde discreto y estados hover/pressed de
+        // FlatLaf.
         button.putClientProperty("JButton.buttonType", "roundRect");
         button.setFocusable(false);
     }
 
-    /** Los modos de lectura se comportan como pestañas, no como botones de texto. */
+    /**
+     * Los modos de lectura se comportan como pestañas, no como botones de texto.
+     */
     private static void styleToolbarToggle(JToggleButton button) {
         button.putClientProperty("JButton.buttonType", "tab");
         button.setFocusable(false);
     }
 
     private JComponent buildEmptyCard() {
-        JLabel msg = new JLabel("<html><div style='text-align:center'><span style='font-size:18pt'><b>Abre un PDF para empezar</b></span>"
-                + "<br><br>En la vista de lectura, el principio de cada palabra va en negrita<br>"
-                + "para que resulte más fácil seguir el texto.</div></html>", SwingConstants.CENTER);
+        JLabel msg = new JLabel(
+                "<html><div style='text-align:center'><span style='font-size:18pt'><b>Abre un PDF para empezar</b></span>"
+                        + "<br><br>En la vista de lectura, el principio de cada palabra va en negrita<br>"
+                        + "para que resulte más fácil seguir el texto.</div></html>",
+                SwingConstants.CENTER);
         JButton open = new JButton("Abrir PDF…");
         styleToolbarButton(open);
         open.addActionListener(e -> chooseFile());
@@ -360,7 +377,10 @@ final class PdfReaderPanel extends JPanel {
         textScroll.setBorder(null);
         textScroll.getVerticalScrollBar().setUnitIncrement(24);
         textScroll.getViewport().addComponentListener(new ComponentAdapter() {
-            @Override public void componentResized(ComponentEvent e) { applyTextWidth(); }
+            @Override
+            public void componentResized(ComponentEvent e) {
+                applyTextWidth();
+            }
         });
 
         // Panel de ajustes a la derecha
@@ -411,11 +431,13 @@ final class PdfReaderPanel extends JPanel {
         sizeSpin.addChangeListener(e -> readingPrefsChanged());
         spacingSpin.addChangeListener(e -> readingPrefsChanged());
         strengthSlider.addChangeListener(e -> {
-            if (!strengthSlider.getValueIsAdjusting()) readingPrefsChanged();
+            if (!strengthSlider.getValueIsAdjusting())
+                readingPrefsChanged();
         });
         widthSlider.addChangeListener(e -> {
             applyTextWidth();
-            if (!widthSlider.getValueIsAdjusting()) savePrefs();
+            if (!widthSlider.getValueIsAdjusting())
+                savePrefs();
         });
         themeBox.addActionListener(e -> {
             applyBackground();
@@ -424,17 +446,26 @@ final class PdfReaderPanel extends JPanel {
     }
 
     private void installKeys() {
-        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, InputEvent.ALT_DOWN_MASK), "nextPage");
-        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, InputEvent.ALT_DOWN_MASK), "prevPage");
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, InputEvent.ALT_DOWN_MASK),
+                "nextPage");
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, InputEvent.ALT_DOWN_MASK),
+                "prevPage");
         getActionMap().put("nextPage", new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) { goToPage(pageIndex + 1); }
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                goToPage(pageIndex + 1);
+            }
         });
         getActionMap().put("prevPage", new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) { goToPage(pageIndex - 1); }
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                goToPage(pageIndex - 1);
+            }
         });
     }
 
-    // ------------------------------------------------------------------ abrir documentos
+    // ------------------------------------------------------------------ abrir
+    // documentos
 
     private void chooseFile() {
         JFileChooser chooser = new JFileChooser(ctx.getSetting("lastDir", System.getProperty("user.home")));
@@ -446,7 +477,8 @@ final class PdfReaderPanel extends JPanel {
     }
 
     private void openFile(Path path, boolean silent) {
-        if (worker.isShutdown()) return;
+        if (worker.isShutdown())
+            return;
         ctx.setStatus("Abriendo " + path.getFileName() + "…");
         worker.submit(() -> {
             try {
@@ -472,10 +504,12 @@ final class PdfReaderPanel extends JPanel {
         document = loaded;
         currentFile = path;
         pageCount = loaded.getNumberOfPages();
-        if (previous != null) closeAsync(previous);
+        if (previous != null)
+            closeAsync(previous);
 
         Path parent = path.toAbsolutePath().getParent();
-        if (parent != null) ctx.putSetting("lastDir", parent.toString());
+        if (parent != null)
+            ctx.putSetting("lastDir", parent.toString());
 
         updatingPage = true;
         pageModel.setValue(1);
@@ -491,7 +525,8 @@ final class PdfReaderPanel extends JPanel {
 
     private void onLoadFailed(Path path, Throwable ex, boolean silent) {
         ctx.setStatus(" ");
-        if (silent || disposed) return;
+        if (silent || disposed)
+            return;
         String detail = ex.getClass().getSimpleName().contains("InvalidPassword")
                 ? "El PDF está protegido con contraseña (todavía no se admite)."
                 : String.valueOf(ex.getMessage());
@@ -507,13 +542,18 @@ final class PdfReaderPanel extends JPanel {
                 // nada que hacer
             }
         };
-        if (worker.isShutdown()) close.run(); else worker.submit(close);
+        if (worker.isShutdown())
+            close.run();
+        else
+            worker.submit(close);
     }
 
-    // ------------------------------------------------------------------ navegación y carga de páginas
+    // ------------------------------------------------------------------ navegación
+    // y carga de páginas
 
     private void goToPage(int index) {
-        if (document == null) return;
+        if (document == null)
+            return;
         pageIndex = Math.max(0, Math.min(pageCount - 1, index));
         updatingPage = true;
         pageModel.setValue(pageIndex + 1);
@@ -526,40 +566,47 @@ final class PdfReaderPanel extends JPanel {
     }
 
     private void loadCurrentPage() {
-        if (document == null || worker.isShutdown()) return;
+        if (document == null || worker.isShutdown())
+            return;
         final PDDocument doc = document;
         final int index = pageIndex;
         final String mode = viewMode;
         final float dpi = (float) (96.0 * zoom);
         final double ratio = RATIOS[strengthSlider.getValue() - 1];
         final int myTicket = ++ticket;
-        if (MODE_BIONIC.equals(mode)) textReady = false;
+        if (MODE_BIONIC.equals(mode))
+            textReady = false;
 
         worker.submit(() -> {
-            if (myTicket != ticket) return; // ya hay una petición más reciente
+            if (myTicket != ticket)
+                return; // ya hay una petición más reciente
             try {
                 if (MODE_BIONIC.equals(mode)) {
                     List<String> result = extractParagraphs(doc, index);
                     SwingUtilities.invokeLater(() -> {
-                        if (myTicket == ticket) showText(result);
+                        if (myTicket == ticket)
+                            showText(result);
                     });
                 } else if (MODE_HYBRID.equals(mode)) {
-                    BufferedImage image = BionicPageRenderer.render(doc, index, dpi, ratio);
+                    java.awt.Image image = BionicPageRenderer.render(doc, index, dpi, ratio);
                     SwingUtilities.invokeLater(() -> {
-                        if (myTicket == ticket) showHybridImage(image);
+                        if (myTicket == ticket)
+                            showHybridImage(image);
                     });
                 } else {
                     float renderScale = PdfImageQuality.renderScale(dpi);
                     BufferedImage highResolution = new PDFRenderer(doc)
                             .renderImageWithDPI(index, dpi * renderScale);
-                    BufferedImage image = PdfImageQuality.downsample(highResolution, renderScale);
+                    java.awt.Image image = PdfImageQuality.downsample(highResolution, renderScale);
                     SwingUtilities.invokeLater(() -> {
-                        if (myTicket == ticket) showImage(image);
+                        if (myTicket == ticket)
+                            showImage(image);
                     });
                 }
             } catch (Throwable ex) {
                 SwingUtilities.invokeLater(() -> {
-                    if (myTicket == ticket) ctx.setStatus("No se pudo leer la página: " + ex.getMessage());
+                    if (myTicket == ticket)
+                        ctx.setStatus("No se pudo leer la página: " + ex.getMessage());
                 });
             }
         });
@@ -573,12 +620,12 @@ final class PdfReaderPanel extends JPanel {
         return BionicText.paragraphs(stripper.getText(doc));
     }
 
-    private void showImage(BufferedImage image) {
+    private void showImage(java.awt.Image image) {
         imageLabel.setIcon(new ImageIcon(image));
         SwingUtilities.invokeLater(() -> imageScroll.getVerticalScrollBar().setValue(0));
     }
 
-    private void showHybridImage(BufferedImage image) {
+    private void showHybridImage(java.awt.Image image) {
         hybridImageLabel.setIcon(new ImageIcon(image));
         SwingUtilities.invokeLater(() -> hybridImageScroll.getVerticalScrollBar().setValue(0));
     }
@@ -589,7 +636,8 @@ final class PdfReaderPanel extends JPanel {
         renderBionic();
     }
 
-    // ------------------------------------------------------------------ vista de lectura
+    // ------------------------------------------------------------------ vista de
+    // lectura
 
     private void renderBionic() {
         ReadingTheme theme = currentTheme();
@@ -628,10 +676,14 @@ final class PdfReaderPanel extends JPanel {
         applyTextWidth();
     }
 
-    /** Limita el ancho de la columna de texto (las líneas muy largas cansan) y la centra. */
+    /**
+     * Limita el ancho de la columna de texto (las líneas muy largas cansan) y la
+     * centra.
+     */
     private void applyTextWidth() {
         int viewport = textScroll.getViewport().getWidth();
-        if (viewport <= 0) return;
+        if (viewport <= 0)
+            return;
         int textWidth = Math.min(widthSlider.getValue(), Math.max(240, viewport - 48));
         int side = Math.max(24, (viewport - textWidth) / 2);
         if (side != lastSide) {
@@ -669,11 +721,14 @@ final class PdfReaderPanel extends JPanel {
         ctx.putSetting("theme", String.valueOf(Math.max(0, themeBox.getSelectedIndex())));
     }
 
-    // ------------------------------------------------------------------ modos y zoom
+    // ------------------------------------------------------------------ modos y
+    // zoom
 
     private String cardForMode() {
-        if (MODE_BIONIC.equals(viewMode)) return CARD_BIONIC;
-        if (MODE_HYBRID.equals(viewMode)) return CARD_HYBRID;
+        if (MODE_BIONIC.equals(viewMode))
+            return CARD_BIONIC;
+        if (MODE_HYBRID.equals(viewMode))
+            return CARD_HYBRID;
         return CARD_ORIGINAL;
     }
 
@@ -701,7 +756,8 @@ final class PdfReaderPanel extends JPanel {
         zoom = Math.max(0.4, Math.min(3.0, zoom + delta));
         ctx.putSetting("zoom", String.format(Locale.ROOT, "%.2f", zoom));
         updateZoomLabel();
-        if (document != null && !MODE_BIONIC.equals(viewMode)) loadCurrentPage();
+        if (document != null && !MODE_BIONIC.equals(viewMode))
+            loadCurrentPage();
     }
 
     private void updateZoomLabel() {
@@ -714,14 +770,16 @@ final class PdfReaderPanel extends JPanel {
         pageSpinner.setEnabled(enabled);
     }
 
-    // ------------------------------------------------------------------ ciclo de vida
+    // ------------------------------------------------------------------ ciclo de
+    // vida
 
     void dispose() {
         disposed = true;
         ticket++;
         PDDocument doc = document;
         document = null;
-        if (doc != null) closeAsync(doc);
+        if (doc != null)
+            closeAsync(doc);
         worker.shutdown();
     }
 
