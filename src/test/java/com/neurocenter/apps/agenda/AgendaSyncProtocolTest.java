@@ -23,16 +23,16 @@ class AgendaSyncProtocolTest {
     void clientAndServerExchangeOperationsBidirectionally() throws Exception {
         AgendaStore desktop = newStore("desktop");
         AgendaStore phone = newStore("phone");
+        desktop.enableSync();
+        phone.enableSync();
 
         AgendaEntry desktopTask = task("Preparar presentación");
         desktop.add(desktopTask);
         desktop.save();
-        desktop.enableSync();
 
         AgendaEntry phoneTask = task("Comprar cuaderno");
         phone.add(phoneTask);
         phone.save();
-        phone.enableSync();
 
         PipedOutputStream clientOutput = new PipedOutputStream();
         PipedInputStream serverInput = new PipedInputStream(clientOutput, 64 * 1024);
