@@ -57,6 +57,16 @@ final class AgendaEntry {
         return copy;
     }
 
+    /** Copia el contenido sincronizable, excluyendo el estado local de avisos. */
+    AgendaEntry syncCopy() {
+        AgendaEntry copy = copy();
+        copy.remind = false;
+        copy.notified = false;
+        copy.notifiedDayBefore = false;
+        copy.notifiedCustom = false;
+        return copy;
+    }
+
     boolean isEvent() {
         return EVENT.equals(type);
     }
