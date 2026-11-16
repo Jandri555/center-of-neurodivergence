@@ -164,6 +164,11 @@ final class AgendaStore {
         return syncJournal.isEnabled();
     }
 
+    /** Estado causal que se comparte durante el protocolo de sincronización. */
+    Map<String, Long> syncVectorClock() {
+        return syncJournal.vectorClock();
+    }
+
     /** Historial completo, listo para intercambiar por USB o Bluetooth. */
     List<AgendaOperation> exportOperations() {
         return syncJournal.exportOperations();
