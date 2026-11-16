@@ -15,6 +15,7 @@ import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
+import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -313,16 +314,51 @@ public final class MainWindow extends JFrame {
     // ------------------------------------------------------------------ acciones
 
     private void openSettings() {
-        String[] options = {"Cambiar tema", "Gestionar temas", "Gestionar apps", "Cerrar"};
-        int choice = JOptionPane.showOptionDialog(this, "Ajustes generales", "Ajustes",
-                JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, options, null);
-        if (choice == 0) {
-            chooseTheme();
-        } else if (choice == 1) {
-            manageThemes();
-        } else if (choice == 2) {
-            manageApps();
+        // Diálogo propio en lugar de JOptionPane: este último asigna foco
+        // automáticamente al primer botón y FlatLaf lo resalta como predeterminado.
+        JDialog dialog = new JDialog(this, "Ajustes", true);
+        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        JPanel root = new JPanel(new BorderLayout(0, 18));
+        root.setBorder(new EmptyBorder(18, 18, 14, 18));
+
+        JLabel message = new JLabel("Ajustes generales");
+        root.add(message, BorderLayout.CENTER);
+
+        JPanel buttons = new JPanel(new GridLayout(1, 4, 8, 0));
+        String[] labels = {"Cambiar tema", "Gestionar temas", "Gestionar apps", "Cerrar"};
+        Runnable[] actions = {
+                this::chooseTheme,
+                this::manageThemes,
+                this::manageApps,
+                dialog::dispose
+        };
+        for (int i = 0; i < labels.length; i++) {
+            JButton button = new JButton(labels[i]);
+            // Sin foco inicial: todos los botones conservan el mismo aspecto neutro.
+            button.setFocusable(false);
+            button.addActionListener(e -> {
+                dialog.dispose();
+                actions[buttons.getComponentCount() - 1].run();
+            });
+            buttons.add(button);
         }
+        // Asocia cada botón con su acción sin depender del foco ni del orden de selección.
+        for (int i = 0; i < buttons.getComponentCount(); i++) {
+            final int index = i;
+            JButton button = (JButton) buttons.getComponent(i);
+            for (var listener : button.getActionListeners()) button.removeActionListener(listener);
+            button.addActionListener(e -> {
+                dialog.dispose();
+                actions[index].run();
+            });
+        }
+
+        root.add(buttons, BorderLayout.SOUTH);
+        dialog.setContentPane(root);
+        dialog.pack();
+        dialog.setMinimumSize(new Dimension(500, dialog.getPreferredSize().height));
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
     }
 
     private void chooseTheme() {
