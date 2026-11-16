@@ -1,12 +1,12 @@
 package com.neurocenter.programs.pdfreader;
 
-import com.neurocenter.api.NeuroProgram;
-import com.neurocenter.api.ProgramContext;
+import com.neurocenter.api.NeuroApp;
+import com.neurocenter.api.AppContext;
 
 import javax.swing.JComponent;
 
 /** Lector de PDF con vista original y vista de lectura con Bionic Reading. */
-public final class PdfReaderProgram implements NeuroProgram {
+public final class PdfReaderApp implements NeuroApp {
 
     private PdfReaderPanel panel;
 
@@ -19,7 +19,7 @@ public final class PdfReaderProgram implements NeuroProgram {
     }
 
     @Override
-    public JComponent createPanel(ProgramContext ctx) {
+    public JComponent createPanel(AppContext ctx) {
         panel = new PdfReaderPanel(ctx);
         return panel;
     }
