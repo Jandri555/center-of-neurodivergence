@@ -1,6 +1,6 @@
 package com.neurocenter.programs.pdfreader;
 
-import com.neurocenter.api.ProgramContext;
+import com.neurocenter.api.AppContext;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
@@ -87,7 +87,7 @@ final class PdfReaderPanel extends JPanel {
     private static final String CARD_BIONIC = "bionic";
     private static final String CARD_ORIGINAL = "original";
 
-    private final ProgramContext ctx;
+    private final AppContext ctx;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "pdf-reader-worker");
         t.setDaemon(true);
@@ -133,7 +133,7 @@ final class PdfReaderPanel extends JPanel {
     private final JSlider widthSlider;
     private final JComboBox<ReadingTheme> themeBox = new JComboBox<>(THEMES);
 
-    PdfReaderPanel(ProgramContext ctx) {
+    PdfReaderPanel(AppContext ctx) {
         super(new BorderLayout());
         this.ctx = ctx;
 
