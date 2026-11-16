@@ -31,7 +31,7 @@ final class AgendaOperation {
         this.lamport = lamport;
         this.type = type;
         this.entryId = entryId;
-        this.entry = entry == null ? null : entry.copy();
+        this.entry = entry == null ? null : entry.syncCopy();
         this.vectorClock = new LinkedHashMap<>(vectorClock);
     }
 
