@@ -142,6 +142,21 @@ final class AgendaSyncJournal {
     }
 
     /**
+     * Exporta únicamente las operaciones que el dispositivo remoto todavía no
+     * conoce según el reloj causal que anunció en el último intercambio.
+     */
+    synchronized List<AgendaOperation> exportOperationsAfter(Map<String, Long> remoteClock) {
+        Map<String, Long> known = remoteClock == null ? java.util.Collections.emptyMap() : remoteClock;
+        List<AgendaOperation> result = new ArrayList<>();
+        for (AgendaOperation operation : operations) {
+            if (operation.counter > known.getOrDefault(operation.deviceId, 0L)) {
+                result.add(gson.fromJson(gson.toJson(operation), AgendaOperation.class));
+            }
+        }
+        return java.util.Collections.unmodifiableList(result);
+    }
+
+    /**
      * Incorpora operaciones de otro dispositivo. Es idempotente: repetir un lote
      * no duplica órdenes ni cambia el resultado.
      */
