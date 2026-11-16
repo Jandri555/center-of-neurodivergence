@@ -61,9 +61,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Lector de PDF con dos vistas:
- *  - Lectura: el texto de la página se recompone y se muestra con Bionic Reading.
+ * Lector de PDF con tres vistas:
+ *  - Lectura: el texto se recompone y se muestra con Bionic Reading.
  *  - Original: la página tal cual está en el PDF.
+ *  - Original + Bionic: conserva la página y refuerza visualmente el inicio de las palabras.
  * Recuerda el último PDF, la página por la que ibas y los ajustes de lectura.
  */
 final class PdfReaderPanel extends JPanel {
@@ -550,7 +551,7 @@ final class PdfReaderPanel extends JPanel {
         try {
             if (paragraphs.isEmpty()) {
                 doc.insertString(0, "Esta página no tiene texto seleccionable (puede ser una imagen escaneada).\n"
-                        + "Cambia a la vista Original para verla.", normal);
+                        + "Cambia a la vista Original o Original + Bionic para verla.", normal);
             } else {
                 for (String p : paragraphs) {
                     BionicText.append(doc, p, ratio, normal, strong);
@@ -594,7 +595,11 @@ final class PdfReaderPanel extends JPanel {
 
     private void readingPrefsChanged() {
         savePrefs();
-        if (MODE_BIONIC.equals(viewMode) && textReady) renderBionic();
+        if (MODE_BIONIC.equals(viewMode) && textReady) {
+            renderBionic();
+        } else if (MODE_HYBRID.equals(viewMode) && document != null) {
+            loadCurrentPage();
+        }
     }
 
     private void savePrefs() {
