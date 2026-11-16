@@ -161,9 +161,12 @@ public final class MainWindow extends JFrame {
 
         settingsButton = new JButton("⚙");
         settingsButton.setToolTipText("Ajustes generales");
-        settingsButton.addActionListener(e -> openSettings());
+        settingsButton.setFont(settingsButton.getFont().deriveFont(Font.PLAIN, 25f));
+        settingsButton.setPreferredSize(new Dimension(48, 44));
+        settingsButton.setMargin(new Insets(4, 8, 4, 8));
         settingsButton.setFocusable(false);
-        JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 4));
+        settingsButton.addActionListener(e -> openSettings());
+        JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 8));
         topBar.add(settingsButton);
         add(topBar, BorderLayout.NORTH);
 
@@ -310,16 +313,41 @@ public final class MainWindow extends JFrame {
     // ------------------------------------------------------------------ acciones
 
     private void openSettings() {
-        String[] options = {"Tema claro", "Tema oscuro", "Gestionar apps", "Cerrar"};
+        String[] options = {"Cambiar tema", "Gestionar apps", "Cerrar"};
         int choice = JOptionPane.showOptionDialog(this, "Ajustes generales", "Ajustes",
                 JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
-        if (choice == 0 || choice == 1) {
-            appSettings.put("theme", choice == 1 ? "dark" : "light");
-            ThemeManager.apply(choice == 1);
-            SwingUtilities.updateComponentTreeUI(this);
-            for (Window window : getOwnedWindows()) SwingUtilities.updateComponentTreeUI(window);
-        } else if (choice == 2) {
+        if (choice == 0) {
+            chooseTheme();
+        } else if (choice == 1) {
             manageApps();
+        }
+    }
+
+    private void chooseTheme() {
+        List<ThemeManager.ThemeInfo> themes = ThemeManager.availableThemes();
+        String[] names = themes.stream().map(ThemeManager.ThemeInfo::name).toArray(String[]::new);
+        String currentId = appSettings.get("theme", "light");
+        int selected = 0;
+        for (int i = 0; i < themes.size(); i++) {
+            if (themes.get(i).id().equals(currentId)) {
+                selected = i;
+                break;
+            }
+        }
+
+        int choice = JOptionPane.showOptionDialog(this,
+                "Selecciona el aspecto de la aplicación:", "Temas",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, names, names[selected]);
+        if (choice >= 0 && choice < themes.size()) {
+            String themeId = themes.get(choice).id();
+            if (!themeId.equals(currentId)) {
+                appSettings.put("theme", themeId);
+                ThemeManager.apply(themeId);
+                SwingUtilities.updateComponentTreeUI(this);
+                for (Window window : getOwnedWindows()) {
+                    SwingUtilities.updateComponentTreeUI(window);
+                }
+            }
         }
     }
 
