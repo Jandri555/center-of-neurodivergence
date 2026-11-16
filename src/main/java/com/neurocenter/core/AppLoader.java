@@ -1,6 +1,7 @@
 package com.neurocenter.core;
 
 import com.neurocenter.api.NeuroApp;
+import com.neurocenter.api.NeuroProgram;
 
 import java.io.IOException;
 import java.net.URL;
@@ -8,17 +9,18 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.stream.Stream;
 
 /**
- * Carga los apps externos: cada .jar de la carpeta "apps" se abre con su propio
- * ClassLoader (hijo del de la aplicación, así pueden usar Swing, Gson, PDFBox, FlatLaf...)
- * y se buscan las implementaciones de NeuroApp declaradas con ServiceLoader.
+ * Carga apps externos: cada JAR tiene su propio ClassLoader y puede registrar tanto
+ * la API actual (NeuroApp) como la API antigua (NeuroProgram).
  */
 public final class AppLoader {
 
@@ -34,7 +36,7 @@ public final class AppLoader {
         List<Path> jars;
         try (Stream<Path> files = Files.list(appsDir)) {
             jars = files
-                    .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar"))
+                    .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar"))
                     .sorted()
                     .toList();
         } catch (IOException e) {
@@ -44,24 +46,50 @@ public final class AppLoader {
 
         for (Path jar : jars) {
             String name = jar.getFileName().toString();
+            int errorsBefore = errors.size();
+            Set<String> providerClasses = new HashSet<>();
+            int found = 0;
+
             try {
                 URL[] urls = { jar.toUri().toURL() };
-                // El ClassLoader se mantiene abierto mientras la app esté en marcha (los apps lo necesitan).
+                // Se mantiene abierto mientras la app esté activa: sus clases dependen de él.
                 URLClassLoader loader = new URLClassLoader(urls, AppLoader.class.getClassLoader());
-                Iterator<NeuroApp> it = ServiceLoader.load(NeuroApp.class, loader).iterator();
-                int found = 0;
-                while (it.hasNext()) {
-                    apps.add(it.next());
-                    found++;
+
+                // API actual.
+                try {
+                    Iterator<NeuroApp> current = ServiceLoader.load(NeuroApp.class, loader).iterator();
+                    while (current.hasNext()) {
+                        NeuroApp app = current.next();
+                        if (providerClasses.add(app.getClass().getName())) {
+                            apps.add(app);
+                            found++;
+                        }
+                    }
+                } catch (ServiceConfigurationError error) {
+                    errors.add(name + " (NeuroApp): " + error.getMessage());
                 }
-                if (found == 0) {
-                    errors.add(name + ": no declara ningún app "
-                            + "(falta META-INF/services/com.neurocenter.api.NeuroApp)");
+
+                // API anterior: se adapta al contexto y al ciclo de vida actuales.
+                try {
+                    Iterator<NeuroProgram> legacy = ServiceLoader.load(NeuroProgram.class, loader).iterator();
+                    while (legacy.hasNext()) {
+                        NeuroProgram program = legacy.next();
+                        if (providerClasses.add(program.getClass().getName())) {
+                            apps.add(new LegacyProgramAdapter(program));
+                            found++;
+                        }
+                    }
+                } catch (ServiceConfigurationError error) {
+                    errors.add(name + " (NeuroProgram): " + error.getMessage());
                 }
-            } catch (ServiceConfigurationError e) {
-                errors.add(name + ": " + e.getMessage());
-            } catch (Throwable t) {
-                errors.add(name + ": " + t);
+
+                if (found == 0 && errors.size() == errorsBefore) {
+                    errors.add(name + ": no declara ninguna app. Se esperaba "
+                            + "META-INF/services/com.neurocenter.api.NeuroApp o "
+                            + "META-INF/services/com.neurocenter.api.NeuroProgram.");
+                }
+            } catch (Throwable error) {
+                errors.add(name + ": " + error);
             }
         }
         return new Result(apps, errors);

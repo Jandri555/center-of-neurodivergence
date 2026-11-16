@@ -14,7 +14,9 @@ import org.apache.pdfbox.text.TextPosition;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
+import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
+import java.awt.Composite;
 import java.awt.Graphics2D;
 import java.awt.Shape;
 import java.awt.geom.AffineTransform;
@@ -138,7 +140,7 @@ final class BionicPageRenderer {
     }
 
     private static void markWord(List<TextPosition> word, double ratio, Set<GlyphKey> result,
-                                  float cropOffsetX, float cropOffsetY) {
+                                 float cropOffsetX, float cropOffsetY) {
         if (word.isEmpty()) return;
 
         int totalCodePoints = word.stream()
@@ -214,16 +216,16 @@ final class BionicPageRenderer {
             boolean bold = boldGlyphs.contains(GlyphKey.of(font, code, textRenderingMatrix));
 
             if (!bold) {
-                // REDUCIR LA OPACIDAD del texto no-bionic al 55% para aislar la negrita
+                // El texto normal se atenúa para que el prefijo en negrita destaque.
                 Graphics2D graphics = (Graphics2D) getGraphics();
-                java.awt.Composite oldComposite = graphics.getComposite();
-                graphics.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 0.55f));
-                
-                super.showFontGlyph(textRenderingMatrix, font, code, displacement);
-                
-                graphics.setComposite(oldComposite);
+                Composite previousComposite = graphics.getComposite();
+                try {
+                    graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.55f));
+                    super.showFontGlyph(textRenderingMatrix, font, code, displacement);
+                } finally {
+                    graphics.setComposite(previousComposite);
+                }
             } else {
-                // PDFBox dibuja primero el glifo original con sus colores, transparencias y ajustes.
                 super.showFontGlyph(textRenderingMatrix, font, code, displacement);
                 reinforceOriginalGlyph(textRenderingMatrix, font, code, displacement);
             }
@@ -267,12 +269,8 @@ final class BionicPageRenderer {
 
                 float fontScale = Math.max(Math.abs(textRenderingMatrix.getScaleX()),
                         Math.abs(textRenderingMatrix.getScaleY()));
-                
-                // Eliminamos la restricción máxima de 0.90f y subimos el multiplicador al 6.5%
                 float emboldenWidth = Math.max(0.3f, fontScale * 0.065f);
 
-                // Convertimos el engrosado del contorno en una superficie rellena.
-                // draw(glyph) solo pintaba el borde y dejaba un efecto de letra hueca.
                 Shape emboldenedGlyph = new BasicStroke(emboldenWidth,
                         BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
                         .createStrokedShape(glyph);
