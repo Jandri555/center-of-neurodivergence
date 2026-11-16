@@ -27,6 +27,7 @@ import javax.swing.JTextPane;
 import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.SpinnerNumberModel;
+import javax.swing.plaf.basic.BasicSpinnerUI;
 import javax.swing.SwingConstants;
 import javax.swing.UIManager;
 import javax.swing.SwingUtilities;
@@ -209,24 +210,30 @@ final class PdfReaderPanel extends JPanel {
         nextBtn.setToolTipText("Página siguiente (Alt + →)");
         prevBtn.addActionListener(e -> goToPage(pageIndex - 1));
         nextBtn.addActionListener(e -> goToPage(pageIndex + 1));
-        pageSpinner.setPreferredSize(new Dimension(72, pageSpinner.getPreferredSize().height));
-        // JSpinner pinta su propio fondo y el panel de flechas aunque el editor
-        // sea transparente. Igualamos el fondo al de la barra y desactivamos
-        // el pintado opaco de todos los contenedores internos.
-        Color toolbarBackground = UIManager.getColor("Panel.background");
-        if (toolbarBackground != null) pageSpinner.setBackground(toolbarBackground);
+        // El selector usa una UI básica transparente y elimina las flechas internas:
+        // la barra ya tiene botones de página anterior/siguiente independientes.
+        pageSpinner.setUI(new BasicSpinnerUI() {
+            @Override
+            protected Component createNextButton() {
+                return hiddenSpinnerButton();
+            }
+
+            @Override
+            protected Component createPreviousButton() {
+                return hiddenSpinnerButton();
+            }
+        });
+        pageSpinner.setPreferredSize(new Dimension(54, pageSpinner.getPreferredSize().height));
         pageSpinner.setOpaque(false);
         pageSpinner.setBorder(null);
         JComponent editor = pageSpinner.getEditor();
         if (editor instanceof JSpinner.DefaultEditor spinnerEditor) {
             spinnerEditor.setOpaque(false);
             spinnerEditor.getTextField().setOpaque(false);
-            spinnerEditor.getTextField().setBackground(toolbarBackground);
-            spinnerEditor.getTextField().setForeground(UIManager.getColor("Label.foreground"));
             spinnerEditor.getTextField().setBorder(null);
             spinnerEditor.getTextField().setHorizontalAlignment(SwingConstants.CENTER);
+            spinnerEditor.getTextField().setForeground(UIManager.getColor("Label.foreground"));
         }
-        makeSpinnerChildrenTransparent(pageSpinner, toolbarBackground);
         pageSpinner.addChangeListener(e -> {
             if (!updatingPage) goToPage(pageModel.getNumber().intValue() - 1);
         });
@@ -283,25 +290,16 @@ final class PdfReaderPanel extends JPanel {
         return north;
     }
 
-    /** Botones planos integrados visualmente en la barra de herramientas de FlatLaf. */
-    private static void makeSpinnerChildrenTransparent(Container parent, Color background) {
-        for (Component child : parent.getComponents()) {
-            if (child instanceof JComponent component) {
-                component.setOpaque(false);
-                if (component instanceof AbstractButton button) {
-                    button.setContentAreaFilled(false);
-                    button.setBorderPainted(false);
-                    button.setFocusable(false);
-                    button.putClientProperty("JButton.buttonType", "toolBarButton");
-                }
-                if (background != null && component instanceof JSpinner.DefaultEditor) {
-                    component.setBackground(background);
-                }
-            }
-            if (child instanceof Container container) {
-                makeSpinnerChildrenTransparent(container, background);
-            }
-        }
+    private static Component hiddenSpinnerButton() {
+        JButton button = new JButton();
+        button.setVisible(false);
+        button.setFocusable(false);
+        button.setBorderPainted(false);
+        button.setContentAreaFilled(false);
+        button.setPreferredSize(new Dimension(0, 0));
+        button.setMinimumSize(new Dimension(0, 0));
+        button.setMaximumSize(new Dimension(0, 0));
+        return button;
     }
 
     private static void styleToolbarButton(AbstractButton button) {
