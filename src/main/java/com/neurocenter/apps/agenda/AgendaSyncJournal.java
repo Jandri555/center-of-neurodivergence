@@ -83,12 +83,12 @@ final class AgendaSyncJournal {
     }
 
     synchronized void recordUpsert(AgendaEntry entry) {
-        if (!metadata.enabled || entry == null || entry.id == null || entry.id.isBlank()) return;
+        if (!metadata.enabled || entry == null || entry.id == null || entry.id.trim().isEmpty()) return;
         appendNewOperation(AgendaOperation.UPSERT, entry.id, entry);
     }
 
     synchronized void recordDelete(String entryId) {
-        if (!metadata.enabled || entryId == null || entryId.isBlank()) return;
+        if (!metadata.enabled || entryId == null || entryId.trim().isEmpty()) return;
         appendNewOperation(AgendaOperation.DELETE, entryId, null);
     }
 
@@ -122,7 +122,7 @@ final class AgendaSyncJournal {
         for (AgendaOperation operation : operations) {
             copy.add(gson.fromJson(gson.toJson(operation), AgendaOperation.class));
         }
-        return List.copyOf(copy);
+        return java.util.Collections.unmodifiableList(copy);
     }
 
     /**
@@ -157,7 +157,7 @@ final class AgendaSyncJournal {
             List<AgendaOperation> heads = history.stream()
                     .filter(candidate -> history.stream().noneMatch(other ->
                             other != candidate && happensBefore(candidate, other)))
-                    .toList();
+                    .collect(java.util.stream.Collectors.toList());
 
             // Si dos dispositivos borran/actualizan la misma entrada sin haberse
             // sincronizado, el borrado concurrente gana para no resucitar datos.
@@ -175,7 +175,7 @@ final class AgendaSyncJournal {
     }
 
     synchronized Map<String, Long> vectorClock() {
-        return Map.copyOf(metadata.vectorClock);
+        return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(metadata.vectorClock));
     }
 
     private void mergeClock(Map<String, Long> incoming) {
@@ -204,9 +204,9 @@ final class AgendaSyncJournal {
     private Metadata loadMetadata() throws IOException {
         if (!Files.isRegularFile(metadataFile)) return new Metadata();
         try {
-            Metadata loaded = gson.fromJson(Files.readString(metadataFile, StandardCharsets.UTF_8), Metadata.class);
+            Metadata loaded = gson.fromJson(new String(Files.readAllBytes(metadataFile), StandardCharsets.UTF_8), Metadata.class);
             if (loaded == null) throw new IOException("El archivo de sincronización está vacío.");
-            if (loaded.deviceId == null || loaded.deviceId.isBlank()) loaded.deviceId = UUID.randomUUID().toString();
+            if (loaded.deviceId == null || loaded.deviceId.trim().isEmpty()) loaded.deviceId = UUID.randomUUID().toString();
             if (loaded.vectorClock == null) loaded.vectorClock = new LinkedHashMap<>();
             return loaded;
         } catch (JsonParseException ex) {
@@ -216,7 +216,7 @@ final class AgendaSyncJournal {
 
     private void loadOperations() throws IOException {
         if (!Files.isRegularFile(operationsFile)) return;
-        String raw = Files.readString(operationsFile, StandardCharsets.UTF_8);
+        String raw = new String(Files.readAllBytes(operationsFile), StandardCharsets.UTF_8);
         // Una interrupción durante el último append puede dejar una línea final
         // incompleta. Solo se descarta ese fragmento; las líneas confirmadas se conservan.
         if (!raw.isEmpty() && !raw.endsWith("\n") && !raw.endsWith("\r")) {
@@ -272,7 +272,7 @@ final class AgendaSyncJournal {
     private void saveMetadata() throws IOException {
         Files.createDirectories(metadataFile.getParent());
         Path temporary = metadataFile.resolveSibling(metadataFile.getFileName() + ".tmp");
-        Files.writeString(temporary, gson.toJson(metadata), StandardCharsets.UTF_8);
+        Files.write(temporary, gson.toJson(metadata).getBytes(StandardCharsets.UTF_8));
         try {
             Files.move(temporary, metadataFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (java.nio.file.AtomicMoveNotSupportedException ex) {
