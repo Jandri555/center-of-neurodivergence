@@ -16,12 +16,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Renderiza la página completa y refuerza el inicio de las palabras sobre el texto original.
+ * Renderiza la página completa y marca el inicio de las palabras sin alterar sus glifos.
  *
- * No reconstruye la página ni tapa el contenido que hay debajo del texto: dibuja los primeros
- * caracteres en negrita encima del renderizado original. Así se conservan imágenes, fondos,
- * columnas y tablas. La tipografía superpuesta es aproximada porque PDFBox no expone una forma
- * sencilla de volver a pintar cada glifo con el mismo aspecto exacto que el PDF original.
+ * No reconstruye la página ni vuelve a pintar el texto con una fuente aproximada: dibuja
+ * una línea fina bajo el prefijo de cada palabra. Así conserva exactamente la tipografía,
+ * las imágenes, los fondos, las columnas y las tablas del documento original.
  */
 final class BionicPageRenderer {
 
