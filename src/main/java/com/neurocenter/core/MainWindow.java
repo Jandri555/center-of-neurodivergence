@@ -313,12 +313,14 @@ public final class MainWindow extends JFrame {
     // ------------------------------------------------------------------ acciones
 
     private void openSettings() {
-        String[] options = {"Cambiar tema", "Gestionar apps", "Cerrar"};
+        String[] options = {"Cambiar tema", "Gestionar temas", "Gestionar apps", "Cerrar"};
         int choice = JOptionPane.showOptionDialog(this, "Ajustes generales", "Ajustes",
                 JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
         if (choice == 0) {
             chooseTheme();
         } else if (choice == 1) {
+            manageThemes();
+        } else if (choice == 2) {
             manageApps();
         }
     }
@@ -347,6 +349,61 @@ public final class MainWindow extends JFrame {
                 for (Window window : getOwnedWindows()) {
                     SwingUtilities.updateComponentTreeUI(window);
                 }
+            }
+        }
+    }
+
+    private void manageThemes() {
+        String[] options = {"Instalar tema (.tme)", "Desinstalar tema", "Abrir carpeta de temas", "Volver"};
+        int choice = JOptionPane.showOptionDialog(this,
+                "Los temas son paquetes de apariencia. Solo se admiten archivos .tme con JSON y recursos; no ejecutan código.",
+                "Gestor de temas", JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE,
+                null, options, options[0]);
+        if (choice == 0) {
+            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Temas (*.tme)", "tme"));
+            if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                try {
+                    String id = ThemeArchive.install(chooser.getSelectedFile().toPath());
+                    JOptionPane.showMessageDialog(this, "Tema «" + id + "» instalado. Ya puedes seleccionarlo en Cambiar tema.");
+                } catch (java.io.IOException ex) {
+                    JOptionPane.showMessageDialog(this, "No se pudo instalar el tema: " + ex.getMessage(),
+                            "Error al instalar", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        } else if (choice == 1) {
+            List<ThemeManager.ThemeInfo> installed = ThemeManager.availableThemes().stream()
+                    .filter(theme -> !theme.builtIn()).toList();
+            if (installed.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "No hay temas externos instalados.");
+                return;
+            }
+            ThemeManager.ThemeInfo[] themes = installed.toArray(ThemeManager.ThemeInfo[]::new);
+            ThemeManager.ThemeInfo selected = (ThemeManager.ThemeInfo) JOptionPane.showInputDialog(
+                    this, "Selecciona el tema que quieres desinstalar:", "Desinstalar tema",
+                    JOptionPane.WARNING_MESSAGE, null, themes, themes[0]);
+            if (selected != null && JOptionPane.showConfirmDialog(this,
+                    "Se eliminará el tema «" + selected.name() + "». ¿Continuar?",
+                    "Confirmar desinstalación", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+                try {
+                    boolean active = selected.id().equals(appSettings.get("theme", "light"));
+                    ThemeArchive.uninstall(selected.id());
+                    if (active) {
+                        appSettings.put("theme", "light");
+                        ThemeManager.apply("light");
+                        SwingUtilities.updateComponentTreeUI(this);
+                    }
+                    JOptionPane.showMessageDialog(this, "Tema desinstalado.");
+                } catch (java.io.IOException ex) {
+                    JOptionPane.showMessageDialog(this, "No se pudo desinstalar el tema: " + ex.getMessage(),
+                            "Error al desinstalar", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        } else if (choice == 2) {
+            try {
+                if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(AppPaths.themesDir().toFile());
+            } catch (java.io.IOException ex) {
+                JOptionPane.showMessageDialog(this, "No se pudo abrir la carpeta: " + ex.getMessage());
             }
         }
     }
@@ -409,7 +466,8 @@ public final class MainWindow extends JFrame {
         } catch (Throwable ignored) {
             // una app con un icono roto no debe romper el panel
         }
-        return new BadgeIcon(p.name(), p.id(), size);
+        Icon fallback = new BadgeIcon(p.name(), p.id(), size);
+        return ThemeManager.appIcon(p.id(), fallback, size);
     }
 
     private static String safeVersion(NeuroApp p) {
