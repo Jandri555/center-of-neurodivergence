@@ -159,9 +159,9 @@ public final class ThemeManager {
         refreshThemes();
         ThemeInfo theme = THEMES.get(themeId);
         if (theme == null) theme = THEMES.get("light");
-        if (!theme.compatibility().supports(PlatformCompatibility.Platform.DESKTOP)) {
+        if (!theme.compatibility().supports(com.neurocenter.api.NeuroPlatform.DESKTOP)) {
             try {
-                theme.compatibility().require(PlatformCompatibility.Platform.DESKTOP,
+                theme.compatibility().require(com.neurocenter.api.NeuroPlatform.DESKTOP,
                         "el tema «" + theme.name() + "»");
             } catch (IOException ex) {
                 throw new IllegalArgumentException(ex.getMessage(), ex);
