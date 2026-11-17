@@ -64,6 +64,16 @@
                 <version>3.5.2</version>
             </plugin>
             <!-- Genera un único .jar con todas las librerías dentro -->
+            <!-- Shade reemplaza el JAR original. Fuerza a jar:jar a regenerarlo
+                 en cada compilación para no volver a sombrear el JAR ya procesado. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.5.0</version>
+                <configuration>
+                    <forceCreation>true</forceCreation>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
