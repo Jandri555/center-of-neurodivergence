@@ -171,8 +171,8 @@
                                             <arg value="${project.build.finalName}.jar"/>
                                             <arg value="--main-class"/>
                                             <arg value="com.neurocenter.Main"/>
-                                            <!-- No forzar --module-path a jmods: Temurin 25 usa JEP 493
-                                                 y jlink puede generar el runtime desde el JDK sin archivos JMOD. -->
+                                            <!-- Dejar que Temurin 25 gestione el enlazado del runtime
+                                                 mediante JEP 493, sin forzar una carpeta JMOD externa. -->
                                             <arg value="--dest"/>
                                             <arg value="${project.build.directory}/installer/${project.version}-${maven.build.timestamp}"/>
                                             <arg value="--win-per-user-install"/>
