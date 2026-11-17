@@ -66,7 +66,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_NOTIFICATION_PERMISSION = 7105;
     private static final int DISCOVERABLE_SECONDS = 300;
     private static final String ACTION_USB_PERMISSION =
-            "com.neurocenter.agenda.USB_ACCESSORY_PERMISSION";
+            "com.neurocenter.action.USB_ACCESSORY_PERMISSION";
     private final ExecutorService syncExecutor = Executors.newSingleThreadExecutor();
     private BluetoothAdapter bluetoothAdapter;
     private boolean bluetoothReceiverRegistered;

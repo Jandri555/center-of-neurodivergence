@@ -15,18 +15,18 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
-        android:name=".AgendaApplication"
+        android:name="com.neurocenter.apps.agenda.AgendaApplication"
         android:allowBackup="true"
-        android:label="Agenda"
+        android:label="Center of Neurodivergence"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <service
-            android:name=".BluetoothSyncService"
+            android:name="com.neurocenter.apps.agenda.BluetoothSyncService"
             android:exported="false"
             android:stopWithTask="false"
             android:foregroundServiceType="connectedDevice" />
         <activity
-            android:name=".MainActivity"
+            android:name="com.neurocenter.apps.agenda.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -126,6 +126,28 @@ En Windows:
 
 No todos los controladores y fabricantes exponen el perfil SPP de la misma forma. La implementación está compilada, pero necesita pruebas físicas con distintos teléfonos y adaptadores. No se ha probado todavía una transferencia real.
 
+## Identidad y carpetas de Android
+
+La aplicación Android utiliza el identificador de paquete **`com.neurocenter`**. El código de la Agenda se mantiene organizado en el subpaquete `com.neurocenter.apps.agenda`.
+
+En Android, la raíz de datos es el almacenamiento interno privado de la aplicación:
+
+```text
+CenterOfNeurodivergence/
+├── apps/       apps externas instaladas (futuro gestor)
+├── themes/     temas instalados (futuro gestor)
+├── data/
+│   └── agenda/
+│       ├── agenda.json
+│       ├── agenda-operations.jsonl
+│       └── agenda-sync.json
+└── apps.db     registro de apps (reservado para el futuro gestor)
+```
+
+La raíz se resuelve dentro de `files/` de la aplicación Android. Se crean desde el primer arranque las carpetas `apps/`, `themes/` y `data/`; la carpeta `data/agenda/` se crea al inicializar la Agenda. El archivo `apps.db` queda reservado para implementar más adelante el gestor de aplicaciones.
+
+El cambio de identificador de paquete hace que Android trate esta versión como una aplicación nueva, separada de la antigua `com.neurocenter.agenda`. No se incluye migración ni copia de los datos anteriores, tal como se ha decidido para esta etapa.
+
 ## Aplicación Android
 
 La aplicación Android será independiente del panel Swing y tendrá:

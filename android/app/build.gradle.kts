@@ -3,7 +3,9 @@ plugins {
 }
 
 android {
-    namespace = "com.neurocenter.apps.agenda"
+    // Paquete raíz de la aplicación Android. Las pantallas siguen organizadas
+    // en subpaquetes funcionales, por ejemplo com.neurocenter.apps.agenda.
+    namespace = "com.neurocenter"
     compileSdk = 36
 
     // Clave de depuración estable para que los APK de CI puedan actualizarse
@@ -18,11 +20,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.neurocenter.agenda"
+        applicationId = "com.neurocenter"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
     }
 
     buildTypes {

@@ -26,10 +26,10 @@ import java.util.concurrent.Executors;
  */
 public final class BluetoothSyncService extends Service {
 
-    static final String ACTION_START = "com.neurocenter.agenda.action.START_BLUETOOTH";
-    static final String ACTION_STOP = "com.neurocenter.agenda.action.STOP_BLUETOOTH";
-    static final String ACTION_STATUS = "com.neurocenter.agenda.action.BLUETOOTH_STATUS";
-    static final String ACTION_DATA_CHANGED = "com.neurocenter.agenda.action.AGENDA_CHANGED";
+    static final String ACTION_START = "com.neurocenter.action.START_BLUETOOTH";
+    static final String ACTION_STOP = "com.neurocenter.action.STOP_BLUETOOTH";
+    static final String ACTION_STATUS = "com.neurocenter.action.BLUETOOTH_STATUS";
+    static final String ACTION_DATA_CHANGED = "com.neurocenter.action.AGENDA_CHANGED";
     static final String EXTRA_STATUS = "status";
     static final String EXTRA_ACTIVE = "active";
 
