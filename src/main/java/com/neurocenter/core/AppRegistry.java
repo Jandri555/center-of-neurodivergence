@@ -80,18 +80,23 @@ public final class AppRegistry {
         String version = "Desconocida";
 
         try (JarFile jarFile = new JarFile(jar.toFile())) {
-            if (jarFile.getJarEntry("META-INF/services/com.neurocenter.api.NeuroApp") == null) {
-                throw new IOException("El JAR no declara ninguna app NeuroApp. Falta META-INF/services/com.neurocenter.api.NeuroApp.");
-            }
             Manifest manifest = jarFile.getManifest();
-            if (manifest != null) {
-                Attributes attributes = manifest.getMainAttributes();
-                id = safeId(value(attributes, "NeuroCenter-App-Id", id));
-                name = value(attributes, Attributes.Name.IMPLEMENTATION_TITLE, name);
-                author = value(attributes, Attributes.Name.IMPLEMENTATION_VENDOR,
-                        value(attributes, Attributes.Name.SPECIFICATION_VENDOR,
-                                value(attributes, "Author", author)));
-                version = value(attributes, Attributes.Name.IMPLEMENTATION_VERSION, version);
+            Attributes attributes = manifest == null ? new Attributes() : manifest.getMainAttributes();
+            id = safeId(value(attributes, "NeuroCenter-App-Id", id));
+            name = value(attributes, Attributes.Name.IMPLEMENTATION_TITLE, name);
+            author = value(attributes, Attributes.Name.IMPLEMENTATION_VENDOR,
+                    value(attributes, Attributes.Name.SPECIFICATION_VENDOR,
+                            value(attributes, "Author", author)));
+            version = value(attributes, Attributes.Name.IMPLEMENTATION_VERSION, version);
+
+            // Comprobar primero la plataforma para que una app móvil no falle
+            // con un mensaje engañoso por no incluir el proveedor Swing.
+            PlatformCompatibility.fromAppManifest(manifest)
+                    .require(PlatformCompatibility.Platform.DESKTOP, "la app «" + name + "»");
+
+            if (jarFile.getJarEntry("META-INF/services/com.neurocenter.api.NeuroApp") == null) {
+                throw new IOException("La app es compatible con escritorio, pero no declara ningún proveedor "
+                        + "NeuroApp. Falta META-INF/services/com.neurocenter.api.NeuroApp.");
             }
         }
 
