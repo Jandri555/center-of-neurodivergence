@@ -132,6 +132,13 @@ public final class ThemeManager {
         }
 
         applyColors(theme.colors());
+
+        // FlatLaf usa RootPane.background para la barra de título unificada.
+        // Los temas personalizados exponen el fondo general como Window.background;
+        // sincronizarlos permite que la barra adopte también fondos OLED (#000000).
+        Color windowBackground = UIManager.getColor("Window.background");
+        if (windowBackground != null) UIManager.put("RootPane.background", windowBackground);
+
         activeTheme = theme;
         FlatLaf.updateUI();
     }
