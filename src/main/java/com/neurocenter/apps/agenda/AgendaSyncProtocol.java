@@ -68,7 +68,9 @@ final class AgendaSyncProtocol {
         merger.merge(response.operations);
         store.acknowledgePeer(response.deviceId, response.deviceName, response.vectorClock);
 
-        Map<String, Long> acknowledgedClock = store.syncVectorClock();
+        // Confirmamos exactamente el reloj que el servidor incluyó en su respuesta.
+        // Las ediciones creadas mientras se negocia se enviarán en la sesión continua.
+        Map<String, Long> acknowledgedClock = new LinkedHashMap<>(response.vectorClock);
         SyncMessage ack = controlMessage("SYNC_ACK", store);
         ack.vectorClock = acknowledgedClock;
         send(output, ack);
@@ -105,20 +107,22 @@ final class AgendaSyncProtocol {
         merger.merge(request.operations);
         store.acknowledgePeer(request.deviceId, request.deviceName, request.vectorClock);
 
-        // La respuesta ya incluye tanto el historial propio como el recibido.
-        send(output, message("SYNC_RESPONSE", store));
+        // Conservamos el reloj exacto enviado: una edición local concurrente
+        // no debe invalidar el ACK de este intercambio inicial.
+        SyncMessage response = message("SYNC_RESPONSE", store);
+        Map<String, Long> responseClock = new LinkedHashMap<>(response.vectorClock);
+        send(output, response);
 
         SyncMessage ack = receive(input);
         requireKind(ack, "SYNC_ACK");
         requirePeerIdentity(ack, store);
-        Map<String, Long> localClock = store.syncVectorClock();
-        if (!covers(ack.vectorClock, localClock)) {
-            throw new IOException("La confirmación del iniciador no cubre todo el historial del receptor.");
+        if (!covers(ack.vectorClock, responseClock)) {
+            throw new IOException("La confirmación del iniciador no cubre todo el historial enviado por el receptor.");
         }
         store.acknowledgePeer(ack.deviceId, ack.deviceName, ack.vectorClock);
 
         SyncMessage complete = controlMessage("SYNC_COMPLETE", store);
-        complete.vectorClock = localClock;
+        complete.vectorClock = responseClock;
         send(output, complete);
     }
 
