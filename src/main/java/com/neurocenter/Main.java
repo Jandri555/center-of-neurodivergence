@@ -7,6 +7,7 @@ import com.neurocenter.core.ThemeManager;
 import com.formdev.flatlaf.FlatLaf;
 
 import javax.swing.JDialog;
+import javax.swing.JOptionPane;
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
@@ -19,7 +20,17 @@ public final class Main {
         String themeId = settings.get("theme", "light");
 
         SwingUtilities.invokeLater(() -> {
-            ThemeManager.apply(themeId);
+            try {
+                ThemeManager.apply(themeId);
+            } catch (IllegalArgumentException ex) {
+                // Puede ocurrir si la preferencia procede de otro dispositivo
+                // y apunta a un tema solo móvil.
+                settings.put("theme", "light");
+                ThemeManager.apply("light");
+                JOptionPane.showMessageDialog(null, ex.getMessage()
+                                + "\n\nSe ha restaurado el tema Claro.",
+                        "Tema no compatible", JOptionPane.ERROR_MESSAGE);
+            }
 
             // En Windows 10/11, FlatLaf dibuja la barra de título con el tema
             // de la aplicación y conserva el borde nativo para redimensionar,
