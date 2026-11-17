@@ -176,9 +176,32 @@ class AgendaSyncProtocolTest {
         assertTrue(homePc.all().isEmpty(), "El borrado pendiente debe llegar también al PC de casa.");
         assertEquals(0, phone.pendingOperationsForPeer(homePc.syncDeviceId()));
 
-        assertTrue(phone.exportOperations().stream().anyMatch(op ->
+        // Un tercer PC que se vincula después recibe también el tombstone antiguo.
+        // Simulamos que conserva una copia obsoleta con el mismo ID de tarea.
+        AgendaStore latePc = newStore("late-pc");
+        AgendaEntry staleCopy = task("Entregar práctica (copia antigua)");
+        staleCopy.id = task.id;
+        latePc.add(staleCopy);
+        latePc.save();
+        latePc.enableSync();
+        synchronizeOnce(latePc, phone);
+
+        assertTrue(latePc.all().isEmpty(),
+                "Un PC nuevo debe recibir los borrados históricos y no resucitar una tarea antigua.");
+        assertEquals(3, phone.linkedPeers().size());
+        assertEquals(0, phone.pendingOperationsForPeer(latePc.syncDeviceId()));
+
+        // Las confirmaciones individuales sobreviven al reinicio del móvil.
+        AgendaStore restartedPhone = new AgendaStore(
+                temporaryDirectory.resolve("phone-hub").resolve("agenda.json"));
+        restartedPhone.load();
+        assertEquals(3, restartedPhone.linkedPeers().size());
+        assertEquals(0, restartedPhone.pendingOperationsForPeer(classPc.syncDeviceId()));
+        assertEquals(0, restartedPhone.pendingOperationsForPeer(homePc.syncDeviceId()));
+
+        assertTrue(restartedPhone.exportOperations().stream().anyMatch(op ->
                 AgendaOperation.DELETE.equals(op.type) && task.id.equals(op.entryId)),
-                "El registro conserva el tombstone incluso después de que ambos PCs lo confirmen.");
+                "El registro conserva el tombstone incluso después de que los PCs lo confirmen.");
     }
 
     private void synchronizeOnce(AgendaStore client, AgendaStore server) throws Exception {

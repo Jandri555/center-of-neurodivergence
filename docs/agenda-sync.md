@@ -55,6 +55,10 @@ Ejemplo: si el móvil borra una tarea, el tombstone se envía al PC de clase cua
 
 La implementación actual **no compacta ni elimina operaciones automáticamente**. Esto es deliberadamente conservador: un equipo que se vincule más adelante también recibe el historial completo. La tabla de confirmaciones ya permite saber qué operaciones están pendientes para cada PC; la compactación segura y la gestión visual para desvincular equipos quedan para una fase posterior. No restaures el `deviceId` de una instalación desde una copia diferente ni clones el archivo `agenda-sync.json` entre PCs: cada ordenador debe tener su identidad propia.
 
+### Compatibilidad entre versiones
+
+La ampliación multi-PC utiliza la versión 2 del protocolo, que identifica a cada dispositivo en todos los mensajes y registra confirmaciones por equipo. **Hay que actualizar la aplicación de escritorio en cada PC y Android a esta revisión o posterior**: las versiones antiguas del protocolo 1 no pueden participar en esta sincronización multi-PC.
+
 ## Protocolo de transporte
 
 El motor de sincronización no debe depender del medio físico. USB y Bluetooth transportarán exactamente el mismo intercambio de operaciones.
