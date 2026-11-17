@@ -81,7 +81,7 @@ public final class ThemeArchive {
 
             String themeName = json.get("name").getAsString();
             PlatformCompatibility.fromThemeManifest(json)
-                    .require(PlatformCompatibility.Platform.DESKTOP, "el tema «" + themeName + "»");
+                    .require(com.neurocenter.api.NeuroPlatform.DESKTOP, "el tema «" + themeName + "»");
 
             String base = isString(json, "base") ? json.get("base").getAsString() : "";
             if (!base.equals("light") && !base.equals("dark"))
