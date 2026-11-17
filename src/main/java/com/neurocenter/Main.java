@@ -26,7 +26,7 @@ public final class Main {
             singleInstance = SingleInstance.acquireOrActivate(AppPaths.root());
         } catch (IOException ex) {
             JOptionPane.showMessageDialog(null,
-                    "No se pudo comprobar si Center of Neurodivergence ya está abierto.\\n\\n"
+                    "No se pudo comprobar si Center of Neurodivergence ya está abierto.\n\n"
                             + ex.getMessage(),
                     "No se pudo iniciar", JOptionPane.ERROR_MESSAGE);
             return;
