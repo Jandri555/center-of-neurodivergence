@@ -48,7 +48,9 @@ final class BluetoothSerialClient {
         return port.getSystemPortName() + " — " + description;
     }
 
-    static void synchronize(SerialPort port, AgendaStore store, BooleanSupplier keepAlive, Runnable onConnected, Runnable onRemoteChange) throws IOException {
+    static void synchronize(SerialPort port, AgendaStore store, BooleanSupplier keepAlive,
+                            Runnable onTransportConnected, Runnable onConnected,
+                            Runnable onRemoteChange) throws IOException {
         if (port == null) throw new IOException("No se ha seleccionado ningún puerto serie.");
         if (!store.isSyncEnabled()) {
             throw new IOException("Activa primero el historial de sincronización de la agenda.");
@@ -67,6 +69,11 @@ final class BluetoothSerialClient {
         }
 
         try {
+            // Abrir el COM saliente significa que Windows ya ha establecido
+            // el enlace RFCOMM. No esperes al final del intercambio inicial
+            // para reflejar que el móvil está conectado.
+            if (onTransportConnected != null) onTransportConnected.run();
+
             AgendaSyncProtocol.runClientSession(
                     port.getInputStream(),
                     port.getOutputStream(),

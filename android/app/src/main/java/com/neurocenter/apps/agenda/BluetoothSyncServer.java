@@ -9,7 +9,8 @@ import java.util.UUID;
 
 /**
  * Servidor Bluetooth clásico RFCOMM (perfil SPP) de Android.
- * Mantiene la sesión bidireccional hasta desconectar o cerrar la actividad.
+ * Acepta nuevas conexiones mientras el servicio siga activo y mantiene
+ * cada sesión bidireccional hasta que se pierda el enlace o se desconecte.
  */
 final class BluetoothSyncServer implements AutoCloseable {
 
@@ -25,21 +26,49 @@ final class BluetoothSyncServer implements AutoCloseable {
         serverSocket = adapter.listenUsingRfcommWithServiceRecord(SERVICE_NAME, SERVICE_UUID);
     }
 
-    void waitForOneSync(
+    /**
+     * Mantiene el servidor disponible durante toda la vida del servicio.
+     * Una desconexión remota no apaga Bluetooth: se vuelve a esperar al PC.
+     */
+    void serveUntilClosed(
             AgendaStore store,
             AgendaSyncProtocol.OperationMerger merger,
-            Runnable onConnected) throws IOException {
-        try (BluetoothSocket socket = serverSocket.accept()) {
-            if (closed) return;
-            activeSocket = socket;
+            Runnable onAccepted,
+            Runnable onConnected,
+            Runnable onDisconnected) throws IOException {
+        while (!closed && !Thread.currentThread().isInterrupted()) {
+            final BluetoothSocket socket;
             try {
-                AgendaSyncProtocol.runServerSession(
-                        socket.getInputStream(),
-                        socket.getOutputStream(),
-                        store,
-                        merger,
-                        () -> !closed && !Thread.currentThread().isInterrupted(),
-                        onConnected);
+                socket = serverSocket.accept();
+            } catch (IOException ex) {
+                if (closed || Thread.currentThread().isInterrupted()) return;
+                throw ex;
+            }
+
+            if (closed) {
+                try {
+                    socket.close();
+                } catch (IOException ignored) {
+                    // El servidor se ha detenido justo después de accept().
+                }
+                return;
+            }
+
+            activeSocket = socket;
+            try (BluetoothSocket client = socket) {
+                if (onAccepted != null) onAccepted.run();
+                try {
+                    AgendaSyncProtocol.runServerSession(
+                            client.getInputStream(),
+                            client.getOutputStream(),
+                            store,
+                            merger,
+                            () -> !closed && !Thread.currentThread().isInterrupted(),
+                            onConnected);
+                } catch (IOException ex) {
+                    if (closed || Thread.currentThread().isInterrupted()) return;
+                    if (onDisconnected != null) onDisconnected.run();
+                }
             } finally {
                 activeSocket = null;
             }

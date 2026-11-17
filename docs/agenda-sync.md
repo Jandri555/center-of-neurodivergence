@@ -71,7 +71,7 @@ La sincronización ya no termina al intercambiar el historial inicial. Una vez c
 
 Por tanto, una tarea, evento, modificación, cambio de estado o borrado guardado en cualquiera de los dos dispositivos se propaga automáticamente al otro. Los borrados siguen viajando como tombstones; no se comparan listas ni se resucitan entradas eliminadas por una copia antigua.
 
-La ventana de conexión del escritorio es no modal, de modo que se puede seguir usando la agenda mientras sincroniza. **Desconectar** cierra la sesión manualmente. En Android, el botón cambia a **Desconectar Bluetooth** o **Desconectar USB** mientras la sesión está activa. Cerrar la agenda o perder el enlace también termina la sesión.
+La ventana de conexión del escritorio es no modal, de modo que se puede seguir usando la agenda mientras sincroniza. **Desconectar** cierra la sesión manualmente. En Android, Bluetooth se ejecuta en un servicio en primer plano independiente de la pantalla. La notificación persistente muestra el estado y ofrece la acción **Desconectar**. La sesión sigue abierta al apagar la pantalla o quitar Agenda de la lista de aplicaciones recientes; solo se detiene desde el botón de la aplicación o desde la acción de la notificación. Si el ordenador pierde el enlace, Android vuelve a esperar una conexión sin apagar el servicio. USB sigue ligado a la actividad y se cierra al salir de ella.
 
 Si se pierde la conexión, el historial local permanece intacto. Al volver a conectar, el intercambio inicial recupera las operaciones pendientes y ambos dispositivos vuelven a converger.
 
@@ -85,7 +85,7 @@ En Android:
 1. Activa **Preparar sincronización**.
 2. Pulsa **Esperar conexión Bluetooth**.
 3. Acepta activar Bluetooth y hacer el teléfono visible durante cinco minutos para permitir el emparejamiento inicial.
-4. El botón pasará a ser **Desconectar Bluetooth**. Mantén la Agenda abierta para conservar la sesión; no es necesario volver a iniciar la sincronización por cada cambio.
+4. El botón pasará a ser **Desconectar Bluetooth** y aparecerá una notificación persistente. No necesitas mantener abierta la pantalla ni conservar Agenda en recientes; no es necesario reiniciar la sincronización por cada cambio.
 
 En Windows:
 1. Empareja primero el teléfono desde la configuración Bluetooth.
@@ -117,7 +117,7 @@ En Android:
 1. Activa **Preparar sincronización**.
 2. Pulsa **Esperar conexión Bluetooth**.
 3. Acepta activar Bluetooth y hacer el teléfono visible durante cinco minutos.
-4. Mantén la pantalla de la Agenda abierta mientras se completa el intercambio.
+4. Una vez iniciado el servicio, puedes apagar la pantalla o quitar Agenda de aplicaciones recientes. La notificación «Agenda · Sincronización Bluetooth» indica que el servicio sigue activo y permite desconectarlo sin abrir la aplicación.
 
 En Windows:
 1. Empareja primero el teléfono desde Configuración → Bluetooth.

@@ -359,7 +359,9 @@ final class AgendaPanel extends JPanel {
                 BluetoothSerialClient.synchronize(
                         port, store, running::get,
                         () -> SwingUtilities.invokeLater(() ->
-                                status.setText("Conectado por Bluetooth. Los cambios se sincronizan automáticamente.")),
+                                status.setText("Bluetooth conectado. Sincronizando la agenda…")),
+                        () -> SwingUtilities.invokeLater(() ->
+                                status.setText("Conexión estable. Los cambios se sincronizan automáticamente.")),
                         this::refresh);
             } catch (Exception ex) {
                 if (running.get()) {

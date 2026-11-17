@@ -67,8 +67,22 @@ public final class MainActivity extends Activity {
     private static final String ACTION_USB_PERMISSION =
             "com.neurocenter.agenda.USB_ACCESSORY_PERMISSION";
     private final ExecutorService syncExecutor = Executors.newSingleThreadExecutor();
-    private volatile BluetoothSyncServer bluetoothServer;
     private BluetoothAdapter bluetoothAdapter;
+    private boolean bluetoothReceiverRegistered;
+
+    private final BroadcastReceiver bluetoothServiceReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (BluetoothSyncService.ACTION_STATUS.equals(intent.getAction())) {
+                String status = intent.getStringExtra(BluetoothSyncService.EXTRA_STATUS);
+                if (status != null && syncStatus != null) syncStatus.setText(status);
+                updateBluetoothControls(intent.getBooleanExtra(
+                        BluetoothSyncService.EXTRA_ACTIVE, false));
+            } else if (BluetoothSyncService.ACTION_DATA_CHANGED.equals(intent.getAction())) {
+                refresh();
+            }
+        }
+    };
     private Button bluetoothButton;
     private Button usbButton;
     private TextView syncStatus;
@@ -97,8 +111,7 @@ public final class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         try {
-            store = new AgendaStore(getFilesDir().toPath().resolve("agenda.json"));
-            store.load();
+            store = ((AgendaApplication) getApplication()).getAgendaStore();
         } catch (RuntimeException ex) {
             Toast.makeText(this, "No se pudo abrir la agenda: " + ex.getMessage(), Toast.LENGTH_LONG).show();
             finish();
@@ -108,6 +121,7 @@ public final class MainActivity extends Activity {
         registerUsbPermissionReceiver();
         buildScreen();
         refresh();
+        updateBluetoothControls(BluetoothSyncService.isRunning());
     }
 
     private void buildScreen() {
@@ -159,7 +173,7 @@ public final class MainActivity extends Activity {
 
         bluetoothButton = button("Esperar conexión Bluetooth");
         bluetoothButton.setOnClickListener(v -> {
-            if (bluetoothServer != null) stopBluetoothSync();
+            if (BluetoothSyncService.isRunning()) stopBluetoothSync();
             else startBluetoothSync();
         });
         root.addView(bluetoothButton, new LinearLayout.LayoutParams(
@@ -414,15 +428,17 @@ public final class MainActivity extends Activity {
                     candidate.notifiedCustom = false;
                 }
 
-                if (existing == null) {
-                    store.add(candidate);
-                    selectedDate = parsedDate;
-                } else {
-                    store.replace(existing, candidate);
-                    selectedDate = parsedDate;
+                synchronized (store) {
+                    if (existing == null) {
+                        store.add(candidate);
+                        selectedDate = parsedDate;
+                    } else {
+                        store.replace(existing, candidate);
+                        selectedDate = parsedDate;
+                    }
+                    month = YearMonth.from(selectedDate);
+                    save();
                 }
-                month = YearMonth.from(selectedDate);
-                save();
                 dialog.dismiss();
                 refresh();
             } catch (RuntimeException ex) {
@@ -439,8 +455,10 @@ public final class MainActivity extends Activity {
                 .setMessage("¿Quieres borrar «" + safe(entry.title) + "»?")
                 .setNegativeButton("Cancelar", null)
                 .setPositiveButton("Borrar", (dialog, which) -> {
-                    store.remove(entry);
-                    save();
+                    synchronized (store) {
+                        store.remove(entry);
+                        save();
+                    }
                     refresh();
                 })
                 .show();
@@ -479,9 +497,44 @@ public final class MainActivity extends Activity {
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(BluetoothSyncService.ACTION_STATUS);
+        filter.addAction(BluetoothSyncService.ACTION_DATA_CHANGED);
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(bluetoothServiceReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(bluetoothServiceReceiver, filter);
+        }
+        bluetoothReceiverRegistered = true;
+        updateBluetoothControls(BluetoothSyncService.isRunning());
+        if (BluetoothSyncService.isRunning() && syncStatus != null) {
+            syncStatus.setText(BluetoothSyncService.currentStatus());
+        }
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
+        updateBluetoothControls(BluetoothSyncService.isRunning());
         inspectUsbAccessory();
+    }
+
+    @Override
+    protected void onStop() {
+        if (bluetoothReceiverRegistered) {
+            unregisterReceiver(bluetoothServiceReceiver);
+            bluetoothReceiverRegistered = false;
+        }
+        super.onStop();
+    }
+
+    private void updateBluetoothControls(boolean active) {
+        if (bluetoothButton == null) return;
+        bluetoothButton.setText(active ? "Desconectar Bluetooth" : "Esperar conexión Bluetooth");
+        bluetoothButton.setEnabled(!usbSyncActive);
+        if (usbButton != null) usbButton.setEnabled(!active && !usbSyncActive);
     }
 
     private void showUsbInstructions() {
@@ -526,7 +579,7 @@ public final class MainActivity extends Activity {
 
     private void openUsbAccessory(UsbAccessory accessory) {
         if (usbSyncActive || usbAccessoryDescriptor != null) return;
-        if (bluetoothServer != null) {
+        if (BluetoothSyncService.isRunning()) {
             Toast.makeText(this, "Cierra primero la sesión Bluetooth para usar USB.",
                     Toast.LENGTH_LONG).show();
             return;
@@ -679,65 +732,27 @@ public final class MainActivity extends Activity {
     }
 
     private void startBluetoothServer() {
-        final BluetoothSyncServer server;
+        Intent serviceIntent = new Intent(this, BluetoothSyncService.class)
+                .setAction(BluetoothSyncService.ACTION_START);
         try {
-            server = new BluetoothSyncServer(bluetoothAdapter);
-            bluetoothServer = server;
-        } catch (IOException | SecurityException ex) {
-            Toast.makeText(this, "No se pudo preparar Bluetooth: " + ex.getMessage(),
-                    Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        bluetoothButton.setEnabled(true);
-        usbButton.setEnabled(false);
-        bluetoothButton.setText("Desconectar Bluetooth");
-        syncStatus.setText("Esperando al ordenador… Mantén esta pantalla abierta. "
-                + "La visibilidad para emparejar estará activa durante " + (DISCOVERABLE_SECONDS / 60) + " minutos.");
-        syncExecutor.execute(() -> {
-            String failure = null;
-            try {
-                server.waitForOneSync(
-                        store, this::mergeOnMainThread,
-                        () -> runOnUiThread(() ->
-                                syncStatus.setText("Conectado por Bluetooth. Los cambios se sincronizan automáticamente.")));
-            } catch (Exception ex) {
-                failure = ex.getMessage() == null ? ex.toString() : ex.getMessage();
-            } finally {
-                boolean closedByUser = server.isClosed();
-                try {
-                    server.close();
-                } catch (IOException ignored) {
-                    // Ya se está cerrando la conexión.
-                }
-                if (bluetoothServer == server) bluetoothServer = null;
-                final String error = closedByUser ? null : failure;
-                runOnUiThread(() -> {
-                    bluetoothButton.setEnabled(true);
-                    usbButton.setEnabled(true);
-                    bluetoothButton.setText("Esperar conexión Bluetooth");
-                    if (error == null) {
-                        syncStatus.setText("Conexión Bluetooth cerrada.");
-                        refresh();
-                    } else {
-                        syncStatus.setText("No se pudo completar la sincronización.");
-                        Toast.makeText(this, "Error de sincronización: " + error,
-                                Toast.LENGTH_LONG).show();
-                    }
-                });
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent);
+            } else {
+                startService(serviceIntent);
             }
-        });
+            updateBluetoothControls(true);
+            syncStatus.setText("Iniciando el servicio Bluetooth…");
+        } catch (RuntimeException ex) {
+            Toast.makeText(this, "No se pudo iniciar el servicio Bluetooth: "
+                    + ex.getMessage(), Toast.LENGTH_LONG).show();
+            updateBluetoothControls(false);
+        }
     }
 
     private void stopBluetoothSync() {
-        BluetoothSyncServer server = bluetoothServer;
-        if (server == null) return;
-        try {
-            server.close();
-        } catch (IOException ex) {
-            Toast.makeText(this, "No se pudo cerrar Bluetooth: " + ex.getMessage(),
-                    Toast.LENGTH_LONG).show();
-        }
+        Intent serviceIntent = new Intent(this, BluetoothSyncService.class)
+                .setAction(BluetoothSyncService.ACTION_STOP);
+        startService(serviceIntent);
     }
 
     private void stopUsbSync() {
@@ -784,14 +799,6 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         usbSyncActive = false;
-        BluetoothSyncServer server = bluetoothServer;
-        if (server != null) {
-            try {
-                server.close();
-            } catch (IOException ignored) {
-                // La actividad está finalizando.
-            }
-        }
         ParcelFileDescriptor descriptor = usbAccessoryDescriptor;
         if (descriptor != null) {
             try {
