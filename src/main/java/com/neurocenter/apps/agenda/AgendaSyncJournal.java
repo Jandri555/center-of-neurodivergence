@@ -350,7 +350,6 @@ final class AgendaSyncJournal {
             Metadata loaded = gson.fromJson(new String(Files.readAllBytes(metadataFile), StandardCharsets.UTF_8), Metadata.class);
             if (loaded == null) throw new IOException("El archivo de sincronización está vacío.");
             if (loaded.deviceId == null || loaded.deviceId.trim().isEmpty()) loaded.deviceId = UUID.randomUUID().toString();
-            if (loaded.deviceName == null || loaded.deviceName.trim().isEmpty()) loaded.deviceName = defaultDeviceName();
             if (loaded.vectorClock == null) loaded.vectorClock = new LinkedHashMap<>();
             if (loaded.peers == null) loaded.peers = new LinkedHashMap<>();
             for (Map.Entry<String, PeerState> item : loaded.peers.entrySet()) {
