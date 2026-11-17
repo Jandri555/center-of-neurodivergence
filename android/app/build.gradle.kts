@@ -43,9 +43,6 @@ android {
     sourceSets {
         getByName("main") {
             java.directories.add("../../src/main/java/com/neurocenter/apps/agenda")
-            // Comparte solo el contrato neutral de plataforma y datos con escritorio.
-            // Las interfaces Swing (AppContext y NeuroApp) no se compilan en Android.
-            java.directories.add("../../src/main/java/com/neurocenter/api")
         }
     }
 }
@@ -58,11 +55,10 @@ tasks.withType<JavaCompile>().configureEach {
         "**/AgendaPanel.java",
         "**/BluetoothSerialClient.java",
         "**/UsbAoaClient.java",
-        "**/AppContext.java",
-        "**/NeuroApp.java"
     )
 }
 
 dependencies {
+    implementation(project(":neurocenter-api"))
     implementation("com.google.code.gson:gson:2.11.0")
 }
