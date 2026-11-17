@@ -34,6 +34,31 @@ jobs:
           java-version: '17'
           cache: maven
 
+      - name: Install WiX Toolset 3.14
+        shell: pwsh
+        run: |
+          choco install wixtoolset --version=3.14.1.20250415 --no-progress -y
+          $wixRoot = Join-Path ${env:ProgramFiles(x86)} "WiX Toolset v3.14"
+          $wixBin = Join-Path $wixRoot "bin"
+          if (!(Test-Path (Join-Path $wixBin "candle.exe")) -or !(Test-Path (Join-Path $wixBin "light.exe"))) {
+            $candle = Get-ChildItem -Path "${env:ProgramFiles(x86)}" -Filter candle.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -eq $candle) {
+              throw "No se encontró candle.exe después de instalar WiX Toolset."
+            }
+            $wixBin = $candle.DirectoryName
+          }
+          if (!(Test-Path (Join-Path $wixBin "light.exe"))) {
+            throw "No se encontró light.exe en $wixBin."
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $wixBin
+          Write-Host "WiX Toolset añadido al PATH: $wixBin"
+
+      - name: Verify WiX tools
+        shell: pwsh
+        run: |
+          Get-Command candle.exe
+          Get-Command light.exe
+
       - name: Build, test and package EXE
         run: mvn --batch-mode --no-transfer-progress clean package
 
