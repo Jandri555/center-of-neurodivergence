@@ -46,26 +46,137 @@ final class AgendaSyncJournal {
     private final Set<String> knownOperationIds = new LinkedHashSet<>();
     private final Metadata metadata;
 
+    private static final class PeerState {
+        String deviceId;
+        String deviceName;
+        long firstSeenAt;
+        long lastSeenAt;
+        Map<String, Long> acknowledgedVectorClock = new LinkedHashMap<>();
+    }
+
+    static final class PeerInfo {
+        final String deviceId;
+        final String deviceName;
+        final long firstSeenAt;
+        final long lastSeenAt;
+        final Map<String, Long> acknowledgedVectorClock;
+        final int pendingOperations;
+
+        PeerInfo(PeerState peer, int pendingOperations) {
+            this.deviceId = peer.deviceId;
+            this.deviceName = peer.deviceName;
+            this.firstSeenAt = peer.firstSeenAt;
+            this.lastSeenAt = peer.lastSeenAt;
+            this.acknowledgedVectorClock = java.util.Collections.unmodifiableMap(
+                    new LinkedHashMap<>(peer.acknowledgedVectorClock));
+            this.pendingOperations = pendingOperations;
+        }
+    }
+
     private static final class Metadata {
         String deviceId = UUID.randomUUID().toString();
+        String deviceName;
         boolean enabled;
         boolean baselineComplete;
         long lamport;
         Map<String, Long> vectorClock = new LinkedHashMap<>();
+        Map<String, PeerState> peers = new LinkedHashMap<>();
     }
 
     AgendaSyncJournal(Path agendaFile) throws IOException {
+        this(agendaFile, defaultDeviceName());
+    }
+
+    AgendaSyncJournal(Path agendaFile, String deviceName) throws IOException {
         Path parent = agendaFile.toAbsolutePath().getParent();
         if (parent == null) throw new IOException("No se pudo resolver la carpeta de la agenda.");
         this.operationsFile = parent.resolve("agenda-operations.jsonl");
         this.metadataFile = parent.resolve("agenda-sync.json");
         this.metadata = loadMetadata();
+        if (metadata.deviceName == null || metadata.deviceName.trim().isEmpty()) {
+            metadata.deviceName = deviceName == null || deviceName.trim().isEmpty()
+                    ? defaultDeviceName() : deviceName.trim();
+        }
         loadOperations();
         saveMetadata();
     }
 
+    private static String defaultDeviceName() {
+        String name = System.getenv("COMPUTERNAME");
+        if (name == null || name.trim().isEmpty()) name = System.getenv("HOSTNAME");
+        if (name == null || name.trim().isEmpty()) name = System.getProperty("user.name", "Equipo");
+        return name == null || name.trim().isEmpty() ? "Equipo" : name.trim();
+    }
+
     synchronized boolean isEnabled() {
         return metadata.enabled;
+    }
+
+    synchronized String deviceId() {
+        return metadata.deviceId;
+    }
+
+    synchronized String deviceName() {
+        return metadata.deviceName;
+    }
+
+    /**
+     * Persiste lo que un equipo remoto confirma conocer. El reloj se guarda
+     * por peer, nunca como un único "último sincronizado" global.
+     *
+     * No se compacta aquí el diario: las operaciones y los tombstones se
+     * conservan incluso cuando todos los peers actuales las han confirmado.
+     * Así un equipo añadido más adelante recibe también el historial completo.
+     */
+    synchronized void acknowledgePeer(String peerId, String peerName, Map<String, Long> peerClock) {
+        if (peerId == null || peerId.trim().isEmpty()
+                || peerId.equals(metadata.deviceId)) return;
+
+        PeerState peer = metadata.peers.computeIfAbsent(peerId, ignored -> {
+            PeerState created = new PeerState();
+            created.deviceId = peerId;
+            created.firstSeenAt = System.currentTimeMillis();
+            return created;
+        });
+        if (peer.acknowledgedVectorClock == null) {
+            peer.acknowledgedVectorClock = new LinkedHashMap<>();
+        }
+        if (peerName != null && !peerName.trim().isEmpty()) {
+            peer.deviceName = peerName.trim();
+        }
+        peer.lastSeenAt = System.currentTimeMillis();
+
+        if (peerClock != null) {
+            peerClock.forEach((device, counter) -> {
+                if (device != null && counter != null && counter >= 0) {
+                    peer.acknowledgedVectorClock.merge(device, counter, Math::max);
+                }
+            });
+        }
+        saveMetadataUnchecked();
+    }
+
+    synchronized int pendingOperationsForPeer(String peerId) {
+        PeerState peer = metadata.peers.get(peerId);
+        Map<String, Long> acknowledged = peer == null || peer.acknowledgedVectorClock == null
+                ? java.util.Collections.emptyMap() : peer.acknowledgedVectorClock;
+        int pending = 0;
+        for (AgendaOperation operation : operations) {
+            if (operation.counter > acknowledged.getOrDefault(operation.deviceId, 0L)) pending++;
+        }
+        return pending;
+    }
+
+    synchronized List<PeerInfo> linkedPeers() {
+        List<PeerInfo> result = new ArrayList<>();
+        for (PeerState peer : metadata.peers.values()) {
+            if (peer == null) continue;
+            result.add(new PeerInfo(peer, pendingOperationsForPeer(peer.deviceId)));
+        }
+        result.sort(Comparator.comparing(
+                peer -> peer.deviceName == null ? peer.deviceId : peer.deviceName,
+                String.CASE_INSENSITIVE_ORDER));
+        return java.util.Collections.unmodifiableList(result);
     }
 
     /**
@@ -239,7 +350,21 @@ final class AgendaSyncJournal {
             Metadata loaded = gson.fromJson(new String(Files.readAllBytes(metadataFile), StandardCharsets.UTF_8), Metadata.class);
             if (loaded == null) throw new IOException("El archivo de sincronización está vacío.");
             if (loaded.deviceId == null || loaded.deviceId.trim().isEmpty()) loaded.deviceId = UUID.randomUUID().toString();
+            if (loaded.deviceName == null || loaded.deviceName.trim().isEmpty()) loaded.deviceName = defaultDeviceName();
             if (loaded.vectorClock == null) loaded.vectorClock = new LinkedHashMap<>();
+            if (loaded.peers == null) loaded.peers = new LinkedHashMap<>();
+            for (Map.Entry<String, PeerState> item : loaded.peers.entrySet()) {
+                PeerState peer = item.getValue();
+                if (peer == null) {
+                    peer = new PeerState();
+                    peer.deviceId = item.getKey();
+                    item.setValue(peer);
+                }
+                if (peer.deviceId == null) peer.deviceId = item.getKey();
+                if (peer.acknowledgedVectorClock == null) {
+                    peer.acknowledgedVectorClock = new LinkedHashMap<>();
+                }
+            }
             return loaded;
         } catch (JsonParseException ex) {
             throw new IOException("El archivo de configuración de sincronización está dañado.", ex);

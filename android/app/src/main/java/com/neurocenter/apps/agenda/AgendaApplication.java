@@ -1,6 +1,7 @@
 package com.neurocenter.apps.agenda;
 
 import android.app.Application;
+import android.os.Build;
 
 import com.neurocenter.core.AppPaths;
 
@@ -22,8 +23,10 @@ public final class AgendaApplication extends Application {
         if (agendaStore == null) {
             // Mismo esquema que el escritorio:
             // CenterOfNeurodivergence/data/agenda/agenda.json
+            String deviceName = (Build.MANUFACTURER + " " + Build.MODEL).trim();
             agendaStore = new AgendaStore(
-                    AppPaths.appDataDir(this, "agenda").resolve("agenda.json"));
+                    AppPaths.appDataDir(this, "agenda").resolve("agenda.json"),
+                    deviceName);
             agendaStore.load();
         }
         return agendaStore;

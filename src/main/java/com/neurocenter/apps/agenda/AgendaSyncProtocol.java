@@ -30,7 +30,7 @@ import java.util.function.BooleanSupplier;
  */
 final class AgendaSyncProtocol {
 
-    static final int VERSION = 1;
+    static final int VERSION = 2;
     private static final int MAX_FRAME_BYTES = 64 * 1024 * 1024;
     private static final Gson GSON = new GsonBuilder().create();
 
@@ -64,20 +64,22 @@ final class AgendaSyncProtocol {
 
         SyncMessage response = receive(input);
         requireKind(response, "SYNC_RESPONSE");
+        requirePeerIdentity(response, store);
         merger.merge(response.operations);
+        store.acknowledgePeer(response.deviceId, response.deviceName, response.vectorClock);
 
         Map<String, Long> acknowledgedClock = store.syncVectorClock();
-        SyncMessage ack = new SyncMessage();
-        ack.kind = "SYNC_ACK";
-        ack.protocolVersion = VERSION;
+        SyncMessage ack = controlMessage("SYNC_ACK", store);
         ack.vectorClock = acknowledgedClock;
         send(output, ack);
 
         SyncMessage complete = receive(input);
         requireKind(complete, "SYNC_COMPLETE");
+        requirePeerIdentity(complete, store);
         if (!covers(complete.vectorClock, acknowledgedClock)) {
             throw new IOException("El otro dispositivo no ha confirmado todas las operaciones recibidas.");
         }
+        store.acknowledgePeer(complete.deviceId, complete.deviceName, complete.vectorClock);
     }
 
     /**
@@ -99,21 +101,23 @@ final class AgendaSyncProtocol {
 
         SyncMessage request = receive(input);
         requireKind(request, "SYNC_REQUEST");
+        requirePeerIdentity(request, store);
         merger.merge(request.operations);
+        store.acknowledgePeer(request.deviceId, request.deviceName, request.vectorClock);
 
         // La respuesta ya incluye tanto el historial propio como el recibido.
         send(output, message("SYNC_RESPONSE", store));
 
         SyncMessage ack = receive(input);
         requireKind(ack, "SYNC_ACK");
+        requirePeerIdentity(ack, store);
         Map<String, Long> localClock = store.syncVectorClock();
         if (!covers(ack.vectorClock, localClock)) {
             throw new IOException("La confirmación del iniciador no cubre todo el historial del receptor.");
         }
+        store.acknowledgePeer(ack.deviceId, ack.deviceName, ack.vectorClock);
 
-        SyncMessage complete = new SyncMessage();
-        complete.kind = "SYNC_COMPLETE";
-        complete.protocolVersion = VERSION;
+        SyncMessage complete = controlMessage("SYNC_COMPLETE", store);
         complete.vectorClock = localClock;
         send(output, complete);
     }
@@ -160,21 +164,20 @@ final class AgendaSyncProtocol {
         // reloj causal. En cada ronda se anuncia el reloj y se envía lo que falta.
         Map<String, Long> remoteClock = new LinkedHashMap<>(store.syncVectorClock());
         while (keepAlive.getAsBoolean() && !Thread.currentThread().isInterrupted()) {
-            SyncMessage update = new SyncMessage();
-            update.kind = "SESSION_UPDATE";
-            update.protocolVersion = VERSION;
+            SyncMessage update = controlMessage("SESSION_UPDATE", store);
             update.vectorClock = store.syncVectorClock();
             update.operations = store.exportOperationsAfter(remoteClock);
             send(output, update);
 
             SyncMessage incoming = receive(input);
             requireKind(incoming, "SESSION_UPDATE");
+            requirePeerIdentity(incoming, store);
             if (!incoming.operations.isEmpty()) {
                 merger.merge(incoming.operations);
             }
-            // Este reloj representa lo que el otro extremo conocía al enviar
-            // su lote; las operaciones que acaba de recibir aparecerán en la
-            // siguiente ronda, evitando perder confirmaciones simultáneas.
+            // Este reloj se persiste como confirmación solo después de guardar
+            // duraderamente el lote recibido. Cada PC avanza de forma independiente.
+            store.acknowledgePeer(incoming.deviceId, incoming.deviceName, incoming.vectorClock);
             remoteClock = new LinkedHashMap<>(incoming.vectorClock);
 
             try {
@@ -190,12 +193,33 @@ final class AgendaSyncProtocol {
     }
 
     private static SyncMessage message(String kind, AgendaStore store) {
+        SyncMessage message = controlMessage(kind, store);
+        message.operations = store.exportOperations();
+        return message;
+    }
+
+    private static SyncMessage controlMessage(String kind, AgendaStore store) {
         SyncMessage message = new SyncMessage();
         message.kind = kind;
         message.protocolVersion = VERSION;
-        message.operations = store.exportOperations();
+        message.deviceId = store.syncDeviceId();
+        message.deviceName = store.syncDeviceName();
         message.vectorClock = store.syncVectorClock();
         return message;
+    }
+
+    private static void requirePeerIdentity(SyncMessage message, AgendaStore localStore)
+            throws IOException {
+        if (message.deviceId == null || message.deviceId.trim().isEmpty()) {
+            throw new IOException("El dispositivo remoto no comunica su identidad. Actualiza Agenda en ese equipo.");
+        }
+        if (message.deviceId.equals(localStore.syncDeviceId())) {
+            throw new IOException("La identidad del dispositivo remoto coincide con la local.");
+        }
+        if (message.deviceName == null || message.deviceName.trim().isEmpty()) {
+            message.deviceName = "Equipo "
+                    + message.deviceId.substring(0, Math.min(8, message.deviceId.length()));
+        }
     }
 
     private static void requireEnabled(AgendaStore store) throws IOException {
@@ -264,6 +288,8 @@ final class AgendaSyncProtocol {
     private static final class SyncMessage {
         String kind;
         int protocolVersion;
+        String deviceId;
+        String deviceName;
         List<AgendaOperation> operations = new ArrayList<>();
         Map<String, Long> vectorClock = new LinkedHashMap<>();
     }

@@ -48,9 +48,15 @@ final class AgendaStore {
     private Map<String, String> lastSavedState = new LinkedHashMap<>();
 
     AgendaStore(Path file) {
+        this(file, null);
+    }
+
+    AgendaStore(Path file, String deviceName) {
         this.file = file;
         try {
-            this.syncJournal = new AgendaSyncJournal(file);
+            this.syncJournal = deviceName == null || deviceName.trim().isEmpty()
+                    ? new AgendaSyncJournal(file)
+                    : new AgendaSyncJournal(file, deviceName);
         } catch (IOException ex) {
             throw new UncheckedIOException("No se pudo abrir el historial de sincronización de la agenda.", ex);
         }
@@ -161,6 +167,28 @@ final class AgendaStore {
 
     synchronized boolean isSyncEnabled() {
         return syncJournal.isEnabled();
+    }
+
+    synchronized String syncDeviceId() {
+        return syncJournal.deviceId();
+    }
+
+    synchronized String syncDeviceName() {
+        return syncJournal.deviceName();
+    }
+
+    /** Registra el reloj de confirmación individual de un equipo vinculado. */
+    synchronized void acknowledgePeer(String peerId, String peerName, Map<String, Long> peerClock) {
+        syncJournal.acknowledgePeer(peerId, peerName, peerClock);
+    }
+
+    /** Equipos conocidos y operaciones que cada uno todavía tiene pendientes. */
+    synchronized List<AgendaSyncJournal.PeerInfo> linkedPeers() {
+        return syncJournal.linkedPeers();
+    }
+
+    synchronized int pendingOperationsForPeer(String peerId) {
+        return syncJournal.pendingOperationsForPeer(peerId);
     }
 
     /** Estado causal que se comparte durante el protocolo de sincronización. */

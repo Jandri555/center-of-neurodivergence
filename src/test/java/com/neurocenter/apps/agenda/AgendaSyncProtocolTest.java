@@ -132,6 +132,78 @@ class AgendaSyncProtocolTest {
         }
     }
 
+
+    @Test
+    void mobileHubTracksAcknowledgementsIndependentlyForMultiplePcs() throws Exception {
+        AgendaStore classPc = newStore("class-pc");
+        AgendaStore phone = newStore("phone-hub");
+        AgendaStore homePc = newStore("home-pc");
+        classPc.enableSync();
+        phone.enableSync();
+        homePc.enableSync();
+
+        AgendaEntry task = task("Entregar práctica");
+        classPc.add(task);
+        classPc.save();
+
+        // Primer PC: el móvil recibe su agenda y registra su identidad.
+        synchronizeOnce(classPc, phone);
+        assertEquals(1, phone.linkedPeers().size());
+        assertEquals(classPc.syncDeviceId(), phone.linkedPeers().get(0).deviceId);
+        assertEquals(0, phone.pendingOperationsForPeer(classPc.syncDeviceId()));
+
+        // Segundo PC: primera conexión, recibe todo el historial/materialización actual.
+        synchronizeOnce(homePc, phone);
+        assertEquals(2, phone.linkedPeers().size());
+        assertEquals(1, homePc.all().size());
+        assertEquals("Entregar práctica", homePc.all().get(0).title);
+
+        // El móvil borra la tarea. Solo el PC de clase se vuelve a conectar.
+        phone.remove(phone.all().get(0));
+        phone.save();
+        synchronizeOnce(classPc, phone);
+
+        assertTrue(classPc.all().isEmpty(), "El borrado debe llegar al PC de clase.");
+        assertEquals(1, homePc.all().size(),
+                "El PC de casa aún no se ha conectado y conserva su copia.");
+
+        // El tombstone está confirmado por clase, pero sigue pendiente para casa.
+        assertEquals(0, phone.pendingOperationsForPeer(classPc.syncDeviceId()));
+        assertEquals(1, phone.pendingOperationsForPeer(homePc.syncDeviceId()));
+
+        // Al sincronizar casa, recibe el mismo borrado y confirma su propio reloj.
+        synchronizeOnce(homePc, phone);
+        assertTrue(homePc.all().isEmpty(), "El borrado pendiente debe llegar también al PC de casa.");
+        assertEquals(0, phone.pendingOperationsForPeer(homePc.syncDeviceId()));
+
+        assertTrue(phone.exportOperations().stream().anyMatch(op ->
+                AgendaOperation.DELETE.equals(op.type) && task.id.equals(op.entryId)),
+                "El registro conserva el tombstone incluso después de que ambos PCs lo confirmen.");
+    }
+
+    private void synchronizeOnce(AgendaStore client, AgendaStore server) throws Exception {
+        PipedOutputStream clientOutput = new PipedOutputStream();
+        PipedInputStream serverInput = new PipedInputStream(clientOutput, 64 * 1024);
+        PipedOutputStream serverOutput = new PipedOutputStream();
+        PipedInputStream clientInput = new PipedInputStream(serverOutput, 64 * 1024);
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> serverTask = executor.submit(() -> {
+                AgendaSyncProtocol.runServer(serverInput, serverOutput, server);
+                return null;
+            });
+            AgendaSyncProtocol.runClient(clientInput, clientOutput, client);
+            serverTask.get(10, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
+            clientInput.close();
+            clientOutput.close();
+            serverInput.close();
+            serverOutput.close();
+        }
+    }
+
     private static void await(java.util.function.BooleanSupplier condition, long timeoutMillis)
             throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
