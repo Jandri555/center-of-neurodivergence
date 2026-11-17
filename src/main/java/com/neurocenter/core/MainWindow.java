@@ -762,10 +762,7 @@ public final class MainWindow extends JFrame {
             if (!themeId.equals(currentId)) {
                 appSettings.put("theme", themeId);
                 ThemeManager.apply(themeId);
-                SwingUtilities.updateComponentTreeUI(this);
-                for (Window window : getOwnedWindows()) {
-                    SwingUtilities.updateComponentTreeUI(window);
-                }
+                // ThemeManager actualiza todas las ventanas abiertas mediante FlatLaf.updateUI().
                 refreshThemeIcons();
             }
         }
@@ -829,7 +826,6 @@ public final class MainWindow extends JFrame {
                     if (active) {
                         appSettings.put("theme", "light");
                         ThemeManager.apply("light");
-                        SwingUtilities.updateComponentTreeUI(this);
                         refreshThemeIcons();
                     }
                     JOptionPane.showMessageDialog(this, "Tema desinstalado.");
