@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "CenterOfNeurodivergenceAndroid"
-include(":app")
+include(":app", ":neurocenter-api")
