@@ -67,8 +67,12 @@ public final class PlatformCompatibility {
         }
 
         JsonObject flags = compatibility.getAsJsonObject();
-        String desktop = booleanString(flags.get("desktop"));
-        String mobile = booleanString(flags.get("mobile"));
+        if (!flags.has("desktop") || !flags.has("mobile")) {
+            throw new IOException("La compatibilidad del tema debe declarar ambos booleanos: "
+                    + "«desktop» y «mobile».");
+        }
+        String desktop = booleanString(flags.get("desktop"), "desktop");
+        String mobile = booleanString(flags.get("mobile"), "mobile");
         return parseFlags(desktop, mobile, "el manifiesto del tema");
     }
 
@@ -93,8 +97,10 @@ public final class PlatformCompatibility {
         throw new IOException("El flag " + flag + " de " + source + " debe ser «true» o «false».");
     }
 
-    private static String booleanString(JsonElement value) {
-        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean()
-                ? value.getAsString() : null;
+    private static String booleanString(JsonElement value, String flag) throws IOException {
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) {
+            throw new IOException("El flag «" + flag + "» del tema debe ser booleano (true/false).");
+        }
+        return value.getAsString();
     }
 }
