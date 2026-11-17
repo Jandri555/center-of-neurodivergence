@@ -92,7 +92,7 @@ public final class AppRegistry {
             // Comprobar primero la plataforma para que una app móvil no falle
             // con un mensaje engañoso por no incluir el proveedor Swing.
             PlatformCompatibility.fromAppManifest(manifest)
-                    .require(PlatformCompatibility.Platform.DESKTOP, "la app «" + name + "»");
+                    .require(com.neurocenter.api.NeuroPlatform.DESKTOP, "la app «" + name + "»");
 
             if (jarFile.getJarEntry("META-INF/services/com.neurocenter.api.NeuroApp") == null) {
                 throw new IOException("La app es compatible con escritorio, pero no declara ningún proveedor "
