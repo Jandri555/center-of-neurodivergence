@@ -167,7 +167,10 @@ final class AgendaPanel extends JPanel {
         styleAgendaButton(bluetoothSyncButton);
         bluetoothSyncButton.setEnabled(store.isSyncEnabled());
         bluetoothSyncButton.setToolTipText("Conecta con Android mediante el puerto COM Bluetooth del sistema");
-        bluetoothSyncButton.addActionListener(e -> syncBluetooth());
+        bluetoothSyncButton.addActionListener(e -> {
+            if (activeBluetoothPort != null) disconnectBluetoothSync();
+            else syncBluetooth();
+        });
 
         usbSyncButton = new JButton("Conectar USB");
         styleAgendaButton(usbSyncButton);
@@ -326,42 +329,29 @@ final class AgendaPanel extends JPanel {
 
     private void performBluetoothSync(com.fazecast.jSerialComm.SerialPort port) {
         if (activeSession != null && activeSession.get()) return;
-        AtomicBoolean running = new AtomicBoolean(true);
-        JDialog progress = new JDialog(
-                SwingUtilities.getWindowAncestor(this),
-                "Agenda conectada por Bluetooth",
-                Dialog.ModalityType.MODELESS);
-        JPanel panel = new JPanel(new BorderLayout(0, 12));
-        panel.setBorder(new EmptyBorder(18, 22, 18, 22));
-        JLabel status = new JLabel("Conectando con el móvil…");
-        panel.add(status, BorderLayout.NORTH);
-        JProgressBar bar = new JProgressBar();
-        bar.setIndeterminate(true);
-        panel.add(bar, BorderLayout.CENTER);
-        JButton disconnect = new JButton("Desconectar");
-        disconnect.addActionListener(e -> {
-            running.set(false);
-            port.closePort();
-            progress.dispose();
-        });
-        panel.add(disconnect, BorderLayout.SOUTH);
-        progress.setContentPane(panel);
-        progress.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
-        progress.pack();
-        progress.setLocationRelativeTo(ctx.window());
 
+        AtomicBoolean running = new AtomicBoolean(true);
         activeSession = running;
         activeBluetoothPort = port;
-        activeConnectionDialog = progress;
+        bluetoothSyncButton.setText("Conectando Bluetooth…");
+        bluetoothSyncButton.setEnabled(true);
+        bluetoothSyncButton.setToolTipText("Intentando establecer la conexión. Pulsa para cancelar.");
+
         Thread worker = new Thread(() -> {
             String failure = null;
             try {
                 BluetoothSerialClient.synchronize(
                         port, store, running::get,
-                        () -> SwingUtilities.invokeLater(() ->
-                                status.setText("Bluetooth conectado. Sincronizando la agenda…")),
-                        () -> SwingUtilities.invokeLater(() ->
-                                status.setText("Conexión estable. Los cambios se sincronizan automáticamente.")),
+                        () -> SwingUtilities.invokeLater(() -> {
+                            bluetoothSyncButton.setText("Desconectar Bluetooth");
+                            bluetoothSyncButton.setToolTipText(
+                                    "Bluetooth conectado. Sincronizando la agenda… Pulsa para desconectar.");
+                        }),
+                        () -> SwingUtilities.invokeLater(() -> {
+                            bluetoothSyncButton.setText("Desconectar Bluetooth");
+                            bluetoothSyncButton.setToolTipText(
+                                    "Conexión estable. Sincronización automática bidireccional activa.");
+                        }),
                         this::refresh);
             } catch (Exception ex) {
                 if (running.get()) {
@@ -377,8 +367,10 @@ final class AgendaPanel extends JPanel {
                         activeSyncWorker = null;
                     }
                     if (activeBluetoothPort == port) activeBluetoothPort = null;
-                    activeConnectionDialog = null;
-                    progress.dispose();
+                    bluetoothSyncButton.setText("Conectar Bluetooth");
+                    bluetoothSyncButton.setEnabled(store.isSyncEnabled());
+                    bluetoothSyncButton.setToolTipText(
+                            "Conecta con Android mediante el puerto COM Bluetooth del sistema");
                     refresh();
                     if (error != null && !stoppedByUser) {
                         JOptionPane.showMessageDialog(ctx.window(),
@@ -388,10 +380,22 @@ final class AgendaPanel extends JPanel {
                 });
             }
         }, "agenda-bluetooth-session");
+
         activeSyncWorker = worker;
         worker.setDaemon(true);
         worker.start();
-        progress.setVisible(true);
+    }
+
+    private void disconnectBluetoothSync() {
+        AtomicBoolean running = activeSession;
+        if (running != null) running.set(false);
+
+        com.fazecast.jSerialComm.SerialPort port = activeBluetoothPort;
+        if (port != null) port.closePort();
+
+        bluetoothSyncButton.setText("Desconectando…");
+        bluetoothSyncButton.setEnabled(false);
+        bluetoothSyncButton.setToolTipText("Cerrando la conexión Bluetooth.");
     }
 
     void closeSyncSession() {
