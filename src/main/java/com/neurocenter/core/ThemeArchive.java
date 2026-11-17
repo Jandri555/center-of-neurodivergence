@@ -78,6 +78,11 @@ public final class ThemeArchive {
                 throw new IOException("Identificador no válido o reservado.");
             if (!isString(json, "name") || json.get("name").getAsString().isBlank())
                 throw new IOException("El manifiesto debe incluir «name» de texto.");
+
+            String themeName = json.get("name").getAsString();
+            PlatformCompatibility.fromThemeManifest(json)
+                    .require(PlatformCompatibility.Platform.DESKTOP, "el tema «" + themeName + "»");
+
             String base = isString(json, "base") ? json.get("base").getAsString() : "";
             if (!base.equals("light") && !base.equals("dark"))
                 throw new IOException("El campo «base» debe ser «light» o «dark».");
