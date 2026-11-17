@@ -528,6 +528,10 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        // El servicio Bluetooth puede haber aplicado operaciones mientras la
+        // Activity no estaba visible y su BroadcastReceiver no estaba registrado.
+        // Recarga siempre la agenda persistida al volver a primer plano.
+        refresh();
         updateBluetoothControls(BluetoothSyncService.isRunning());
         inspectUsbAccessory();
     }

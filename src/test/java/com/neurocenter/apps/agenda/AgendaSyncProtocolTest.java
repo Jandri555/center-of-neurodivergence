@@ -248,6 +248,77 @@ class AgendaSyncProtocolTest {
     }
 
     @Test
+    void continuousSessionAppliesPcDeleteOnPhoneAndKeepsItPendingForAnotherPc() throws Exception {
+        AgendaStore classPc = newStore("live-class-pc");
+        AgendaStore phone = newStore("live-phone");
+        AgendaStore homePc = newStore("live-home-pc");
+        classPc.enableSync();
+        phone.enableSync();
+        homePc.enableSync();
+
+        AgendaEntry task = task("Borrar desde clase");
+        classPc.add(task);
+        classPc.save();
+        synchronizeOnce(classPc, phone);
+        synchronizeOnce(homePc, phone);
+
+        assertEquals(1, phone.all().size());
+        assertEquals(1, homePc.all().size());
+
+        PipedOutputStream pcOutput = new PipedOutputStream();
+        PipedInputStream phoneInput = new PipedInputStream(pcOutput, 64 * 1024);
+        PipedOutputStream phoneOutput = new PipedOutputStream();
+        PipedInputStream pcInput = new PipedInputStream(phoneOutput, 64 * 1024);
+        AtomicBoolean connected = new AtomicBoolean(true);
+        CountDownLatch ready = new CountDownLatch(2);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> server = executor.submit(() -> {
+                AgendaSyncProtocol.runServerSession(
+                        phoneInput, phoneOutput, phone, phone::mergeOperations,
+                        connected::get, ready::countDown);
+                return null;
+            });
+            Future<?> client = executor.submit(() -> {
+                AgendaSyncProtocol.runClientSession(
+                        pcInput, pcOutput, classPc, classPc::mergeOperations,
+                        connected::get, ready::countDown);
+                return null;
+            });
+
+            assertTrue(ready.await(5, TimeUnit.SECONDS), "Both ends should complete the initial handshake");
+
+            classPc.remove(classPc.all().get(0));
+            classPc.save();
+
+            await(() -> phone.all().isEmpty(), 5_000);
+            await(() -> phone.pendingOperationsForPeer(homePc.syncDeviceId()) > 0, 5_000);
+            await(() -> phone.pendingOperationsForPeer(classPc.syncDeviceId()) == 0, 5_000);
+
+            assertTrue(phone.exportOperations().stream().anyMatch(op ->
+                    AgendaOperation.DELETE.equals(op.type) && task.id.equals(op.entryId)),
+                    "Android must execute the received delete and retain its tombstone.");
+            assertEquals(1, homePc.all().size(),
+                    "The other PC stays unchanged until it reconnects.");
+
+            connected.set(false);
+            client.get(5, TimeUnit.SECONDS);
+            server.get(5, TimeUnit.SECONDS);
+        } finally {
+            connected.set(false);
+            executor.shutdownNow();
+            pcInput.close();
+            pcOutput.close();
+            phoneInput.close();
+            phoneOutput.close();
+        }
+
+        synchronizeOnce(homePc, phone);
+        assertTrue(homePc.all().isEmpty(), "The other PC must receive the retained delete on reconnect.");
+        assertEquals(0, phone.pendingOperationsForPeer(homePc.syncDeviceId()));
+    }
+
+    @Test
     void incompleteSyncFrameIsRejectedWithoutMutatingTheJournal() throws Exception {
         AgendaStore store = newStore("incomplete");
         AgendaEntry task = task("Cita");
