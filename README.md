@@ -100,7 +100,7 @@ Cada flag ausente equivale a `false`. Si ambos faltan o ambos valen `false`, el 
 - Escritorio: implementa `NeuroApp`, recibe `AppContext` y construye su interfaz Swing. Los flags van en el `MANIFEST.MF` del JAR.
 - Android: implementa `NeuroMobileApp`, recibe `NeuroMobileContext` y construye su interfaz nativa mediante una `View`. Los flags van como `<meta-data>` en el `AndroidManifest.xml` del APK, con los nombres `NeuroCenter-App-Desktop` y `NeuroCenter-App-Mobile` y valores `true` o `false`.
 
-Ambos contextos heredan de `NeuroAppContext`, que ofrece los servicios neutrales (plataforma, carpeta de datos y ajustes). `context.platform()` devuelve `NeuroPlatform.DESKTOP` en escritorio y `NeuroPlatform.MOBILE` en Android. La lógica de negocio compartida puede aceptar `NeuroAppContext`; las clases de presentación son distintas y no deben importar Swing en la implementación Android.
+Ambos contextos heredan de `NeuroAppContext`, que ofrece los servicios neutrales (plataforma, carpeta de datos y ajustes). `context.platform()` devuelve `NeuroPlatform.DESKTOP` en escritorio y `NeuroPlatform.MOBILE` en Android. Las clases de lógica compartida también pueden consultar directamente `NeuroPlatform.current()`, que detecta el runtime sin depender de Swing. La lógica de negocio compartida puede aceptar `NeuroAppContext`; las clases de presentación son distintas y no deben importar Swing en la implementación Android.
 
 La API móvil se publica en el módulo Gradle `:neurocenter-api` del proyecto `android/`. Una app Android puede añadir `implementation(project(":neurocenter-api"))` cuando forme parte del mismo proyecto Gradle, o consumir el AAR equivalente al distribuir la API.
 
