@@ -43,11 +43,11 @@ public final class AppPaths {
 
     /** Carpeta de datos de una app; se crea cuando se solicita. */
     public static Path appDataDir(Context context, String appId) {
-        if (appId == null || appId.isBlank()) {
+        if (appId == null || appId.trim().isEmpty()) {
             throw new IllegalArgumentException("El identificador de la app no puede estar vacío.");
         }
         String safe = appId.replaceAll("[^A-Za-z0-9._-]", "_");
-        if (safe.isBlank() || safe.chars().allMatch(c -> c == '.')) safe = "_";
+        if (safe.trim().isEmpty() || safe.chars().allMatch(c -> c == '.')) safe = "_";
 
         Path directory = dataDir(context).resolve(safe);
         try {
