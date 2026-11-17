@@ -9,6 +9,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class AppContextPlatformTest {
 
     @Test
+    void desktopRuntimeDetectsDesktop() {
+        assertEquals(NeuroPlatform.DESKTOP, NeuroPlatform.current());
+    }
+
+    @Test
     void desktopContextIdentifiesItselfAsDesktop() {
         AppContext context = new AppContext() {
             @Override public Path dataDir() { return Path.of("."); }
