@@ -118,8 +118,28 @@ public final class ThemeManager {
 
     private static void addBuiltIn(String id, String name, String base) {
         // Los temas integrados tienen una variante equivalente en ambas plataformas.
+        JsonObject colors = new JsonObject();
+        if ("dark".equals(base)) {
+            // Oscuro usa carbón profundo, pero conserva separación entre superficies.
+            // Negro OLED sigue siendo un tema externo independiente con negro puro.
+            colors.addProperty("background", "#181818");
+            colors.addProperty("surface", "#202020");
+            colors.addProperty("button", "#292929");
+            colors.addProperty("buttonHover", "#333333");
+            colors.addProperty("buttonPressed", "#3A3A3A");
+            colors.addProperty("input", "#202020");
+            colors.addProperty("dialog", "#202020");
+            colors.addProperty("dialogOptionPane", "#202020");
+            colors.addProperty("dialogMessage", "#202020");
+            colors.addProperty("dialogButtons", "#202020");
+            colors.addProperty("popup", "#202020");
+            colors.addProperty("menu", "#202020");
+            colors.addProperty("menuItem", "#202020");
+            colors.addProperty("menuHover", "#333333");
+            colors.addProperty("titleBar", "#181818");
+        }
         THEMES.put(id, new ThemeInfo(id, name, "Center of Neurodivergence", "1.0",
-                base, null, new JsonObject(), new JsonObject(),
+                base, null, colors, new JsonObject(),
                 new PlatformCompatibility.Targets(true, true)));
     }
 
