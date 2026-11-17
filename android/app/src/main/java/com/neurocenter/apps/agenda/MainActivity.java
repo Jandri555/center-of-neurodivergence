@@ -330,8 +330,10 @@ public final class MainActivity extends Activity {
             CheckBox done = new CheckBox(this);
             done.setChecked(entry.done);
             done.setOnCheckedChangeListener((button, checked) -> {
-                entry.done = checked;
-                save();
+                synchronized (store) {
+                    entry.done = checked;
+                    save();
+                }
                 refresh();
             });
             main.addView(done);
