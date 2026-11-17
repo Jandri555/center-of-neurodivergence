@@ -15,6 +15,8 @@ import java.util.HashSet;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.stream.Stream;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 
 /**
  * Carga apps externas: cada JAR se abre con su propio ClassLoader y se buscan
@@ -63,6 +65,16 @@ public final class AppLoader {
         for (Path jar : jars) {
             String name = jar.getFileName().toString();
             try {
+                try (JarFile jarFile = new JarFile(jar.toFile())) {
+                    Manifest manifest = jarFile.getManifest();
+                    String displayName = manifest == null ? name
+                            : manifest.getMainAttributes().getValue("Implementation-Title");
+                    if (displayName == null || displayName.isBlank()) displayName = name;
+                    PlatformCompatibility.fromAppManifest(manifest)
+                            .require(PlatformCompatibility.Platform.DESKTOP,
+                                    "la app «" + displayName + "»");
+                }
+
                 URL[] urls = { jar.toUri().toURL() };
                 // El ClassLoader permanece abierto mientras la app está en uso.
                 URLClassLoader loader = new URLClassLoader(urls, AppLoader.class.getClassLoader());
