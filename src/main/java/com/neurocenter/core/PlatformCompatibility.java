@@ -2,6 +2,7 @@ package com.neurocenter.core;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.neurocenter.api.NeuroPlatform;
 
 import java.io.IOException;
 import java.util.jar.Attributes;
@@ -15,27 +16,12 @@ import java.util.jar.Manifest;
  */
 public final class PlatformCompatibility {
 
-    public enum Platform {
-        DESKTOP("escritorio"),
-        MOBILE("móvil");
-
-        private final String label;
-
-        Platform(String label) {
-            this.label = label;
-        }
-
-        public String label() {
-            return label;
-        }
-    }
-
     public record Targets(boolean desktop, boolean mobile) {
-        public boolean supports(Platform platform) {
-            return platform == Platform.DESKTOP ? desktop : mobile;
+        public boolean supports(NeuroPlatform platform) {
+            return platform == NeuroPlatform.DESKTOP ? desktop : mobile;
         }
 
-        public void require(Platform platform, String packageDescription) throws IOException {
+        public void require(NeuroPlatform platform, String packageDescription) throws IOException {
             if (supports(platform)) return;
 
             String supported = desktop && mobile ? "escritorio y móvil"
