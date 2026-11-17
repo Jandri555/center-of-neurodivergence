@@ -10,8 +10,8 @@ import java.util.jar.Manifest;
 /**
  * Compatibilidad declarada por una app o tema con cada variante de Center of Neurodivergence.
  *
- * Los paquetes antiguos, sin flags, se consideran compatibles solo con escritorio.
- * Cuando un paquete declara compatibilidad, debe incluir ambos booleanos explícitamente.
+ * Cada flag se interpreta de forma independiente: si falta, su valor es false.
+ * Un paquete debe habilitar al menos una plataforma para poder instalarse o aplicarse.
  */
 public final class PlatformCompatibility {
 
@@ -46,12 +46,12 @@ public final class PlatformCompatibility {
         }
     }
 
-    private static final Targets LEGACY_DESKTOP = new Targets(true, false);
+    private static final Targets NO_PLATFORMS = new Targets(false, false);
 
     private PlatformCompatibility() {}
 
     public static Targets fromAppManifest(Manifest manifest) throws IOException {
-        if (manifest == null) return LEGACY_DESKTOP;
+        if (manifest == null) return NO_PLATFORMS;
         Attributes attributes = manifest.getMainAttributes();
         String desktop = attributes.getValue("NeuroCenter-App-Desktop");
         String mobile = attributes.getValue("NeuroCenter-App-Mobile");
@@ -61,33 +61,21 @@ public final class PlatformCompatibility {
     public static Targets fromThemeManifest(JsonObject manifest) throws IOException {
         if (manifest == null) throw new IOException("El manifiesto del tema está vacío.");
         JsonElement compatibility = manifest.get("compatibility");
-        if (compatibility == null) return LEGACY_DESKTOP;
+        if (compatibility == null) return NO_PLATFORMS;
         if (!compatibility.isJsonObject()) {
             throw new IOException("«compatibility» debe ser un objeto con los booleanos «desktop» y «mobile».");
         }
 
         JsonObject flags = compatibility.getAsJsonObject();
-        if (!flags.has("desktop") || !flags.has("mobile")) {
-            throw new IOException("La compatibilidad del tema debe declarar ambos booleanos: "
-                    + "«desktop» y «mobile».");
-        }
-        String desktop = booleanString(flags.get("desktop"), "desktop");
-        String mobile = booleanString(flags.get("mobile"), "mobile");
+        String desktop = flags.has("desktop") ? booleanString(flags.get("desktop"), "desktop") : null;
+        String mobile = flags.has("mobile") ? booleanString(flags.get("mobile"), "mobile") : null;
         return parseFlags(desktop, mobile, "el manifiesto del tema");
     }
 
     private static Targets parseFlags(String desktop, String mobile, String source) throws IOException {
-        if (desktop == null && mobile == null) return LEGACY_DESKTOP;
-        if (desktop == null || mobile == null) {
-            throw new IOException("Faltan flags de compatibilidad en " + source
-                    + ". Debe declarar Desktop y Mobile.");
-        }
-
-        boolean supportsDesktop = parseBoolean(desktop, "Desktop", source);
-        boolean supportsMobile = parseBoolean(mobile, "Mobile", source);
-        if (!supportsDesktop && !supportsMobile) {
-            throw new IOException(source + " debe habilitar al menos una plataforma (Desktop o Mobile).");
-        }
+        // Un flag ausente equivale siempre a false, nunca a compatibilidad heredada.
+        boolean supportsDesktop = desktop != null && parseBoolean(desktop, "Desktop", source);
+        boolean supportsMobile = mobile != null && parseBoolean(mobile, "Mobile", source);
         return new Targets(supportsDesktop, supportsMobile);
     }
 
