@@ -83,5 +83,8 @@ jobs:
           java-version: '17'
           cache: maven
 
-      - name: Build and verify with Maven
-        run: mvn --batch-mode --no-transfer-progress clean verify
+      - name: Build, test and install the desktop API
+        run: mvn --batch-mode --no-transfer-progress clean install
+
+      - name: Build the external app example
+        run: mvn --batch-mode --no-transfer-progress -f example-app/pom.xml clean verify
