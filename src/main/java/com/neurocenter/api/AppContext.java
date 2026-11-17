@@ -1,7 +1,6 @@
 package com.neurocenter.api;
 
 import java.awt.Window;
-import java.nio.file.Path;
 
 /**
  * Servicios que el panel ofrece a cada app.
@@ -12,16 +11,13 @@ import java.nio.file.Path;
  * al hilo de Swing. Los componentes Swing y los diálogos deben manipularse
  * únicamente desde ese hilo.</p>
  */
-public interface AppContext {
+public interface AppContext extends NeuroAppContext {
 
-    /** Carpeta privada del app (AppData/CenterOfNeurodivergence/data/&lt;id&gt;). Ya existe. */
-    Path dataDir();
-
-    /** Lee un ajuste guardado del app (se guarda en su carpeta de datos). */
-    String getSetting(String key, String defaultValue);
-
-    /** Guarda un ajuste del app. */
-    void putSetting(String key, String value);
+    /** En el host Swing, esta implementación siempre se ejecuta en escritorio. */
+    @Override
+    default NeuroPlatform platform() {
+        return NeuroPlatform.DESKTOP;
+    }
 
     /** Muestra un mensaje en la barra de estado inferior. */
     void setStatus(String message);
