@@ -153,8 +153,6 @@
                                             <arg value="com.neurocenter.Main"/>
                                             <arg value="--dest"/>
                                             <arg value="${project.build.directory}/installer/${project.version}-${maven.build.timestamp}"/>
-                                            <arg value="--temp"/>
-                                            <arg value="${project.build.directory}/jpackage-temp-${maven.build.timestamp}"/>
                                             <arg value="--win-per-user-install"/>
                                             <arg value="--win-menu"/>
                                             <arg value="--win-menu-group"/>
@@ -164,7 +162,6 @@
                                             <arg value="b273a720-1483-4f49-bd16-9f3b1092c3ab"/>
                                         </exec>
                                         <delete dir="${project.build.directory}/jpackage-input"/>
-                                        <delete dir="${project.build.directory}/jpackage-temp-${maven.build.timestamp}"/>
                                     </target>
                                 </configuration>
                             </execution>
