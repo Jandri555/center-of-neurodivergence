@@ -260,6 +260,19 @@ public final class MainWindow extends JFrame {
         requestFocus();
     }
 
+    /**
+     * Muestra esta ventana cuando el usuario vuelve a ejecutar el acceso directo.
+     * Puede recibirse desde el hilo de IPC; toda interacción Swing se traslada
+     * al hilo de eventos.
+     */
+    public void activateFromAnotherLaunch() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(this::activateFromAnotherLaunch);
+            return;
+        }
+        restoreFromTray();
+    }
+
     private void shutdown() {
         if (shuttingDown) return;
         shuttingDown = true;
