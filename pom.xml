@@ -150,7 +150,10 @@
                                         <exec executable="${java.home}/bin/jpackage.exe" failonerror="true">
                                             <!-- jpackage busca candle.exe/light.exe mediante PATH.
                                                  Añadimos la ruta de WiX sin modificar el PATH global de Windows. -->
-                                            <env key="PATH" value="${env.PATH};${wix.bin}"/>
+                                            <!-- jpackage y jlink deben pertenecer al mismo JDK.
+                                                 JAVA_HOME puede apuntar a otra versión instalada en Windows. -->
+                                            <env key="JAVA_HOME" value="${java.home}"/>
+                                            <env key="PATH" value="${java.home}/bin;${env.PATH};${wix.bin}"/>
                                             <arg value="--type"/>
                                             <arg value="exe"/>
                                             <arg value="--name"/>
