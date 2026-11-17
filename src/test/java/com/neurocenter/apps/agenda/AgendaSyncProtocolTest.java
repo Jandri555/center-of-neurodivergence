@@ -191,6 +191,16 @@ class AgendaSyncProtocolTest {
         assertEquals(3, phone.linkedPeers().size());
         assertEquals(0, phone.pendingOperationsForPeer(latePc.syncDeviceId()));
 
+        // La operación del PC nuevo también queda pendiente para los PCs anteriores.
+        assertEquals(1, phone.pendingOperationsForPeer(classPc.syncDeviceId()));
+        assertEquals(1, phone.pendingOperationsForPeer(homePc.syncDeviceId()));
+        synchronizeOnce(classPc, phone);
+        synchronizeOnce(homePc, phone);
+        assertTrue(classPc.all().isEmpty());
+        assertTrue(homePc.all().isEmpty());
+        assertEquals(0, phone.pendingOperationsForPeer(classPc.syncDeviceId()));
+        assertEquals(0, phone.pendingOperationsForPeer(homePc.syncDeviceId()));
+
         // Las confirmaciones individuales sobreviven al reinicio del móvil.
         AgendaStore restartedPhone = new AgendaStore(
                 temporaryDirectory.resolve("phone-hub").resolve("agenda.json"));
