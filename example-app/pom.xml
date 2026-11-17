@@ -19,7 +19,7 @@
         <dependency>
             <groupId>com.neurocenter</groupId>
             <artifactId>center-of-neurodivergence</artifactId>
-            <version>0.1.0</version>
+            <version>1.0</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>
