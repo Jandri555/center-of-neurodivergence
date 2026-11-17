@@ -27,13 +27,19 @@ java -jar target/center-of-neurodivergence.jar
 En Windows, el perfil Maven `windows-exe` se activa automáticamente al ejecutar:
 
 ```powershell
-mvn clean package
+mvn package
 ```
 
-El instalador se genera en:
+Cada compilación genera el instalador en una carpeta propia con versión y fecha/hora, por ejemplo:
 
 ```text
-target/installer/Center of Neurodivergence-1.0.exe
+target/installer/1.0-20261117-102239/Center of Neurodivergence-1.0.exe
+```
+
+Así no es necesario sobrescribir ni borrar el instalador de la compilación anterior. Para localizar los instaladores generados:
+
+```powershell
+Get-ChildItem target\\installer -Recurse -Filter "*.exe"
 ```
 
 Para crear instaladores `.exe`, `jpackage` necesita WiX Toolset 3.0 o superior. En el equipo de desarrollo puedes instalar la versión 3.14.1 desde PowerShell con Chocolatey:

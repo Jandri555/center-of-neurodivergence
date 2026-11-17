@@ -13,6 +13,7 @@
     <properties>
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
     </properties>
 
     <dependencies>
@@ -125,11 +126,11 @@
                                 </goals>
                                 <configuration>
                                     <target>
+                                        <!-- Cada compilación usa su propia carpeta para no tener que borrar
+                                             un instalador anterior que Windows pueda mantener bloqueado. -->
                                         <delete dir="${project.build.directory}/jpackage-input"/>
-                                        <delete dir="${project.build.directory}/installer"/>
-                                        <delete dir="${project.build.directory}/jpackage-temp"/>
                                         <mkdir dir="${project.build.directory}/jpackage-input"/>
-                                        <mkdir dir="${project.build.directory}/installer"/>
+                                        <mkdir dir="${project.build.directory}/installer/${project.version}-${maven.build.timestamp}"/>
                                         <copy
                                                 file="${project.build.directory}/${project.build.finalName}.jar"
                                                 todir="${project.build.directory}/jpackage-input"/>
@@ -151,9 +152,9 @@
                                             <arg value="--main-class"/>
                                             <arg value="com.neurocenter.Main"/>
                                             <arg value="--dest"/>
-                                            <arg value="${project.build.directory}/installer"/>
+                                            <arg value="${project.build.directory}/installer/${project.version}-${maven.build.timestamp}"/>
                                             <arg value="--temp"/>
-                                            <arg value="${project.build.directory}/jpackage-temp"/>
+                                            <arg value="${project.build.directory}/jpackage-temp-${maven.build.timestamp}"/>
                                             <arg value="--win-per-user-install"/>
                                             <arg value="--win-menu"/>
                                             <arg value="--win-menu-group"/>
@@ -162,6 +163,8 @@
                                             <arg value="--win-upgrade-uuid"/>
                                             <arg value="b273a720-1483-4f49-bd16-9f3b1092c3ab"/>
                                         </exec>
+                                        <delete dir="${project.build.directory}/jpackage-input"/>
+                                        <delete dir="${project.build.directory}/jpackage-temp-${maven.build.timestamp}"/>
                                     </target>
                                 </configuration>
                             </execution>
