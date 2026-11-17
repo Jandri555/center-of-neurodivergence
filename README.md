@@ -79,11 +79,26 @@ En **Ajustes → Gestionar apps → Configurar inicio automático** puedes activ
 
 Abre **Ajustes** (⚙) en el panel y entra en **Gestionar apps**. Desde ahí puedes instalar un archivo JAR o programar su desinstalación. Los cambios se aplican al reiniciar, porque una app cargada puede mantener su JAR bloqueado en Windows.
 
-La API de extensiones actual es `NeuroApp` con su contexto `AppContext`. Los JAR deben registrar sus implementaciones mediante el servicio:
+La API de extensiones de escritorio es `NeuroApp` con su contexto `AppContext`. Los JAR deben registrar la implementación de escritorio mediante el servicio:
 
 `META-INF/services/com.neurocenter.api.NeuroApp`
 
-**Seguridad:** una app externa es código Java ejecutado con los permisos de tu usuario. No existe aislamiento de seguridad entre una app externa y la aplicación principal. Instala únicamente JAR de fuentes de confianza.
+El manifiesto JAR declara las plataformas compatibles mediante dos flags booleanos:
+
+```text
+NeuroCenter-App-Desktop: true
+NeuroCenter-App-Mobile: false
+```
+
+- Solo escritorio: `true / false`.
+- Solo móvil: `false / true`.
+- Escritorio y móvil: `true / true`.
+
+Si se declara uno de los flags, deben declararse ambos. Un paquete que no declara ninguno se considera antiguo y compatible solo con escritorio. Si se intenta instalar o cargar en escritorio una app solo móvil, se muestra un error indicando que el dispositivo no es compatible.
+
+**Código por plataforma:** la implementación de escritorio usa `NeuroApp` y Swing. La implementación móvil debe ser nativa de Android y no debe reutilizar clases Swing. El proyecto Android actual sigue siendo la app nativa de Agenda: todavía no incorpora un cargador de plugins móviles externos, por lo que marcar `Mobile: true` declara compatibilidad prevista, pero no instala ni ejecuta por sí solo esa implementación en Android.
+
+**Seguridad:** una app externa es código ejecutado con los permisos de tu usuario. No existe aislamiento de seguridad entre una app externa y la aplicación principal. Instala únicamente paquetes de fuentes de confianza.
 
 ## Sincronización de Agenda con Android (en desarrollo)
 
@@ -124,6 +139,10 @@ Ejemplo de `theme.json`:
   "name": "Mi tema",
   "author": "Tu nombre",
   "version": "1.0",
+  "compatibility": {
+    "desktop": true,
+    "mobile": false
+  },
   "base": "dark",
   "colors": {
     "background": "#171923",
@@ -146,7 +165,9 @@ Ejemplo de `theme.json`:
 }
 ```
 
-`base` debe ser `light` u `dark` y determina el aspecto base de FlatLaf; `colors` sobrescribe los colores indicados. `appIcons` es opcional y usa los identificadores internos de las apps. Las rutas de iconos deben estar dentro de `resources/`. Se admiten imágenes que Java pueda leer, preferiblemente PNG.
+`compatibility.desktop` y `compatibility.mobile` indican en qué plataformas se puede aplicar el tema. Deben ser booleanos y debe estar activado al menos uno. En temas antiguos que no incluyan `compatibility`, se asume escritorio para mantener la compatibilidad. Si se intenta instalar o aplicar en escritorio un tema solo móvil, se muestra un error de dispositivo no compatible.
+
+`base` debe ser `light` u `dark` y determina el aspecto base de FlatLaf; `colors` sobrescribe los colores indicados. `appIcons` es opcional y usa los identificadores internos de las apps. Las rutas de iconos deben estar dentro de `resources/`. Se admiten imágenes que Java pueda leer, preferiblemente PNG. La app Android todavía no aplica temas externos: el flag móvil queda definido en el formato para el futuro gestor de temas Android.
 
 Por seguridad, el instalador rechaza rutas ZIP inseguras, archivos fuera de `theme.json` y `resources/`, más de 200 entradas o más de 20 MB descomprimidos.
 
