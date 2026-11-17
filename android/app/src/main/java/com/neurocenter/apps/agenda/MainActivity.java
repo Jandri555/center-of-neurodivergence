@@ -561,7 +561,7 @@ public final class MainActivity extends Activity {
                 .append(peers.size()).append("):");
         for (AgendaSyncJournal.PeerInfo peer : peers) {
             int pending = peer.pendingOperations;
-            status.append("\\n• ")
+            status.append("\n• ")
                     .append(safe(peer.deviceName))
                     .append(pending == 0
                             ? " — al día"
