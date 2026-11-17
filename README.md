@@ -94,9 +94,15 @@ NeuroCenter-App-Mobile: false
 - Solo móvil: `false / true`.
 - Escritorio y móvil: `true / true`.
 
-Si se declara uno de los flags, deben declararse ambos. Un paquete que no declara ninguno se considera antiguo y compatible solo con escritorio. Si se intenta instalar o cargar en escritorio una app solo móvil, se muestra un error indicando que el dispositivo no es compatible.
+Cada flag ausente equivale a `false`. Si ambos faltan o ambos valen `false`, el paquete no es compatible con ninguna plataforma y se rechaza. No existe compatibilidad implícita para paquetes antiguos: el tema negro anterior debe añadir expresamente sus flags. Si se intenta instalar o cargar en escritorio una app solo móvil, aparece un error indicando que el dispositivo no es compatible.
 
-**Código por plataforma:** la implementación de escritorio usa `NeuroApp` y Swing. La implementación móvil debe ser nativa de Android y no debe reutilizar clases Swing. El proyecto Android actual sigue siendo la app nativa de Agenda: todavía no incorpora un cargador de plugins móviles externos, por lo que marcar `Mobile: true` declara compatibilidad prevista, pero no instala ni ejecuta por sí solo esa implementación en Android.
+**Código por plataforma:** una app multiplataforma mantiene dos implementaciones con el mismo identificador:
+- Escritorio: implementa `NeuroApp`, recibe `AppContext` y construye su interfaz Swing.
+- Android: implementa `NeuroMobileApp`, recibe `NeuroMobileContext` y construye su interfaz nativa mediante una `View`.
+
+Ambos contextos heredan de `NeuroAppContext`, que ofrece los servicios neutrales (plataforma, carpeta de datos y ajustes). `context.platform()` devuelve `NeuroPlatform.DESKTOP` en escritorio y `NeuroPlatform.MOBILE` en Android. La lógica de negocio compartida puede aceptar `NeuroAppContext`; las clases de presentación son distintas y no deben importar Swing en la implementación Android.
+
+**Estado del host móvil:** el proyecto Android ya incluye el contrato `NeuroMobileApp` y `NeuroMobileContext`, pero aún no incorpora el gestor/cargador de paquetes externos Android. Por tanto, la detección de plataforma y la API móvil están definidas, pero todavía no se pueden instalar y ejecutar APK de apps externas desde el host Android.
 
 **Seguridad:** una app externa es código ejecutado con los permisos de tu usuario. No existe aislamiento de seguridad entre una app externa y la aplicación principal. Instala únicamente paquetes de fuentes de confianza.
 
@@ -165,7 +171,7 @@ Ejemplo de `theme.json`:
 }
 ```
 
-`compatibility.desktop` y `compatibility.mobile` indican en qué plataformas se puede aplicar el tema. Deben ser booleanos y debe estar activado al menos uno. En temas antiguos que no incluyan `compatibility`, se asume escritorio para mantener la compatibilidad. Si se intenta instalar o aplicar en escritorio un tema solo móvil, se muestra un error de dispositivo no compatible.
+`compatibility.desktop` y `compatibility.mobile` indican en qué plataformas se puede aplicar el tema. Cada flag ausente equivale a `false`; ambos ausentes o ambos a `false` hacen que el tema no sea compatible con ningún dispositivo. Los temas antiguos también deben actualizar su manifiesto. Si se intenta instalar o aplicar en escritorio un tema solo móvil, se muestra un error de dispositivo no compatible. El host Android todavía no incluye el gestor de temas externos.
 
 `base` debe ser `light` u `dark` y determina el aspecto base de FlatLaf; `colors` sobrescribe los colores indicados. `appIcons` es opcional y usa los identificadores internos de las apps. Las rutas de iconos deben estar dentro de `resources/`. Se admiten imágenes que Java pueda leer, preferiblemente PNG. La app Android todavía no aplica temas externos: el flag móvil queda definido en el formato para el futuro gestor de temas Android.
 
@@ -175,7 +181,9 @@ Por seguridad, el instalador rechaza rutas ZIP inseguras, archivos fuera de `the
 
 Mira `example-app/`. Implementa `com.neurocenter.api.NeuroApp` y registra la clase mediante `META-INF/services/com.neurocenter.api.NeuroApp`.
 
-La app recibe un `AppContext` con acceso a su carpeta de datos, ajustes, barra de estado, ventana principal y navegación mediante `openApp(id)`. Compila contra la aplicación como dependencia `provided`; no empaquetes las librerías de la aplicación dentro del JAR de la app.
+La implementación de escritorio recibe un `AppContext` con acceso a su carpeta de datos, ajustes, barra de estado, ventana principal y navegación mediante `openApp(id)`. Consulta `context.platform()` para conocer la plataforma desde el código común. Para Android, crea una implementación nativa separada de `NeuroMobileApp` que reciba `NeuroMobileContext` y devuelva una `View`. Ambas implementaciones deben usar el mismo identificador estable y pueden delegar la lógica compartida a clases que dependan solo de `NeuroAppContext`.
+
+Compila la versión de escritorio contra la aplicación como dependencia `provided`; no empaquetes las librerías de la aplicación dentro del JAR. La API móvil está disponible en el módulo Android, aunque el cargador de extensiones Android todavía está pendiente.
 
 Para que el registro pueda mostrar metadatos fiables, añade al manifiesto del JAR estas entradas:
 - `NeuroCenter-App-Id`: identificador estable de la app.
