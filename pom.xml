@@ -14,6 +14,9 @@
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
+        <!-- Ubicación habitual de WiX 3.14 instalado mediante Chocolatey.
+             Se puede cambiar con -Dwix.bin="ruta\\a\\WiX\\bin". -->
+        <wix.bin>C:\\Program Files (x86)\\WiX Toolset v3.14\\bin</wix.bin>
     </properties>
 
     <dependencies>
@@ -145,6 +148,9 @@
                                                 file="${project.build.directory}/${project.build.finalName}.jar"
                                                 todir="${project.build.directory}/jpackage-input"/>
                                         <exec executable="${java.home}/bin/jpackage.exe" failonerror="true">
+                                            <!-- jpackage busca candle.exe/light.exe mediante PATH.
+                                                 Añadimos la ruta de WiX sin modificar el PATH global de Windows. -->
+                                            <env key="PATH" value="${env.PATH};${wix.bin}"/>
                                             <arg value="--type"/>
                                             <arg value="exe"/>
                                             <arg value="--name"/>
