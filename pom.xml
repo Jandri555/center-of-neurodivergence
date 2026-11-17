@@ -15,8 +15,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
         <!-- Ubicación habitual de WiX 3.14 instalado mediante Chocolatey.
-             Se puede cambiar con -Dwix.bin="ruta\\a\\WiX\\bin". -->
-        <wix.bin>C:\\Program Files (x86)\\WiX Toolset v3.14\\bin</wix.bin>
+             Se puede cambiar con -Dwix.bin="ruta/a/WiX/bin". -->
+        <wix.bin>C:/Program Files (x86)/WiX Toolset v3.14/bin</wix.bin>
     </properties>
 
     <dependencies>

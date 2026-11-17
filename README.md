@@ -51,10 +51,10 @@ choco install wixtoolset --version=3.14.1.20250415 --no-progress -y
 Maven añade automáticamente la carpeta habitual de WiX 3.14 al `PATH` del proceso `jpackage`, sin modificar el `PATH` global de Windows. Si WiX está instalado en otra ubicación, indica su carpeta `bin` al compilar:
 
 ```powershell
-mvn package "-Dwix.bin=D:\\Ruta\\a\\WiX\\bin"
+mvn package "-Dwix.bin=D:/Ruta/a/WiX/bin"
 ```
 
-La ruta predeterminada es `C:\\Program Files (x86)\\WiX Toolset v3.14\\bin`.
+La ruta predeterminada es `C:/Program Files (x86)/WiX Toolset v3.14/bin`.
 
 El instalador incluye un runtime de Java y crea accesos directos en el menú Inicio. La compilación de GitHub Actions instala WiX automáticamente y publica el `.exe` como artefacto de la ejecución.
 
