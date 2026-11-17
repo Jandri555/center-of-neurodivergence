@@ -36,7 +36,16 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.AWTException;
 import java.awt.Frame;
+import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.MenuItem;
+import java.awt.PopupMenu;
+import java.awt.RenderingHints;
+import java.awt.SystemTray;
+import java.awt.TrayIcon;
+import java.awt.image.BufferedImage;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
@@ -88,6 +97,7 @@ public final class MainWindow extends JFrame {
     private final JPanel content = new JPanel(cards);
     private final JLabel statusLabel = new JLabel(" ");
     private JButton settingsButton;
+    private TrayIcon trayIcon;
 
     public MainWindow(PropertiesStore appSettings) {
         super(AppInfo.NAME);
@@ -119,11 +129,12 @@ public final class MainWindow extends JFrame {
 
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
-            @Override public void windowClosing(WindowEvent e) { shutdown(); }
+            @Override public void windowClosing(WindowEvent e) { hideToTray(); }
         });
         setMinimumSize(new Dimension(960, 620));
         setSize(1240, 800);
         setLocationRelativeTo(null);
+        initializeTrayIcon();
         showApp(HOME);
 
         // Las apps con autorun arrancan en segundo plano, pero Inicio permanece
@@ -167,9 +178,96 @@ public final class MainWindow extends JFrame {
         JOptionPane.showMessageDialog(this, sb.toString(), AppInfo.NAME, JOptionPane.WARNING_MESSAGE);
     }
 
+    /**
+     * Añade el icono permanente del programa al área de notificación de Windows.
+     * El menú contextual permite recuperar la ventana o terminar el proceso.
+     */
+    private void initializeTrayIcon() {
+        if (!SystemTray.isSupported()) {
+            System.err.println("El sistema no admite iconos de bandeja.");
+            return;
+        }
+
+        PopupMenu menu = new PopupMenu();
+        MenuItem openItem = new MenuItem("Abrir");
+        openItem.addActionListener(e -> restoreFromTray());
+        menu.add(openItem);
+        menu.addSeparator();
+
+        MenuItem exitItem = new MenuItem("Salir");
+        exitItem.addActionListener(e -> shutdown());
+        menu.add(exitItem);
+
+        TrayIcon candidate = new TrayIcon(createTrayImage(), AppInfo.NAME, menu);
+        candidate.setImageAutoSize(true);
+        candidate.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getButton() == MouseEvent.BUTTON1 && e.getClickCount() >= 2) {
+                    restoreFromTray();
+                }
+            }
+        });
+
+        try {
+            SystemTray.getSystemTray().add(candidate);
+            trayIcon = candidate;
+        } catch (AWTException | RuntimeException ex) {
+            trayIcon = null;
+            System.err.println("No se pudo añadir el icono al área de notificación: " + ex.getMessage());
+        }
+    }
+
+    /** Crea un icono sencillo para la bandeja sin depender de archivos externos. */
+    private Image createTrayImage() {
+        BufferedImage image = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = image.createGraphics();
+        try {
+            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            graphics.setColor(new Color(55, 72, 112));
+            graphics.fillRoundRect(1, 1, 30, 30, 9, 9);
+            graphics.setColor(Color.WHITE);
+            graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 21));
+            String mark = "N";
+            var metrics = graphics.getFontMetrics();
+            int x = (32 - metrics.stringWidth(mark)) / 2;
+            int y = (32 - metrics.getHeight()) / 2 + metrics.getAscent();
+            graphics.drawString(mark, x, y);
+        } finally {
+            graphics.dispose();
+        }
+        return image;
+    }
+
+    /** Oculta la ventana al pulsar la X; no altera el botón de minimizar. */
+    private void hideToTray() {
+        if (trayIcon == null) {
+            setExtendedState(getExtendedState() | Frame.ICONIFIED);
+            JOptionPane.showMessageDialog(this,
+                    "No se ha podido crear el icono del área de notificación. "
+                            + "La ventana se ha minimizado a la barra de tareas.",
+                    AppInfo.NAME, JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        setVisible(false);
+    }
+
+    private void restoreFromTray() {
+        if (shuttingDown) return;
+        if (!isVisible()) setVisible(true);
+        setExtendedState(getExtendedState() & ~Frame.ICONIFIED);
+        toFront();
+        requestFocus();
+    }
+
     private void shutdown() {
         if (shuttingDown) return;
         shuttingDown = true;
+
+        if (trayIcon != null) {
+            SystemTray.getSystemTray().remove(trayIcon);
+            trayIcon = null;
+        }
 
         List<AppSession> sessions = new ArrayList<>(appSessions.values());
         for (AppSession session : sessions) {
