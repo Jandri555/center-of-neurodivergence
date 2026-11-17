@@ -71,7 +71,7 @@ public final class AppLoader {
                             : manifest.getMainAttributes().getValue("Implementation-Title");
                     if (displayName == null || displayName.isBlank()) displayName = name;
                     PlatformCompatibility.fromAppManifest(manifest)
-                            .require(PlatformCompatibility.Platform.DESKTOP,
+                            .require(com.neurocenter.api.NeuroPlatform.DESKTOP,
                                     "la app «" + displayName + "»");
                 }
 
