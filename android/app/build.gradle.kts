@@ -43,6 +43,9 @@ android {
     sourceSets {
         getByName("main") {
             java.directories.add("../../src/main/java/com/neurocenter/apps/agenda")
+            // Comparte solo el contrato neutral de plataforma y datos con escritorio.
+            // Las interfaces Swing (AppContext y NeuroApp) no se compilan en Android.
+            java.directories.add("../../src/main/java/com/neurocenter/api")
         }
     }
 }
@@ -50,7 +53,14 @@ android {
 // AGP 9.4 expone AndroidSourceDirectorySet sin PatternFilterable.
 // Excluimos los archivos Swing a nivel de tarea de compilación Java.
 tasks.withType<JavaCompile>().configureEach {
-    exclude("**/AgendaApp.java", "**/AgendaPanel.java", "**/BluetoothSerialClient.java", "**/UsbAoaClient.java")
+    exclude(
+        "**/AgendaApp.java",
+        "**/AgendaPanel.java",
+        "**/BluetoothSerialClient.java",
+        "**/UsbAoaClient.java",
+        "**/AppContext.java",
+        "**/NeuroApp.java"
+    )
 }
 
 dependencies {
