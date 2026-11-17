@@ -4,7 +4,10 @@ import com.neurocenter.core.AppPaths;
 import com.neurocenter.core.MainWindow;
 import com.neurocenter.core.PropertiesStore;
 import com.neurocenter.core.ThemeManager;
+import com.formdev.flatlaf.FlatLaf;
 
+import javax.swing.JDialog;
+import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 
@@ -17,9 +20,16 @@ public final class Main {
 
         SwingUtilities.invokeLater(() -> {
             ThemeManager.apply(themeId);
-            // En Windows 10/11 FlatLaf integra la barra de título automáticamente.
-            // No activar las decoraciones Java por defecto: en Windows puede
-            // sustituir el marco nativo y perder las esquinas redondeadas del sistema.
+
+            // En Windows 10/11, FlatLaf dibuja la barra de título con el tema
+            // de la aplicación y conserva el borde nativo para redimensionar,
+            // ajustar ventanas a los bordes y usar las animaciones del sistema.
+            // Activarlo antes de crear cualquier JFrame o JDialog.
+            if (FlatLaf.supportsNativeWindowDecorations()) {
+                JFrame.setDefaultLookAndFeelDecorated(true);
+                JDialog.setDefaultLookAndFeelDecorated(true);
+            }
+
             // Botones de los diálogos en español
             UIManager.put("OptionPane.okButtonText", "Aceptar");
             UIManager.put("OptionPane.cancelButtonText", "Cancelar");
