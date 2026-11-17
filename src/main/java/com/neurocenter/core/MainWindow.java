@@ -760,10 +760,16 @@ public final class MainWindow extends JFrame {
         if (choice >= 0 && choice < themes.size()) {
             String themeId = themes.get(choice).id();
             if (!themeId.equals(currentId)) {
-                appSettings.put("theme", themeId);
-                ThemeManager.apply(themeId);
-                // ThemeManager actualiza todas las ventanas abiertas mediante FlatLaf.updateUI().
-                refreshThemeIcons();
+                try {
+                    // Aplicar primero: un tema incompatible no debe quedar guardado
+                    // como preferencia ni provocar un fallo al siguiente arranque.
+                    ThemeManager.apply(themeId);
+                    appSettings.put("theme", themeId);
+                    refreshThemeIcons();
+                } catch (IllegalArgumentException ex) {
+                    JOptionPane.showMessageDialog(this, ex.getMessage(),
+                            "Tema no compatible", JOptionPane.ERROR_MESSAGE);
+                }
             }
         }
     }
