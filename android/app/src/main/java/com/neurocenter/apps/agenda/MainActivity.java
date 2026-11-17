@@ -79,6 +79,7 @@ public final class MainActivity extends Activity {
                 if (status != null && syncStatus != null) syncStatus.setText(status);
                 updateBluetoothControls(intent.getBooleanExtra(
                         BluetoothSyncService.EXTRA_ACTIVE, false));
+                updateLinkedDevices();
             } else if (BluetoothSyncService.ACTION_DATA_CHANGED.equals(intent.getAction())) {
                 refresh();
             }
@@ -87,6 +88,7 @@ public final class MainActivity extends Activity {
     private Button bluetoothButton;
     private Button usbButton;
     private TextView syncStatus;
+    private TextView linkedDevicesStatus;
     private ParcelFileDescriptor usbAccessoryDescriptor;
     private volatile boolean usbSyncActive;
     private boolean usbReceiverRegistered;
@@ -195,6 +197,11 @@ public final class MainActivity extends Activity {
         syncStatus.setPadding(0, dp(6), 0, dp(4));
         root.addView(syncStatus);
 
+        linkedDevicesStatus = text("Equipos vinculados: ninguno", 12, false);
+        linkedDevicesStatus.setPadding(0, dp(2), 0, dp(8));
+        root.addView(linkedDevicesStatus);
+        updateLinkedDevices();
+
         ScrollView scroll = new ScrollView(this);
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -208,6 +215,7 @@ public final class MainActivity extends Activity {
 
     private void refresh() {
         if (content == null || store == null) return;
+        updateLinkedDevices();
         content.removeAllViews();
 
         if (calendarView) {
@@ -538,6 +546,30 @@ public final class MainActivity extends Activity {
         bluetoothButton.setText(active ? "Desconectar Bluetooth" : "Esperar conexión Bluetooth");
         bluetoothButton.setEnabled(!usbSyncActive);
         if (usbButton != null) usbButton.setEnabled(!active && !usbSyncActive);
+        updateLinkedDevices();
+    }
+
+    private void updateLinkedDevices() {
+        if (linkedDevicesStatus == null || store == null) return;
+        List<AgendaSyncJournal.PeerInfo> peers = store.linkedPeers();
+        if (peers.isEmpty()) {
+            linkedDevicesStatus.setText("Equipos vinculados: ninguno todavía.");
+            return;
+        }
+
+        StringBuilder status = new StringBuilder("Equipos vinculados (")
+                .append(peers.size()).append("):");
+        for (AgendaSyncJournal.PeerInfo peer : peers) {
+            int pending = peer.pendingOperations;
+            status.append("\\n• ")
+                    .append(safe(peer.deviceName))
+                    .append(pending == 0
+                            ? " — al día"
+                            : " — " + pending + (pending == 1
+                                    ? " operación pendiente"
+                                    : " operaciones pendientes"));
+        }
+        linkedDevicesStatus.setText(status.toString());
     }
 
     private void showUsbInstructions() {
