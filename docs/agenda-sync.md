@@ -47,7 +47,7 @@ La resolución de dos modificaciones simultáneas de distintos campos es, en est
 
 ### Equipos vinculados y confirmaciones independientes
 
-El móvil puede enlazarse sucesivamente con varios ordenadores (por ejemplo, «PC clase» y «PC casa»). Cada instalación de escritorio conserva un `deviceId` estable, y el móvil la registra por separado la primera vez que sincroniza con ella. El nombre del equipo se anuncia en el protocolo para poder distinguirlo en el registro.
+El móvil puede enlazarse sucesivamente con varios ordenadores (por ejemplo, «PC clase» y «PC casa»). Cada instalación de escritorio conserva un `deviceId` estable, y el móvil la registra por separado la primera vez que sincroniza con ella. El nombre del equipo se anuncia en el protocolo para poder distinguirlo en el registro. El servidor Bluetooth mantiene una conexión activa cada vez: para sincronizar otro PC, desconecta el actual y conecta el siguiente. Los vínculos y sus confirmaciones permanecen guardados entre conexiones.
 
 Cada nodo conserva en `agenda-sync.json` una entrada por dispositivo remoto, con su nombre, fecha de primer/último contacto y el vector de operaciones que ese equipo ha confirmado conocer. Cuando un PC se conecta por primera vez, intercambia su historial completo con el móvil; el móvil responde con todo su historial, incluidas las operaciones y los borrados que conserva.
 
