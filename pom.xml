@@ -131,6 +131,25 @@
                         <artifactId>maven-antrun-plugin</artifactId>
                         <version>3.1.0</version>
                         <executions>
+                            <!-- Quita el atributo de solo lectura de instaladores anteriores
+                                 antes de que maven-clean-plugin intente borrar target. -->
+                            <execution>
+                                <id>make-installer-writable-before-clean</id>
+                                <phase>pre-clean</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <attrib readonly="false">
+                                            <fileset
+                                                    dir="${project.build.directory}/installer"
+                                                    includes="**/*.exe"
+                                                    erroronmissingdir="false"/>
+                                        </attrib>
+                                    </target>
+                                </configuration>
+                            </execution>
                             <execution>
                                 <id>package-windows-exe</id>
                                 <phase>package</phase>
