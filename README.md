@@ -97,12 +97,14 @@ NeuroCenter-App-Mobile: false
 Cada flag ausente equivale a `false`. Si ambos faltan o ambos valen `false`, el paquete no es compatible con ninguna plataforma y se rechaza. No existe compatibilidad implícita para paquetes antiguos: el tema negro anterior debe añadir expresamente sus flags. Si se intenta instalar o cargar en escritorio una app solo móvil, aparece un error indicando que el dispositivo no es compatible.
 
 **Código por plataforma:** una app multiplataforma mantiene dos implementaciones con el mismo identificador:
-- Escritorio: implementa `NeuroApp`, recibe `AppContext` y construye su interfaz Swing.
-- Android: implementa `NeuroMobileApp`, recibe `NeuroMobileContext` y construye su interfaz nativa mediante una `View`.
+- Escritorio: implementa `NeuroApp`, recibe `AppContext` y construye su interfaz Swing. Los flags van en el `MANIFEST.MF` del JAR.
+- Android: implementa `NeuroMobileApp`, recibe `NeuroMobileContext` y construye su interfaz nativa mediante una `View`. Los flags van como `<meta-data>` en el `AndroidManifest.xml` del APK, con los nombres `NeuroCenter-App-Desktop` y `NeuroCenter-App-Mobile` y valores `true` o `false`.
 
 Ambos contextos heredan de `NeuroAppContext`, que ofrece los servicios neutrales (plataforma, carpeta de datos y ajustes). `context.platform()` devuelve `NeuroPlatform.DESKTOP` en escritorio y `NeuroPlatform.MOBILE` en Android. La lógica de negocio compartida puede aceptar `NeuroAppContext`; las clases de presentación son distintas y no deben importar Swing en la implementación Android.
 
-**Estado del host móvil:** el proyecto Android ya incluye el contrato `NeuroMobileApp` y `NeuroMobileContext`, pero aún no incorpora el gestor/cargador de paquetes externos Android. Por tanto, la detección de plataforma y la API móvil están definidas, pero todavía no se pueden instalar y ejecutar APK de apps externas desde el host Android.
+La API móvil se publica en el módulo Gradle `:neurocenter-api` del proyecto `android/`. Una app Android puede añadir `implementation(project(":neurocenter-api"))` cuando forme parte del mismo proyecto Gradle, o consumir el AAR equivalente al distribuir la API.
+
+**Estado del host móvil:** el proyecto Android ya incluye la API móvil como biblioteca reutilizable, pero aún no incorpora el gestor/cargador de paquetes externos Android. Por tanto, la detección de plataforma y los contratos de las dos implementaciones están definidos, pero todavía no se pueden instalar y ejecutar APK de apps externas desde el host Android.
 
 **Seguridad:** una app externa es código ejecutado con los permisos de tu usuario. No existe aislamiento de seguridad entre una app externa y la aplicación principal. Instala únicamente paquetes de fuentes de confianza.
 
