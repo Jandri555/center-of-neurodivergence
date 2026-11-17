@@ -14,4 +14,17 @@ public enum NeuroPlatform {
     public String label() {
         return label;
     }
+
+    /**
+     * Detecta el runtime actual sin depender de clases Swing ni Android.
+     * Android expone android.os.Build; en JVM de escritorio esa clase no existe.
+     */
+    public static NeuroPlatform current() {
+        try {
+            Class.forName("android.os.Build", false, NeuroPlatform.class.getClassLoader());
+            return MOBILE;
+        } catch (ClassNotFoundException | LinkageError ignored) {
+            return DESKTOP;
+        }
+    }
 }
