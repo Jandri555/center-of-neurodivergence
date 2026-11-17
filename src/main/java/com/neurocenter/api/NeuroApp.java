@@ -4,12 +4,15 @@ import javax.swing.Icon;
 import javax.swing.JComponent;
 
 /**
- * Un app que se muestra dentro del panel de Center of Neurodivergence.
+ * Implementación de escritorio de una app que se muestra dentro de Center of Neurodivergence.
  *
- * Los apps integrados y los apps (.jar en la carpeta "apps") implementan
- * exactamente esta interfaz. Los apps se registran con ServiceLoader: el .jar debe
- * incluir el archivo META-INF/services/com.neurocenter.api.NeuroApp con el nombre
- * completo de la clase (una por línea).
+ * Los JAR de escritorio implementan esta interfaz y registran sus clases con ServiceLoader:
+ * META-INF/services/com.neurocenter.api.NeuroApp debe contener el nombre completo
+ * de cada implementación (una por línea).
+ *
+ * La implementación Android es independiente: implementa NeuroMobileApp, usa Views nativas
+ * y recibe NeuroMobileContext. Las dos implementaciones comparten el identificador de app
+ * y pueden delegar su lógica común a clases que acepten NeuroAppContext.
  *
  * La clase necesita un constructor público sin argumentos.
  *
