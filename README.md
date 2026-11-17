@@ -21,6 +21,36 @@ mvn package
 java -jar target/center-of-neurodivergence.jar
 ```
 
+
+## Generar el instalador de Windows (.exe)
+
+En Windows, el perfil Maven `windows-exe` se activa automáticamente al ejecutar:
+
+```powershell
+mvn clean package
+```
+
+El instalador se genera en:
+
+```text
+target/installer/Center of Neurodivergence-1.0.exe
+```
+
+Para crear instaladores `.exe`, `jpackage` necesita WiX Toolset 3.0 o superior. En el equipo de desarrollo puedes instalar la versión 3.14.1 desde PowerShell con Chocolatey:
+
+```powershell
+choco install wixtoolset --version=3.14.1.20250415 --no-progress -y
+```
+
+Cierra y vuelve a abrir la terminal después de instalarlo para que se actualice `PATH`. Si Windows no añade la ruta automáticamente, añade esta carpeta al `PATH`:
+
+```text
+C:\Program Files (x86)\WiX Toolset v3.14\bin
+```
+
+El instalador incluye un runtime de Java y crea accesos directos en el menú Inicio. La compilación de GitHub Actions instala WiX automáticamente y publica el `.exe` como artefacto de la ejecución.
+
+
 ## Datos de usuario
 
 Los datos se guardan en la carpeta `CenterOfNeurodivergence`:
