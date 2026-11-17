@@ -17,10 +17,8 @@ import java.io.IOException;
 public final class Main {
 
     public static void main(String[] args) {
-        AppPaths.ensureDirectories();
-
-        // La comprobación se realiza antes de crear cualquier ventana. Una
-        // segunda ejecución activa la instancia existente y termina aquí.
+        // La comprobación se realiza antes de tocar carpetas o datos. Una
+        // segunda ejecución solo activa la instancia existente y termina aquí.
         final SingleInstance singleInstance;
         try {
             singleInstance = SingleInstance.acquireOrActivate(AppPaths.root());
@@ -35,6 +33,9 @@ public final class Main {
 
         Runtime.getRuntime().addShutdownHook(
                 new Thread(singleInstance::close, "single-instance-shutdown"));
+
+        // Solo la instancia principal prepara carpetas y procesa tareas pendientes.
+        AppPaths.ensureDirectories();
 
         PropertiesStore settings = new PropertiesStore(AppPaths.root().resolve("settings.properties"));
         String themeId = settings.get("theme", "light");
