@@ -14,6 +14,7 @@ import android.graphics.drawable.Icon;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.util.Log;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
@@ -109,7 +110,11 @@ public final class BluetoothSyncService extends Service {
             currentServer.serveUntilClosed(
                     store,
                     operations -> {
+                        if (operations == null || operations.isEmpty()) return;
                         store.mergeOperations(operations);
+                        Log.i("AgendaSync", "Aplicadas " + operations.size()
+                                + " operaciones recibidas; entradas actuales: " + store.all().size());
+                        // mergeOperations reconstruye y guarda agenda.json antes de avisar a la UI.
                         Intent changed = new Intent(ACTION_DATA_CHANGED).setPackage(getPackageName());
                         sendBroadcast(changed);
                     },
