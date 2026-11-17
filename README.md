@@ -59,6 +59,8 @@ La ruta predeterminada es `C:/Program Files (x86)/WiX Toolset v3.14/bin`.
 El instalador incluye un runtime de Java y crea accesos directos en el menú Inicio. La compilación de GitHub Actions instala WiX automáticamente y publica el `.exe` como artefacto de la ejecución.
 
 
+**Compatibilidad con Temurin 25:** no se debe pasar manualmente `--module-path` a `jpackage` apuntando a `%JAVA_HOME%\\jmods`. Temurin 25 habilita JEP 493 y puede crear el runtime sin JMOD; forzar una carpeta `jmods` antigua puede mezclar módulos de distintas versiones de Java. Maven deja que `jpackage`/ `jlink` usen el runtime del mismo JDK que ejecuta la compilación.
+
 ## Datos de usuario
 
 Los datos se guardan en la carpeta `CenterOfNeurodivergence`:

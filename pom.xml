@@ -139,10 +139,7 @@
                                 </goals>
                                 <configuration>
                                     <target>
-                                        <available file="${java.home}/jmods/java.base.jmod" property="jdk.jmods.available"/>
-                                        <fail unless="jdk.jmods.available"
-                                              message="No se encuentra java.base.jmod en ${java.home}/jmods. Ejecuta Maven desde un JDK completo."/>
-                                        <echo message="jpackage y jlink usarán módulos de: ${java.home}/jmods"/>
+                                        <echo message="jpackage y jlink usarán el runtime del JDK: ${java.home}"/>
                                         <!-- Cada compilación usa su propia carpeta para no tener que borrar
                                              un instalador anterior que Windows pueda mantener bloqueado. -->
                                         <delete dir="${project.build.directory}/jpackage-input"/>
@@ -174,10 +171,8 @@
                                             <arg value="${project.build.finalName}.jar"/>
                                             <arg value="--main-class"/>
                                             <arg value="com.neurocenter.Main"/>
-                                            <!-- Usa los módulos del mismo JDK que proporciona jpackage/jlink.
-                                                 Evita mezclar jlink 25 con java.base de otro JDK instalado. -->
-                                            <arg value="--module-path"/>
-                                            <arg value="${java.home}/jmods"/>
+                                            <!-- No forzar --module-path a jmods: Temurin 25 usa JEP 493
+                                                 y jlink puede generar el runtime desde el JDK sin archivos JMOD. -->
                                             <arg value="--dest"/>
                                             <arg value="${project.build.directory}/installer/${project.version}-${maven.build.timestamp}"/>
                                             <arg value="--win-per-user-install"/>
