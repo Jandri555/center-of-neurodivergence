@@ -81,7 +81,8 @@ public final class ThemeManager {
     );
 
     public record ThemeInfo(String id, String name, String author, String version,
-                            String base, Path directory, JsonObject colors, JsonObject appIcons) {
+                            String base, Path directory, JsonObject colors, JsonObject appIcons,
+                            PlatformCompatibility.Targets compatibility) {
         public boolean builtIn() { return directory == null; }
         @Override public String toString() { return name; }
     }
@@ -116,11 +117,13 @@ public final class ThemeManager {
     }
 
     private static void addBuiltIn(String id, String name, String base) {
+        // Los temas integrados tienen una variante equivalente en ambas plataformas.
         THEMES.put(id, new ThemeInfo(id, name, "Center of Neurodivergence", "1.0",
-                base, null, new JsonObject(), new JsonObject()));
+                base, null, new JsonObject(), new JsonObject(),
+                new PlatformCompatibility.Targets(true, true)));
     }
 
-    private static ThemeInfo parseTheme(JsonObject json, Path dir) {
+    private static ThemeInfo parseTheme(JsonObject json, Path dir) throws IOException {
         if (json == null) return null;
         String id = string(json, "id");
         String name = string(json, "name");
@@ -130,10 +133,11 @@ public final class ThemeManager {
                 "light".equals(id) || "dark".equals(id) ||
                 name == null || name.isBlank() ||
                 !("light".equals(base) || "dark".equals(base))) return null;
+        PlatformCompatibility.Targets compatibility = PlatformCompatibility.fromThemeManifest(json);
         JsonObject colors = object(json, "colors");
         JsonObject icons = object(json, "appIcons");
         return new ThemeInfo(id, name, stringOr(json, "author", "Desconocido"),
-                stringOr(json, "version", "1.0"), base, dir, colors, icons);
+                stringOr(json, "version", "1.0"), base, dir, colors, icons, compatibility);
     }
 
     private static String string(JsonObject obj, String key) {
@@ -155,6 +159,14 @@ public final class ThemeManager {
         refreshThemes();
         ThemeInfo theme = THEMES.get(themeId);
         if (theme == null) theme = THEMES.get("light");
+        if (!theme.compatibility().supports(PlatformCompatibility.Platform.DESKTOP)) {
+            try {
+                theme.compatibility().require(PlatformCompatibility.Platform.DESKTOP,
+                        "el tema «" + theme.name() + "»");
+            } catch (IOException ex) {
+                throw new IllegalArgumentException(ex.getMessage(), ex);
+            }
+        }
 
         // Los colores de cada tema deben vivir en los defaults del Look and Feel,
         // no en los defaults globales de UIManager. Así, al cambiar a otro tema,
