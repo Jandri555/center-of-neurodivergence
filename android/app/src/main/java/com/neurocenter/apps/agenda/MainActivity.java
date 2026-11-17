@@ -63,6 +63,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_BT_PERMISSIONS = 7101;
     private static final int REQUEST_ENABLE_BT = 7102;
     private static final int REQUEST_DISCOVERABLE = 7103;
+    private static final int REQUEST_NOTIFICATION_PERMISSION = 7105;
     private static final int DISCOVERABLE_SECONDS = 300;
     private static final String ACTION_USB_PERMISSION =
             "com.neurocenter.agenda.USB_ACCESSORY_PERMISSION";
@@ -665,6 +666,17 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                    REQUEST_NOTIFICATION_PERMISSION);
+            return;
+        }
+        continueBluetoothStart();
+    }
+
+    private void continueBluetoothStart() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             String[] required = {
                     Manifest.permission.BLUETOOTH_CONNECT,
@@ -710,6 +722,16 @@ public final class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_NOTIFICATION_PERMISSION) {
+            if (grantResults.length == 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this,
+                        "La sincronización seguirá funcionando, pero Android puede ocultar su notificación. "
+                                + "Podrás desconectar desde Agenda.",
+                        Toast.LENGTH_LONG).show();
+            }
+            continueBluetoothStart();
+            return;
+        }
         if (requestCode != REQUEST_BT_PERMISSIONS) return;
 
         boolean granted = grantResults.length > 0;
