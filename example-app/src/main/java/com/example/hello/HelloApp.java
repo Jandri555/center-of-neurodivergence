@@ -21,7 +21,8 @@ public class HelloApp implements NeuroApp {
         int opens = Integer.parseInt(ctx.getSetting("opens", "0")) + 1;
         ctx.putSetting("opens", String.valueOf(opens));
         ctx.setStatus("Datos de este app en: " + ctx.dataDir());
-        return new JLabel("<html><div style='text-align:center'>¡Hola! Has abierto este app "
-                + opens + (opens == 1 ? " vez." : " veces.") + "</div></html>", SwingConstants.CENTER);
+        String message = HelloLogic.message(ctx, opens);
+        return new JLabel("<html><div style='text-align:center'>" + message + "</div></html>",
+                SwingConstants.CENTER);
     }
 }
