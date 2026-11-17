@@ -100,4 +100,76 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- En Windows, mvn package también genera un instalador EXE con su propio runtime de Java. -->
+    <profiles>
+        <profile>
+            <id>windows-exe</id>
+            <activation>
+                <os>
+                    <family>Windows</family>
+                </os>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>package-windows-exe</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <delete dir="${project.build.directory}/jpackage-input"/>
+                                        <delete dir="${project.build.directory}/installer"/>
+                                        <delete dir="${project.build.directory}/jpackage-temp"/>
+                                        <mkdir dir="${project.build.directory}/jpackage-input"/>
+                                        <mkdir dir="${project.build.directory}/installer"/>
+                                        <copy
+                                                file="${project.build.directory}/${project.build.finalName}.jar"
+                                                todir="${project.build.directory}/jpackage-input"/>
+                                        <exec executable="${java.home}/bin/jpackage.exe" failonerror="true">
+                                            <arg value="--type"/>
+                                            <arg value="exe"/>
+                                            <arg value="--name"/>
+                                            <arg value="Center of Neurodivergence"/>
+                                            <arg value="--app-version"/>
+                                            <arg value="${project.version}"/>
+                                            <arg value="--vendor"/>
+                                            <arg value="Center of Neurodivergence"/>
+                                            <arg value="--description"/>
+                                            <arg value="Centro de aplicaciones de neurodivergencia"/>
+                                            <arg value="--input"/>
+                                            <arg value="${project.build.directory}/jpackage-input"/>
+                                            <arg value="--main-jar"/>
+                                            <arg value="${project.build.finalName}.jar"/>
+                                            <arg value="--main-class"/>
+                                            <arg value="com.neurocenter.Main"/>
+                                            <arg value="--dest"/>
+                                            <arg value="${project.build.directory}/installer"/>
+                                            <arg value="--temp"/>
+                                            <arg value="${project.build.directory}/jpackage-temp"/>
+                                            <arg value="--win-per-user-install"/>
+                                            <arg value="--win-menu"/>
+                                            <arg value="--win-menu-group"/>
+                                            <arg value="Center of Neurodivergence"/>
+                                            <arg value="--win-shortcut"/>
+                                            <arg value="--win-upgrade-uuid"/>
+                                            <arg value="b273a720-1483-4f49-bd16-9f3b1092c3ab"/>
+                                        </exec>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
 </project>
