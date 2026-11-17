@@ -23,4 +23,23 @@
             <scope>provided</scope>
         </dependency>
     </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.5.0</version>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <NeuroCenter-App-Id>hello-app</NeuroCenter-App-Id>
+                            <NeuroCenter-App-Desktop>true</NeuroCenter-App-Desktop>
+                            <NeuroCenter-App-Mobile>false</NeuroCenter-App-Mobile>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
 </project>
