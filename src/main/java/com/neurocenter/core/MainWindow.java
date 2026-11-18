@@ -828,35 +828,6 @@ public final class MainWindow extends JFrame {
             JOptionPane.showMessageDialog(this, "El gestor de plugins no se pudo inicializar.", "Gestionar plugins", JOptionPane.ERROR_MESSAGE);
             return;
         }
-        javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
-        chooser.setDialogTitle("Instalar plugin de NeuroCenter");
-        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Plugins NeuroCenter (*.ncp)", "ncp"));
-        JButton install = new JButton("Instalar .ncp");
-        JPanel panel = new JPanel(new BorderLayout(0, 12));
-        StringBuilder html = new StringBuilder("<html><b>Plugins cargados</b><br>");
-        if (pluginManager.getPlugins().isEmpty()) html.append("No hay plugins cargados.");
-        else for (PluginManager.PluginInfo info : pluginManager.getPlugins()) html.append("• ").append(esc(info.name())).append(" ").append(esc(info.version())).append("<br>");
-        html.append("<br>Los plugins tienen acceso completo al sistema. Instala únicamente paquetes de confianza.<br>La instalación se activa al reiniciar NeuroCenter.</html>");
-        panel.add(new JLabel(html.toString()), BorderLayout.CENTER);
-        panel.add(install, BorderLayout.SOUTH);
-        install.addActionListener(e -> {
-            if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
-                try {
-                    pluginManager.install(chooser.getSelectedFile().toPath());
-                    JOptionPane.showMessageDialog(this, "Plugin instalado. Reinicia NeuroCenter para cargarlo.", "Gestionar plugins", JOptionPane.INFORMATION_MESSAGE);
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(this, ex.getMessage(), "No se pudo instalar", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        });
-        JOptionPane.showMessageDialog(this, panel, "Gestionar plugins", JOptionPane.PLAIN_MESSAGE);
-    }
-
-    private void managePlugins() {
-        if (pluginManager == null) {
-            JOptionPane.showMessageDialog(this, "El gestor de plugins no se pudo inicializar.", "Gestionar plugins", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
         String[] actions = {"Instalar plugin", "Activar o desactivar", "Desinstalar plugin", "Cerrar"};
         int action = JOptionPane.showOptionDialog(this,
                 "Los plugins tienen acceso completo al sistema. Instala solo paquetes de confianza.\nLos cambios de estado requieren reiniciar NeuroCenter.",

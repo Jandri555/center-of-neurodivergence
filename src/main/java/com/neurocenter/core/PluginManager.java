@@ -24,6 +24,8 @@ public final class PluginManager implements AutoCloseable {
     private final Consumer<NeuroApp> appRegistrar;
     private final Gson gson = new Gson();
     @Getter private final List<PluginInfo> plugins = new ArrayList<>();
+
+    public List<PluginInfo> getPlugins() { return List.copyOf(plugins); }
     private final List<LoadedPlugin> loaded = new ArrayList<>();
 
     public PluginManager(Path directory, ServiceRegistry services, EventBus events,
