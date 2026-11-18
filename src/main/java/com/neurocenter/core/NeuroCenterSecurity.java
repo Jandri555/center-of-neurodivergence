@@ -13,7 +13,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
-import java.util.jar.Manifest;
 import java.security.AllPermission;
 import java.security.AccessControlContext;
 import java.security.AccessControlException;
@@ -25,7 +24,7 @@ import java.security.ProtectionDomain;
 import java.security.PermissionCollection;
 import java.security.Permissions;
 import java.security.Policy;
-import java.security.ProtectionDomain;
+import java.security.SecurityPermission;
 import java.util.PropertyPermission;
 
 /**
