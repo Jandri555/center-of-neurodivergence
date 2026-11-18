@@ -768,6 +768,7 @@ public final class AgendaMobileApp implements NeuroMobileApp {
     private void inspectUsbAccessory() {
         if (activity == null || activity.isFinishing() || usbSyncActive || usbPermissionPending
                 || usbAccessoryDescriptor != null) return;
+        ctx.requirePermission(NeuroMobilePermissions.USB_ACCESS);
         UsbManager manager = (UsbManager) activity.getSystemService(Context.USB_SERVICE);
         if (manager == null) return;
         UsbAccessory[] accessories = manager.getAccessoryList();
@@ -864,6 +865,8 @@ public final class AgendaMobileApp implements NeuroMobileApp {
     }
 
     private void startBluetoothSync() {
+        ctx.requirePermission(NeuroMobilePermissions.BLUETOOTH_ACCESS);
+        ctx.requirePermission(NeuroMobilePermissions.NOTIFICATIONS_ACCESS);
         if (usbSyncActive || usbAccessoryDescriptor != null) {
             toast("Cierra primero la sesión USB para usar Bluetooth.");
             return;
