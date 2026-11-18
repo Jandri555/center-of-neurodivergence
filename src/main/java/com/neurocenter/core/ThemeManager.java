@@ -254,9 +254,9 @@ public final class ThemeManager {
 
         activeTheme = theme;
         activeBackgroundImage = theme.background() == null
-                ? null : readImage(theme.background().image(), "imagen de fondo");
+                ? null : readImageOrNull(theme.background().image(), "imagen de fondo");
         activeCenterIconImage = theme.centerIcon() == null
-                ? null : readImage(theme.centerIcon(), "icono de NeuroCenter");
+                ? null : readImageOrNull(theme.centerIcon(), "icono de NeuroCenter");
         FlatLaf.updateUI();
     }
 
@@ -355,6 +355,15 @@ public final class ThemeManager {
             throw new IOException("«" + key + "» debe estar entre 0 y 100.");
         }
         return result;
+    }
+
+    private static BufferedImage readImageOrNull(Path image, String description) {
+        try {
+            return readImage(image, description);
+        } catch (IOException ex) {
+            System.err.println("No se pudo cargar " + description + ": " + ex.getMessage());
+            return null;
+        }
     }
 
     private static BufferedImage readImage(Path image, String description) throws IOException {
