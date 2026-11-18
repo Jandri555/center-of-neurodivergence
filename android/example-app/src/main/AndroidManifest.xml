@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Sin actividades: el panel carga la clase NeuroMobileApp con DexClassLoader. -->
+    <application
+        android:allowBackup="false"
+        android:label="Hola mundo">
+
+        <!-- Compatibilidad: cada flag se evalúa por separado y, si falta, vale false. -->
+        <meta-data android:name="NeuroCenter-App-Id" android:value="hello" />
+        <meta-data android:name="NeuroCenter-App-Author" android:value="Ejemplo" />
+        <meta-data android:name="NeuroCenter-App-Desktop" android:value="false" />
+        <meta-data android:name="NeuroCenter-App-Mobile" android:value="true" />
+
+        <!-- Clases de entrada, separadas por comas. -->
+        <meta-data android:name="NeuroCenter-App-Class" android:value="com.example.hello.HelloMobileApp" />
+    </application>
+</manifest>

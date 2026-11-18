@@ -26,8 +26,11 @@
             android:stopWithTask="false"
             android:foregroundServiceType="connectedDevice" />
         <activity
-            android:name="com.neurocenter.apps.agenda.MainActivity"
-            android:exported="true">
+            android:name="com.neurocenter.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|density|fontScale|layoutDirection|locale">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
