@@ -410,11 +410,19 @@ public final class ThemeManager {
         return result;
     }
 
+    static Color backgroundBaseColor() {
+        Color base = UIManager.getColor("Panel.background");
+        if (base == null) base = UIManager.getColor("Window.background");
+        return base == null ? Color.DARK_GRAY : base;
+    }
+
     /** Pinta el fondo del tema ocupando el área disponible, sin deformar la imagen. */
     public static synchronized void paintBackground(Graphics2D graphics, int width, int height) {
         if (width <= 0 || height <= 0) return;
-        Color base = UIManager.getColor("Window.background");
-        if (base == null) base = Color.DARK_GRAY;
+        // El contenido principal era originalmente un JPanel opaco. Al pintar
+        // fondos personalizados debemos conservar su color de superficie, no el
+        // de Window.background, que puede ser distinto (especialmente en Claro).
+        Color base = backgroundBaseColor();
         graphics.setColor(base);
         graphics.fillRect(0, 0, width, height);
 
