@@ -23,7 +23,13 @@ class WindowsIconFileTest {
     void createsAValidPngBackedWindowsIconAndPreservesAspectRatio() throws Exception {
         Path source = tempDir.resolve("source.png");
         Path destination = tempDir.resolve("center-icon.ico");
-        ImageIO.write(new BufferedImage(64, 32, BufferedImage.TYPE_INT_ARGB), "png", source.toFile());
+        BufferedImage sourceImage = new BufferedImage(64, 32, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < sourceImage.getHeight(); y++) {
+            for (int x = 0; x < sourceImage.getWidth(); x++) {
+                sourceImage.setRGB(x, y, 0xFF336699);
+            }
+        }
+        ImageIO.write(sourceImage, "png", source.toFile());
 
         WindowsIconFile.write(source, destination);
 
