@@ -161,7 +161,25 @@
                                 </goals>
                                 <configuration>
                                     <target>
-                                        <echo message="jpackage y jlink usarán el runtime del JDK: ${java.home}"/>
+                                        <!-- Permite empaquetar con JDK 21 aunque Maven se ejecute con otra versión. -->
+                                        <property environment="env"/>
+                                        <condition property="jpackage.jdk.home"
+                                                   value="${env.JDK21_HOME}"
+                                                   else="${java.home}">
+                                            <isset property="env.JDK21_HOME"/>
+                                        </condition>
+
+                                        <!-- NeuroCenter necesita el Security Manager, disponible en Java 21. -->
+                                        <loadfile property="jpackage.jdk.release"
+                                                  srcFile="${jpackage.jdk.home}/release"/>
+                                        <condition property="jpackage.is.java21">
+                                            <contains string="${jpackage.jdk.release}"
+                                                      substring='JAVA_VERSION="21.'/>
+                                        </condition>
+                                        <fail unless="jpackage.is.java21"
+                                              message="NeuroCenter necesita JDK 21 para generar el instalador. Ejecuta Maven con JDK 21 o define JDK21_HOME con la ruta del JDK 21. JDK seleccionado: ${jpackage.jdk.home}"/>
+
+                                        <echo message="jpackage y jlink usarán JDK 21: ${jpackage.jdk.home}"/>
                                         <!-- Cada compilación usa su propia carpeta para no tener que borrar
                                              un instalador anterior que Windows pueda mantener bloqueado. -->
                                         <delete dir="${project.build.directory}/jpackage-input"/>
@@ -170,13 +188,13 @@
                                         <copy
                                                 file="${project.build.directory}/${project.build.finalName}.jar"
                                                 todir="${project.build.directory}/jpackage-input"/>
-                                        <exec executable="${java.home}/bin/jpackage.exe" failonerror="true">
+                                        <exec executable="${jpackage.jdk.home}/bin/jpackage.exe" failonerror="true">
                                             <!-- jpackage busca candle.exe/light.exe mediante PATH.
                                                  Añadimos la ruta de WiX sin modificar el PATH global de Windows. -->
                                             <!-- jpackage y jlink deben pertenecer al mismo JDK.
                                                  JAVA_HOME puede apuntar a otra versión instalada en Windows. -->
-                                            <env key="JAVA_HOME" value="${java.home}"/>
-                                            <env key="PATH" value="${java.home}/bin;${env.PATH};${wix.bin}"/>
+                                            <env key="JAVA_HOME" value="${jpackage.jdk.home}"/>
+                                            <env key="PATH" value="${jpackage.jdk.home}/bin;${env.PATH};${wix.bin}"/>
                                             <arg value="--type"/>
                                             <arg value="exe"/>
                                             <arg value="--name"/>
