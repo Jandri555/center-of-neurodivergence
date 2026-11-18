@@ -134,6 +134,8 @@ Ejemplo de estructura:
 MiTema.tme
 ├── theme.json
 └── resources/
+    ├── background.png
+    ├── center-icon.png
     └── icons/
         ├── agenda.png
         └── pdf-reader.png
