@@ -1,6 +1,7 @@
 package com.neurocenter.api;
 
 import java.awt.Window;
+import java.net.URI;
 import com.neurocenter.api.plugin.ServiceRegistry;
 import com.neurocenter.api.plugin.EventBus;
 import com.neurocenter.api.plugin.ExtensionRegistry;
@@ -37,6 +38,12 @@ public interface AppContext extends NeuroAppContext {
 
     /** Ventana principal, para usarla como padre de diálogos. */
     Window window();
+
+    /**
+     * Abre un enlace HTTP o HTTPS con el navegador predeterminado a través del host.
+     * La app no necesita permisos de ejecución del sistema para esta operación.
+     */
+    void openExternalUrl(URI uri);
 
     /** Trae la ventana al frente (y la restaura si estaba minimizada). Útil para avisos. */
     void requestAttention();
