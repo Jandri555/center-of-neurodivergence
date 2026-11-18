@@ -1,7 +1,5 @@
 package com.neurocenter.api;
 
-import com.neurocenter.api.agenda.AgendaService;
-
 import java.awt.Window;
 
 /**
@@ -26,12 +24,6 @@ public interface AppContext extends NeuroAppContext {
 
     /** Cambia a otro app del panel por su id. */
     void openApp(String appId);
-
-    /**
-     * Servicio compartido de la Agenda de NeuroCenter. Las operaciones de escritura
-     * son seguras desde el hilo de trabajo de la app; no manipulan Swing directamente.
-     */
-    AgendaService agenda();
 
     /** Ventana principal, para usarla como padre de diálogos. */
     Window window();
