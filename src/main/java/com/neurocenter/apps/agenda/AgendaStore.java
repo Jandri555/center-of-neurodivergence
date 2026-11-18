@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
+import com.neurocenter.api.services.ExternalTask;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -223,6 +224,36 @@ final class AgendaStore {
         entries.addAll(reconstructed);
         writeSnapshot();
         rememberSavedState();
+    }
+
+
+    /** Upsert idempotente de tareas externas, protegido por el mismo bloqueo que usa la agenda. */
+    synchronized int importExternalTasks(String source, List<ExternalTask> tasks) {
+        if (source == null || source.isBlank()) throw new IllegalArgumentException("El origen de importación es obligatorio.");
+        Objects.requireNonNull(tasks, "tasks");
+        int changed = 0;
+        for (ExternalTask task : tasks) {
+            Objects.requireNonNull(task, "task");
+            AgendaEntry existing = entries.stream()
+                    .filter(item -> source.equals(item.externalSource)
+                            && task.externalId().equals(item.externalId))
+                    .findFirst().orElse(null);
+            if (existing == null) {
+                existing = new AgendaEntry();
+                existing.externalSource = source;
+                existing.externalId = task.externalId();
+                entries.add(existing);
+            }
+            existing.type = AgendaEntry.TASK;
+            existing.title = task.title();
+            existing.date = task.dueDate() == null ? null : task.dueDate().toString();
+            existing.time = task.dueTime() == null ? null : task.dueTime().toString();
+            existing.notes = task.notes();
+            existing.done = task.completed();
+            changed++;
+        }
+        if (changed > 0) save();
+        return changed;
     }
 
     synchronized List<AgendaEntry> all() {
