@@ -31,6 +31,17 @@ En Windows, el perfil Maven `windows-exe` se activa automáticamente al ejecutar
 mvn package
 ```
 
+El instalador siempre debe generarse con **JDK 21**, porque el runtime incluido necesita Security Manager. El proceso comprueba la versión leyendo el archivo `release` del JDK y aborta con un error claro si no es Java 21.
+
+Si Maven se está ejecutando con otro JDK (por ejemplo, Java 25), indica dónde está instalado el JDK 21 mediante `JDK21_HOME`:
+
+```powershell
+$env:JDK21_HOME = "C:\Ruta\al\jdk-21"
+mvn clean package
+```
+
+Si no defines `JDK21_HOME`, se utilizará el mismo JDK con el que se ejecuta Maven; la comprobación impedirá crear por accidente un instalador incompatible.
+
 Cada compilación genera el instalador en una carpeta propia con versión y fecha/hora, por ejemplo:
 
 ```text
@@ -60,7 +71,7 @@ La ruta predeterminada es `C:/Program Files (x86)/WiX Toolset v3.14/bin`.
 El instalador incluye un runtime privado de Java 21 y crea accesos directos en el menú Inicio. El lanzador activa el modo que permite a NeuroCenter instalar su Security Manager y la política de permisos antes de cargar aplicaciones externas. La compilación de GitHub Actions instala WiX automáticamente y publica el `.exe` como artefacto de la ejecución.
 
 
-**Runtime fijado a Java 21:** el proyecto compila con `maven.compiler.release=21`, CI utiliza Temurin 21 y `jpackage` genera el runtime incluido desde ese mismo JDK. No se debe compilar el EXE con JDK 24 o posterior, porque esas versiones deshabilitan Security Manager.
+**Runtime fijado a Java 21:** el proyecto compila con `maven.compiler.release=21`. `jpackage` y `jlink` utilizan JDK 21, seleccionado desde `JDK21_HOME` o, si no está definida, desde el JDK con el que se ejecuta Maven. La compilación verifica la versión efectiva antes de crear el instalador.
 
 ## Datos de usuario
 
