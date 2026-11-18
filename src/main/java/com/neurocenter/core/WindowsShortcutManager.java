@@ -34,7 +34,7 @@ public final class WindowsShortcutManager {
                             if ([string]::IsNullOrWhiteSpace($shortcut.TargetPath)) { return }
                             $shortcutTarget = [IO.Path]::GetFullPath($shortcut.TargetPath)
                             if ([string]::Equals($shortcutTarget, $target,
-                                    [StringComparison]::OrdinalIgnoreCase)) {
+                                    [System.StringComparison]::OrdinalIgnoreCase)) {
                                 if ([string]::IsNullOrWhiteSpace($icon)) {
                                     $shortcut.IconLocation = $target + ',0'
                                 } else {
