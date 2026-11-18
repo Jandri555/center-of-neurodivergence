@@ -11,7 +11,7 @@
     <name>Center of Neurodivergence</name>
 
     <properties>
-        <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
         <!-- Ubicación habitual de WiX 3.14 instalado mediante Chocolatey.
@@ -192,6 +192,8 @@
                                             <arg value="com.neurocenter.Main"/>
                                             <!-- Dejar que Temurin 25 gestione el enlazado del runtime
                                                  mediante JEP 493, sin forzar una carpeta JMOD externa. -->
+                                            <arg value="--java-options"/>
+                                            <arg value="-Djava.security.manager=allow"/>
                                             <arg value="--dest"/>
                                             <arg value="${project.build.directory}/installer/${project.version}-${maven.build.timestamp}"/>
                                             <arg value="--win-per-user-install"/>
