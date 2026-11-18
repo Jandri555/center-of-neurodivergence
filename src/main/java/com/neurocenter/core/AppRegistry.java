@@ -11,8 +11,12 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
@@ -24,6 +28,8 @@ import java.util.jar.Manifest;
 public final class AppRegistry {
 
     private final String jdbcUrl;
+
+    public record AppSecurityProfile(String appId, Set<String> grantedPermissions) {}
 
     public record AppRecord(
             String id,
@@ -63,6 +69,14 @@ public final class AppRegistry {
                         installed_at TEXT NOT NULL,
                         size_bytes INTEGER NOT NULL,
                         autorun INTEGER NOT NULL DEFAULT 0 CHECK (autorun IN (0, 1))
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS app_permissions (
+                        app_id TEXT NOT NULL,
+                        permission_id TEXT NOT NULL,
+                        granted INTEGER NOT NULL DEFAULT 0 CHECK (granted IN (0, 1)),
+                        PRIMARY KEY (app_id, permission_id)
                     )
                     """);
         }
@@ -163,6 +177,86 @@ public final class AppRegistry {
             while (rows.next()) result.add(rows.getString(1));
         }
         return result;
+    }
+
+    /**
+     * Devuelve los perfiles de seguridad indexados por nombre de JAR.
+     * Las aplicaciones recién instaladas no tienen permisos adicionales concedidos.
+     */
+    public Map<String, AppSecurityProfile> securityProfilesByJar() throws SQLException {
+        Map<String, AppSecurityProfile> result = new LinkedHashMap<>();
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT id, jar_filename FROM installed_apps ORDER BY jar_filename");
+             ResultSet rows = statement.executeQuery()) {
+            while (rows.next()) {
+                String appId = rows.getString("id");
+                String jarFilename = rows.getString("jar_filename");
+                result.put(jarFilename,
+                        new AppSecurityProfile(appId, grantedPermissions(connection, appId)));
+            }
+        }
+        return result;
+    }
+
+    public Set<String> grantedPermissions(String appId) throws SQLException {
+        try (Connection connection = connect()) {
+            return grantedPermissions(connection, appId);
+        }
+    }
+
+    private Set<String> grantedPermissions(Connection connection, String appId) throws SQLException {
+        Set<String> result = new LinkedHashSet<>();
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT permission_id FROM app_permissions WHERE app_id = ? AND granted = 1")) {
+            statement.setString(1, appId);
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) result.add(rows.getString(1));
+            }
+        }
+        return Set.copyOf(result);
+    }
+
+    /** Sustituye el conjunto de permisos concedidos a una aplicación. */
+    public void setGrantedPermissions(String appId, Set<String> permissionIds) throws SQLException {
+        Set<String> validated = new LinkedHashSet<>();
+        if (permissionIds != null) {
+            for (String permissionId : permissionIds) {
+                if (!NeuroCenterSecurity.isSupportedPermission(permissionId)) {
+                    throw new IllegalArgumentException("Permiso no reconocido: " + permissionId);
+                }
+                validated.add(permissionId);
+            }
+        }
+
+        try (Connection connection = connect()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement delete = connection.prepareStatement(
+                        "DELETE FROM app_permissions WHERE app_id = ?")) {
+                    delete.setString(1, appId);
+                    delete.executeUpdate();
+                }
+                try (PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO app_permissions (app_id, permission_id, granted)
+                        VALUES (?, ?, 1)
+                        """)) {
+                    for (String permissionId : validated) {
+                        insert.setString(1, appId);
+                        insert.setString(2, permissionId);
+                        insert.addBatch();
+                    }
+                    insert.executeBatch();
+                }
+                connection.commit();
+            } catch (SQLException | RuntimeException ex) {
+                connection.rollback();
+                throw ex;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
+            }
+        }
     }
 
     public void setAutorun(String id, boolean autorun) throws SQLException {
