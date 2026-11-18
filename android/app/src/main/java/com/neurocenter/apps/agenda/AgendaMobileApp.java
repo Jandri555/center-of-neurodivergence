@@ -33,6 +33,7 @@ import android.widget.Toast;
 
 import com.neurocenter.api.NeuroMobileApp;
 import com.neurocenter.api.NeuroMobileContext;
+import com.neurocenter.api.NeuroMobilePermissions;
 import com.neurocenter.core.ThemeManager;
 import com.neurocenter.core.ThemeManager.Palette;
 import com.neurocenter.ui.Ui;
