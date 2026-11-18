@@ -1,7 +1,6 @@
 package com.neurocenter.core;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 import java.io.FilePermission;
 import java.net.SocketPermission;
@@ -16,12 +15,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NeuroCenterPolicyTest {
 
-    @TempDir
-    PathFixture temp;
-
+    
     @Test
     void externalAppGetsOnlyItsOwnJarAndPrivateDataDirectory() throws Exception {
-        var paths = temp.create();
+        var paths = createPaths();
         NeuroCenterSecurity.NeuroCenterPolicy policy = newPolicy(paths.hostJar(), paths.apps());
         policy.registerApp(paths.appJar(), paths.data(), Set.of());
 
@@ -44,7 +41,7 @@ class NeuroCenterPolicyTest {
 
     @Test
     void additionalPermissionsAreGrantedOnlyWhenExplicitlySelected() throws Exception {
-        var paths = temp.create();
+        var paths = createPaths();
         NeuroCenterSecurity.NeuroCenterPolicy policy = newPolicy(paths.hostJar(), paths.apps());
         policy.registerApp(paths.appJar(), paths.data(), Set.of("network.connect"));
 
@@ -60,7 +57,7 @@ class NeuroCenterPolicyTest {
 
     @Test
     void trustedHostKeepsItsPermissionsButUnregisteredAppJarsAreDenied() throws Exception {
-        var paths = temp.create();
+        var paths = createPaths();
         NeuroCenterSecurity.NeuroCenterPolicy policy = newPolicy(paths.hostJar(), paths.apps());
 
         ProtectionDomain host = domain(paths.hostJar().toUri().toURL());
@@ -82,19 +79,17 @@ class NeuroCenterPolicyTest {
         return new ProtectionDomain(source, null);
     }
 
-    private static final class PathFixture {
-        private record Paths(java.nio.file.Path hostJar, java.nio.file.Path apps,
-                             java.nio.file.Path appJar, java.nio.file.Path data,
-                             java.nio.file.Path otherFile) {}
+    private record Paths(java.nio.file.Path hostJar, java.nio.file.Path apps,
+                          java.nio.file.Path appJar, java.nio.file.Path data,
+                          java.nio.file.Path otherFile) {}
 
-        Paths create() throws Exception {
-            java.nio.file.Path root = java.nio.file.Files.createTempDirectory("neurocenter-security-test");
-            java.nio.file.Path apps = java.nio.file.Files.createDirectories(root.resolve("apps"));
-            java.nio.file.Path appJar = java.nio.file.Files.writeString(apps.resolve("external.jar"), "test-jar");
-            java.nio.file.Path data = java.nio.file.Files.createDirectories(root.resolve("data").resolve("example"));
-            java.nio.file.Path otherFile = java.nio.file.Files.writeString(root.resolve("secret.txt"), "secret");
-            java.nio.file.Path hostJar = java.nio.file.Files.writeString(root.resolve("host.jar"), "host");
-            return new Paths(hostJar, apps, appJar, data, otherFile);
-        }
+    private static Paths createPaths() throws Exception {
+        java.nio.file.Path root = java.nio.file.Files.createTempDirectory("neurocenter-security-test");
+        java.nio.file.Path apps = java.nio.file.Files.createDirectories(root.resolve("apps"));
+        java.nio.file.Path appJar = java.nio.file.Files.writeString(apps.resolve("external.jar"), "test-jar");
+        java.nio.file.Path data = java.nio.file.Files.createDirectories(root.resolve("data").resolve("example"));
+        java.nio.file.Path otherFile = java.nio.file.Files.writeString(root.resolve("secret.txt"), "secret");
+        java.nio.file.Path hostJar = java.nio.file.Files.writeString(root.resolve("host.jar"), "host");
+        return new Paths(hostJar, apps, appJar, data, otherFile);
     }
 }
