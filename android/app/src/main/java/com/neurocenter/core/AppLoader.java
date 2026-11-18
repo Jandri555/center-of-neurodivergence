@@ -228,7 +228,7 @@ public final class AppLoader {
         NeuroMobileApp app = (NeuroMobileApp) type.getDeclaredConstructor().newInstance();
         if (app.id() == null || !meta.id.equals(app.id())) {
             throw new IOException("El identificador declarado en el manifiesto («" + meta.id
-                    + "») no coincide con NeuroMobileApp.id() («" + app.id() + "").");
+                    + "») no coincide con NeuroMobileApp.id() («" + app.id() + "»).");
         }
         out.add(new LoadedApp(app, name));
     }
