@@ -26,5 +26,5 @@ android {
 // AppContext y NeuroApp pertenecen exclusivamente al host Swing.
 // El AAR móvil solo exporta NeuroAppContext y NeuroPlatform.
 tasks.withType<JavaCompile>().configureEach {
-    exclude("**/AppContext.java", "**/NeuroApp.java")
+    exclude("**/AppContext.java", "**/NeuroApp.java", "**/plugin/**")
 }
