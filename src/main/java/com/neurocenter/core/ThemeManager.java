@@ -327,9 +327,10 @@ public final class ThemeManager {
             throw new IOException("«" + field + "» debe apuntar a un archivo dentro de resources/.");
         }
         Path root = directory.toAbsolutePath().normalize();
+        Path resourcesRoot = root.resolve("resources").normalize();
         Path image = root.resolve(resource).normalize();
-        if (!image.startsWith(root) || !Files.isRegularFile(image)) {
-            throw new IOException("No se encuentra el recurso indicado por «" + field + "».");
+        if (!image.startsWith(resourcesRoot) || !Files.isRegularFile(image)) {
+            throw new IOException("No se encuentra el recurso indicado por «" + field + "» dentro de resources/.");
         }
         if (("background.image".equals(field) || "centerIcon".equals(field))
                 && !resource.toLowerCase(java.util.Locale.ROOT).endsWith(".png")) {
