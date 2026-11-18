@@ -22,6 +22,8 @@ final class AgendaEntry {
     String date;            // yyyy-MM-dd (en una tarea es la fecha límite)
     String time;            // HH:mm, o null si no tiene hora
     String title = "";
+    String externalSource;
+    String externalId;
     String notes = "";
     boolean done;
 
@@ -45,6 +47,8 @@ final class AgendaEntry {
         copy.date = date;
         copy.time = time;
         copy.title = title;
+        copy.externalSource = externalSource;
+        copy.externalId = externalId;
         copy.notes = notes;
         copy.done = done;
         copy.remindDayBefore = remindDayBefore;
