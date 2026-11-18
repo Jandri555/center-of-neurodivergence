@@ -1203,15 +1203,38 @@ public final class MainWindow extends JFrame {
 
         @Override public void putSetting(String key, String value) { store().put(key, value); }
 
+        /**
+         * Los apps integrados y plugins son código de confianza del propio NeuroCenter.
+         * Los JAR externos necesitan el permiso explícito credentials.access.
+         */
+        private void requireCredentialPermission() {
+            if (!externalAppIds.contains(app.id())) return;
+            if (appRegistry == null) {
+                throw new SecurityException("No se puede comprobar el permiso para usar el almacén de credenciales.");
+            }
+            try {
+                if (!appRegistry.grantedPermissions(app.id()).contains("credentials.access")) {
+                    throw new SecurityException(
+                            "La aplicación «" + app.name() + "» no tiene el permiso «Usar el almacén de credenciales». "
+                                    + "Concédelo en Ajustes → Gestionar apps → Configurar permisos y reinicia NeuroCenter.");
+                }
+            } catch (java.sql.SQLException error) {
+                throw new SecurityException("No se pudo comprobar el permiso del almacén de credenciales.", error);
+            }
+        }
+
         @Override public void saveSecret(String key, char[] secret) {
+            requireCredentialPermission();
             WindowsCredentialVault.save(app.id(), key, secret);
         }
 
         @Override public char[] loadSecret(String key) {
+            requireCredentialPermission();
             return WindowsCredentialVault.load(app.id(), key);
         }
 
         @Override public void deleteSecret(String key) {
+            requireCredentialPermission();
             WindowsCredentialVault.delete(app.id(), key);
         }
 
