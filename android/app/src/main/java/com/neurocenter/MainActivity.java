@@ -41,6 +41,7 @@ import com.neurocenter.api.NeuroMobileApp;
 import com.neurocenter.api.NeuroMobileContext;
 import com.neurocenter.api.NeuroMobilePermissions;
 import com.neurocenter.apps.agenda.AgendaMobileApp;
+import com.neurocenter.core.AndroidCredentialVault;
 import com.neurocenter.core.AppInfo;
 import com.neurocenter.core.AppLoader;
 import com.neurocenter.core.AppPaths;
