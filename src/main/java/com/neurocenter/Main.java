@@ -44,11 +44,27 @@ public final class Main {
             return;
         }
 
-        Runtime.getRuntime().addShutdownHook(
-                new Thread(singleInstance::close, "single-instance-shutdown"));
-
         // Solo la instancia principal prepara carpetas y procesa tareas pendientes.
         AppPaths.ensureDirectories();
+
+        // Modo de diagnóstico sin interfaz gráfica, utilizado por CI para verificar
+        // que Java 21 activa la política y bloquea operaciones de una app simulada.
+        if (args.length == 1 && "--security-self-test".equals(args[0])) {
+            try {
+                NeuroCenterSecurity.runSelfTest();
+                System.out.println("SECURITY SELF-TEST: OK");
+                singleInstance.close();
+                return;
+            } catch (Exception ex) {
+                ex.printStackTrace(System.err);
+                singleInstance.close();
+                System.exit(1);
+                return;
+            }
+        }
+
+        Runtime.getRuntime().addShutdownHook(
+                new Thread(singleInstance::close, "single-instance-shutdown"));
 
         PropertiesStore settings = new PropertiesStore(AppPaths.root().resolve("settings.properties"));
         String themeId = settings.get("theme", "light");
