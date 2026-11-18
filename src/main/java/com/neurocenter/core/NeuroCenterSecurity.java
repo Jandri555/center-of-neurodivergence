@@ -255,8 +255,8 @@ public final class NeuroCenterSecurity {
 
             if (safeGrants.contains("network.connect")) {
                 permissions.add(new SocketPermission("*", "connect,resolve"));
-                permissions.add(new URLPermission("http://*/*", "*"));
-                permissions.add(new URLPermission("https://*/*", "*"));
+                permissions.add(new URLPermission("http://*/*", "*:*"));
+                permissions.add(new URLPermission("https://*/*", "*:*"));
             }
             if (safeGrants.contains("network.listen")) {
                 permissions.add(new SocketPermission("*", "listen,accept,resolve"));
