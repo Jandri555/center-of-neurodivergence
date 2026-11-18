@@ -55,7 +55,7 @@ public final class WindowsShortcutManager {
      * @param customIconPng ruta del PNG personalizado; null restaura el icono integrado en el EXE.
      * @return número de accesos directos actualizados.
      */
-    public static int refresh(Path customIconPng) throws IOException, InterruptedException {
+    public static synchronized int refresh(Path customIconPng) throws IOException, InterruptedException {
         if (!isWindows()) return 0;
 
         Path executable = applicationExecutable();
