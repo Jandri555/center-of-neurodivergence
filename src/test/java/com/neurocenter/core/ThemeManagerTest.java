@@ -35,12 +35,14 @@ class ThemeManagerTest {
     }
 
     @Test
-    void builtInThemesDoNotDefineCustomImageAssets() {
+    void builtInLightThemeUsesWhiteWindowAndPanelSurfaces() {
         ThemeManager.ThemeInfo light = ThemeManager.availableThemes().stream()
                 .filter(theme -> "light".equals(theme.id()))
                 .findFirst()
                 .orElseThrow();
 
+        assertEquals("#FFFFFF", light.colors().get("background").getAsString());
+        assertEquals("#FFFFFF", light.colors().get("surface").getAsString());
         assertTrue(light.centerIcon() == null);
         assertTrue(light.background() == null);
     }
