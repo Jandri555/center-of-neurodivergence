@@ -1,26 +1,30 @@
 package com.neurocenter.core;
 
 import com.neurocenter.api.NeuroApp;
+import com.neurocenter.api.NeuroPlatform;
 
-import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
-import java.util.HashSet;
+import java.util.Map;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
-import java.util.stream.Stream;
+import java.util.Set;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.stream.Stream;
 
 /**
- * Carga apps externas: cada JAR se abre con su propio ClassLoader y se buscan
- * las implementaciones de NeuroApp declaradas mediante ServiceLoader.
+ * Carga apps externas con un ClassLoader por JAR.
+ *
+ * <p>El perfil de permisos se registra en la política de NeuroCenter antes de
+ * crear el ClassLoader y, sobre todo, antes de inicializar cualquier clase de
+ * la aplicación.</p>
  */
 public final class AppLoader {
 
@@ -29,73 +33,97 @@ public final class AppLoader {
 
     private AppLoader() {}
 
-    public static Result load(Path appsDir) {
-        if (!Files.isDirectory(appsDir)) return new Result(new ArrayList<>(), new ArrayList<>());
-        try (Stream<Path> files = Files.list(appsDir)) {
-            List<String> jarNames = files
-                    .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar"))
-                    .map(path -> path.getFileName().toString())
-                    .toList();
-            return load(appsDir, jarNames);
-        } catch (IOException e) {
-            return new Result(new ArrayList<>(),
-                    new ArrayList<>(List.of("No se pudo leer la carpeta de apps: " + e.getMessage())));
-        }
+    /**
+     * Compatibilidad interna para llamadas antiguas: carga solo JAR indicados
+     * y les aplica el perfil mínimo sin permisos adicionales.
+     */
+    public static Result load(Path appsDir, List<String> installedJarNames) {
+        Map<String, AppRegistry.AppSecurityProfile> profiles = installedJarNames.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        name -> name,
+                        name -> new AppRegistry.AppSecurityProfile(fallbackId(name), Set.of()),
+                        (left, right) -> left));
+        return load(appsDir, profiles);
     }
 
-    /** Solo carga JAR presentes en el registro de instalaciones. */
-    public static Result load(Path appsDir, List<String> installedJarNames) {
+    /** Carga exclusivamente los JAR registrados y aplica sus permisos concedidos. */
+    public static Result load(Path appsDir, Map<String, AppRegistry.AppSecurityProfile> securityProfiles) {
         List<LoadedApp> apps = new ArrayList<>();
         List<String> errors = new ArrayList<>();
         if (!Files.isDirectory(appsDir)) return new Result(apps, errors);
 
-        Set<String> installed = new HashSet<>(installedJarNames);
         List<Path> jars;
         try (Stream<Path> files = Files.list(appsDir)) {
             jars = files
-                    .filter(path -> installed.contains(path.getFileName().toString()))
+                    .filter(path -> securityProfiles.containsKey(path.getFileName().toString()))
                     .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar"))
                     .sorted()
                     .toList();
-        } catch (IOException e) {
-            errors.add("No se pudo leer la carpeta de apps: " + e.getMessage());
+        } catch (Exception error) {
+            errors.add("No se pudo leer la carpeta de apps: " + error.getMessage());
             return new Result(apps, errors);
         }
 
         for (Path jar : jars) {
             String name = jar.getFileName().toString();
+            URLClassLoader loader = null;
             try {
-                try (JarFile jarFile = new JarFile(jar.toFile())) {
+                AppRegistry.AppSecurityProfile profile = securityProfiles.get(name);
+                if (profile == null) continue;
+
+                Path canonicalJar = jar.toRealPath();
+                try (JarFile jarFile = new JarFile(canonicalJar.toFile())) {
                     Manifest manifest = jarFile.getManifest();
                     String displayName = manifest == null ? name
                             : manifest.getMainAttributes().getValue("Implementation-Title");
                     if (displayName == null || displayName.isBlank()) displayName = name;
                     PlatformCompatibility.fromAppManifest(manifest)
-                            .require(com.neurocenter.api.NeuroPlatform.DESKTOP,
-                                    "la app «" + displayName + "»");
+                            .require(NeuroPlatform.DESKTOP, "la app «" + displayName + "»");
+
+                    if (jarFile.getJarEntry("META-INF/services/com.neurocenter.api.NeuroApp") == null) {
+                        throw new IllegalArgumentException("no declara META-INF/services/com.neurocenter.api.NeuroApp");
+                    }
                 }
 
-                URL[] urls = { jar.toUri().toURL() };
-                // El ClassLoader permanece abierto mientras la app está en uso.
-                URLClassLoader loader = new URLClassLoader(urls, AppLoader.class.getClassLoader());
+                // Es esencial registrar primero el CodeSource exacto del JAR.
+                NeuroCenterSecurity.registerExternalApp(
+                        canonicalJar, profile.appId(), profile.grantedPermissions());
+
+                URL[] urls = { canonicalJar.toUri().toURL() };
+                loader = new URLClassLoader(urls, AppLoader.class.getClassLoader());
                 int found = 0;
+
                 try {
                     ServiceLoader<NeuroApp> serviceLoader = ServiceLoader.load(NeuroApp.class, loader);
                     for (NeuroApp app : serviceLoader) {
                         apps.add(new LoadedApp(app, name));
                         found++;
                     }
-                } catch (ServiceConfigurationError error) {
+                } catch (ServiceConfigurationError | SecurityException error) {
                     errors.add(name + ": " + error.getMessage());
                 }
+
                 if (found == 0 && errors.stream().noneMatch(error -> error.startsWith(name + ":"))) {
-                    errors.add(name + ": no declara ninguna app. Falta "
-                            + "META-INF/services/com.neurocenter.api.NeuroApp.");
+                    errors.add(name + ": no declara ninguna implementación NeuroApp válida.");
                 }
             } catch (Throwable error) {
                 errors.add(name + ": " + error);
+                if (loader != null) {
+                    try {
+                        loader.close();
+                    } catch (Exception ignored) {
+                        // El error original es más útil que uno secundario al cerrar.
+                    }
+                }
             }
         }
         return new Result(apps, errors);
+    }
+
+    private static String fallbackId(String filename) {
+        String raw = filename.toLowerCase(Locale.ROOT).endsWith(".jar")
+                ? filename.substring(0, filename.length() - 4) : filename;
+        String safe = raw.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]", "-");
+        return safe.isBlank() ? "external-app" : safe;
     }
 }
