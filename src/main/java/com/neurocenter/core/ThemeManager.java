@@ -425,8 +425,22 @@ public final class ThemeManager {
     }
 
     public static synchronized Image centerIconImage(int size) {
-        if (activeCenterIconImage == null) return null;
-        return activeCenterIconImage.getScaledInstance(size, size, Image.SCALE_SMOOTH);
+        if (activeCenterIconImage == null || size < 1) return null;
+        BufferedImage scaled = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = scaled.createGraphics();
+        try {
+            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                    RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            double scale = Math.min(size / (double) activeCenterIconImage.getWidth(),
+                    size / (double) activeCenterIconImage.getHeight());
+            int width = Math.max(1, (int) Math.round(activeCenterIconImage.getWidth() * scale));
+            int height = Math.max(1, (int) Math.round(activeCenterIconImage.getHeight() * scale));
+            graphics.drawImage(activeCenterIconImage,
+                    (size - width) / 2, (size - height) / 2, width, height, null);
+        } finally {
+            graphics.dispose();
+        }
+        return scaled;
     }
 
     public static synchronized Path centerIconPath() {
