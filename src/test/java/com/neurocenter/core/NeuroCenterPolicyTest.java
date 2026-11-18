@@ -70,6 +70,19 @@ class NeuroCenterPolicyTest {
     }
 
     @Test
+    void credentialStoreGrantIsRecognizedWithoutGrantingFileOrNetworkAccess() throws Exception {
+        var paths = createPaths();
+        NeuroCenterSecurity.NeuroCenterPolicy policy = newPolicy(paths.hostJar(), paths.apps());
+        policy.registerApp(paths.appJar(), paths.data(), Set.of("credentials.access"));
+
+        ProtectionDomain app = domain(paths.appJar().toRealPath().toUri().toURL());
+
+        assertTrue(NeuroCenterSecurity.isSupportedPermission("credentials.access"));
+        assertFalse(policy.implies(app, new FilePermission(paths.otherFile().toString(), "read")));
+        assertFalse(policy.implies(app, new SocketPermission("example.com:443", "connect")));
+    }
+
+    @Test
     void trustedHostKeepsItsPermissionsButUnregisteredAppJarsAreDenied() throws Exception {
         var paths = createPaths();
         NeuroCenterSecurity.NeuroCenterPolicy policy = newPolicy(paths.hostJar(), paths.apps());
