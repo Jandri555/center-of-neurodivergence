@@ -5,6 +5,11 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteConstraintException;
 import android.database.sqlite.SQLiteDatabase;
 
+import com.neurocenter.api.NeuroMobilePermissions;
+
+import java.util.LinkedHashSet;
+import java.util.Set;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,6 +63,11 @@ public final class AppRegistry implements AutoCloseable {
                 + "installed_at TEXT NOT NULL, "
                 + "size_bytes INTEGER NOT NULL, "
                 + "autorun INTEGER NOT NULL DEFAULT 0 CHECK (autorun IN (0, 1)))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS app_permissions ("
+                + "app_id TEXT NOT NULL, "
+                + "permission_id TEXT NOT NULL, "
+                + "granted INTEGER NOT NULL DEFAULT 1 CHECK (granted IN (0, 1)), "
+                + "PRIMARY KEY (app_id, permission_id))");
     }
 
     /** Registra un paquete ya validado y copiado a apps/. */
@@ -115,8 +125,59 @@ public final class AppRegistry implements AutoCloseable {
         db.update("installed_apps", values, "id = ?", new String[]{id});
     }
 
+    /** Permisos adicionales concedidos explícitamente a una app externa. */
+    public synchronized Set<String> grantedPermissions(String appId) {
+        Set<String> result = new LinkedHashSet<>();
+        try (Cursor c = db.rawQuery(
+                "SELECT permission_id FROM app_permissions WHERE app_id = ? AND granted = 1",
+                new String[]{appId})) {
+            while (c.moveToNext()) result.add(c.getString(0));
+        }
+        return Set.copyOf(result);
+    }
+
+    /** Sustituye el conjunto de permisos de una app en una única transacción. */
+    public synchronized void setGrantedPermissions(String appId, Set<String> permissionIds) {
+        if (appId == null || appId.isBlank() || !containsId(appId)) {
+            throw new IllegalArgumentException("La aplicación ya no está instalada.");
+        }
+        Set<String> validated = new LinkedHashSet<>();
+        if (permissionIds != null) {
+            for (String id : permissionIds) {
+                if (!NeuroMobilePermissions.isSupported(id)) {
+                    throw new IllegalArgumentException("Permiso no reconocido: " + id);
+                }
+                validated.add(id);
+            }
+        }
+
+        db.beginTransaction();
+        try {
+            db.delete("app_permissions", "app_id = ?", new String[]{appId});
+            for (String id : validated) {
+                ContentValues values = new ContentValues();
+                values.put("app_id", appId);
+                values.put("permission_id", id);
+                values.put("granted", 1);
+                db.insertOrThrow("app_permissions", null, values);
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
     public synchronized void removeByFileName(String fileName) {
-        db.delete("installed_apps", "file_name = ?", new String[]{fileName});
+        db.beginTransaction();
+        try {
+            db.delete("app_permissions",
+                    "app_id IN (SELECT id FROM installed_apps WHERE file_name = ?)",
+                    new String[]{fileName});
+            db.delete("installed_apps", "file_name = ?", new String[]{fileName});
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
     }
 
     private List<String> queryStrings(String sql) {
