@@ -10,7 +10,14 @@ import com.google.gson.JsonObject;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.UIManager;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
+import java.awt.AlphaComposite;
 import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
 import java.awt.Image;
 import java.io.IOException;
 import java.io.Reader;
@@ -26,6 +33,10 @@ public final class ThemeManager {
     private static final Gson GSON = new Gson();
     private static final Map<String, ThemeInfo> THEMES = new LinkedHashMap<>();
     private static ThemeInfo activeTheme;
+    private static BufferedImage activeBackgroundImage;
+    private static BufferedImage activeCenterIconImage;
+
+    public record BackgroundInfo(Path image, int darkening, int transparency) {}
 
     /** Claves de FlatLaf que pueden personalizarse desde theme.json. */
     private static final Map<String, String> COLOR_UI_KEYS = Map.ofEntries(
@@ -82,6 +93,7 @@ public final class ThemeManager {
 
     public record ThemeInfo(String id, String name, String author, String version,
                             String base, Path directory, JsonObject colors, JsonObject appIcons,
+                            Path centerIcon, BackgroundInfo background,
                             PlatformCompatibility.Targets compatibility) {
         public boolean builtIn() { return directory == null; }
         @Override public String toString() { return name; }
@@ -139,7 +151,7 @@ public final class ThemeManager {
             colors.addProperty("titleBar", "#181818");
         }
         THEMES.put(id, new ThemeInfo(id, name, "Center of Neurodivergence", "1.0",
-                base, null, colors, new JsonObject(),
+                base, null, colors, new JsonObject(), null, null,
                 new PlatformCompatibility.Targets(true, true)));
     }
 
@@ -153,11 +165,27 @@ public final class ThemeManager {
                 "light".equals(id) || "dark".equals(id) ||
                 name == null || name.isBlank() ||
                 !("light".equals(base) || "dark".equals(base))) return null;
+        validateAssets(dir, json);
         PlatformCompatibility.Targets compatibility = PlatformCompatibility.fromThemeManifest(json);
         JsonObject colors = object(json, "colors");
         JsonObject icons = object(json, "appIcons");
+
+        JsonObject backgroundJson = object(json, "background");
+        String backgroundResource = string(backgroundJson, "image");
+        Path backgroundImage = backgroundResource == null ? null
+                : resolveImageResource(dir, backgroundResource, "background.image");
+        BackgroundInfo background = backgroundImage == null ? null : new BackgroundInfo(
+                backgroundImage,
+                percentage(backgroundJson, "darkening", 0),
+                percentage(backgroundJson, "transparency", 0));
+
+        String centerIconResource = string(json, "centerIcon");
+        Path centerIcon = centerIconResource == null ? null
+                : resolveImageResource(dir, centerIconResource, "centerIcon");
+
         return new ThemeInfo(id, name, stringOr(json, "author", "Desconocido"),
-                stringOr(json, "version", "1.0"), base, dir, colors, icons, compatibility);
+                stringOr(json, "version", "1.0"), base, dir, colors, icons,
+                centerIcon, background, compatibility);
     }
 
     private static String string(JsonObject obj, String key) {
@@ -225,6 +253,10 @@ public final class ThemeManager {
         if (windowBackground != null) UIManager.put("RootPane.background", windowBackground);
 
         activeTheme = theme;
+        activeBackgroundImage = theme.background() == null
+                ? null : readImage(theme.background().image(), "imagen de fondo");
+        activeCenterIconImage = theme.centerIcon() == null
+                ? null : readImage(theme.centerIcon(), "icono de NeuroCenter");
         FlatLaf.updateUI();
     }
 
@@ -251,6 +283,144 @@ public final class ThemeManager {
             }
         }
         return defaults;
+    }
+
+    /**
+     * Valida todos los recursos gráficos referenciados por el manifiesto.
+     * Las rutas se limitan a resources/ y las imágenes deben ser decodificables.
+     */
+    public static void validateAssets(Path directory, JsonObject manifest) throws IOException {
+        if (manifest == null) throw new IOException("El manifiesto del tema está vacío.");
+
+        if (manifest.has("background") && !manifest.get("background").isJsonObject()) {
+            throw new IOException("El campo «background» debe ser un objeto.");
+        }
+        JsonObject background = object(manifest, "background");
+        String backgroundImage = string(background, "image");
+        if (background.has("image") && backgroundImage == null) {
+            throw new IOException("«background.image» debe ser una ruta de imagen.");
+        }
+        if (backgroundImage != null) {
+            resolveImageResource(directory, backgroundImage, "background.image");
+            percentage(background, "darkening", 0);
+            percentage(background, "transparency", 0);
+        }
+
+        String centerIcon = string(manifest, "centerIcon");
+        if (manifest.has("centerIcon") && centerIcon == null) {
+            throw new IOException("«centerIcon» debe ser una ruta de imagen PNG.");
+        }
+        if (centerIcon != null) resolveImageResource(directory, centerIcon, "centerIcon");
+
+        JsonObject appIcons = object(manifest, "appIcons");
+        for (Map.Entry<String, JsonElement> entry : appIcons.entrySet()) {
+            if (!entry.getValue().isJsonPrimitive()
+                    || !entry.getValue().getAsJsonPrimitive().isString()) {
+                throw new IOException("El icono de «" + entry.getKey() + "» debe ser una ruta de imagen.");
+            }
+            resolveImageResource(directory, entry.getValue().getAsString(), "appIcons." + entry.getKey());
+        }
+    }
+
+    private static Path resolveImageResource(Path directory, String resource, String field) throws IOException {
+        if (resource == null || !resource.startsWith("resources/")) {
+            throw new IOException("«" + field + "» debe apuntar a un archivo dentro de resources/.");
+        }
+        Path root = directory.toAbsolutePath().normalize();
+        Path image = root.resolve(resource).normalize();
+        if (!image.startsWith(root) || !Files.isRegularFile(image)) {
+            throw new IOException("No se encuentra el recurso indicado por «" + field + "».");
+        }
+        if (("background.image".equals(field) || "centerIcon".equals(field))
+                && !resource.toLowerCase(java.util.Locale.ROOT).endsWith(".png")) {
+            throw new IOException("«" + field + "» debe ser un archivo PNG.");
+        }
+        readImage(image, field);
+        return image;
+    }
+
+    private static int percentage(JsonObject object, String key, int fallback) throws IOException {
+        JsonElement value = object.get(key);
+        if (value == null) return fallback;
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+            throw new IOException("«" + key + "» debe ser un número entre 0 y 100.");
+        }
+        int result;
+        try {
+            result = value.getAsInt();
+        } catch (RuntimeException ex) {
+            throw new IOException("«" + key + "» debe ser un número entero entre 0 y 100.", ex);
+        }
+        if (result < 0 || result > 100) {
+            throw new IOException("«" + key + "» debe estar entre 0 y 100.");
+        }
+        return result;
+    }
+
+    private static BufferedImage readImage(Path image, String description) throws IOException {
+        try (ImageInputStream input = ImageIO.createImageInputStream(image.toFile())) {
+            if (input == null) throw new IOException("No se pudo leer " + description + ".");
+            var readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) throw new IOException("Formato de imagen no válido en " + description + ".");
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(input, true, true);
+                int width = reader.getWidth(0);
+                int height = reader.getHeight(0);
+                if (width < 1 || height < 1 || width > 16384 || height > 16384
+                        || (long) width * height > 40_000_000L) {
+                    throw new IOException("Las dimensiones de " + description + " son demasiado grandes.");
+                }
+                BufferedImage decoded = reader.read(0);
+                if (decoded == null) throw new IOException("No se pudo decodificar " + description + ".");
+                return decoded;
+            } finally {
+                reader.dispose();
+            }
+        }
+    }
+
+    /** Pinta el fondo del tema ocupando el área disponible, sin deformar la imagen. */
+    public static synchronized void paintBackground(Graphics2D graphics, int width, int height) {
+        if (width <= 0 || height <= 0) return;
+        Color base = UIManager.getColor("Window.background");
+        if (base == null) base = Color.DARK_GRAY;
+        graphics.setColor(base);
+        graphics.fillRect(0, 0, width, height);
+
+        if (activeBackgroundImage == null || activeTheme == null || activeTheme.background() == null) return;
+
+        BufferedImage image = activeBackgroundImage;
+        double scale = Math.max(width / (double) image.getWidth(), height / (double) image.getHeight());
+        int drawWidth = Math.max(width, (int) Math.ceil(image.getWidth() * scale));
+        int drawHeight = Math.max(height, (int) Math.ceil(image.getHeight() * scale));
+        int x = (width - drawWidth) / 2;
+        int y = (height - drawHeight) / 2;
+
+        var oldComposite = graphics.getComposite();
+        var oldHint = graphics.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
+        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        float imageOpacity = 1f - activeTheme.background().transparency() / 100f;
+        graphics.setComposite(AlphaComposite.SrcOver.derive(imageOpacity));
+        graphics.drawImage(image, x, y, drawWidth, drawHeight, null);
+        graphics.setComposite(AlphaComposite.SrcOver);
+
+        int darkness = activeTheme.background().darkening();
+        if (darkness > 0) {
+            graphics.setColor(new Color(0, 0, 0, Math.round(darkness * 255f / 100f)));
+            graphics.fillRect(0, 0, width, height);
+        }
+        graphics.setComposite(oldComposite);
+        if (oldHint != null) graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, oldHint);
+    }
+
+    public static synchronized Image centerIconImage(int size) {
+        if (activeCenterIconImage == null) return null;
+        return activeCenterIconImage.getScaledInstance(size, size, Image.SCALE_SMOOTH);
+    }
+
+    public static synchronized Path centerIconPath() {
+        return activeTheme == null ? null : activeTheme.centerIcon();
     }
 
     public static synchronized Icon appIcon(String appId, Icon fallback, int size) {
