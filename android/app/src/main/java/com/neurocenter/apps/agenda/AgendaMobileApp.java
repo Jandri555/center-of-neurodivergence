@@ -876,7 +876,7 @@ public final class AgendaMobileApp implements NeuroMobileApp {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
-            activity.requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+            ctx.requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
                     REQUEST_NOTIFICATION_PERMISSION);
             return;
         }
@@ -896,7 +896,7 @@ public final class AgendaMobileApp implements NeuroMobileApp {
                 }
             }
             if (!missing.isEmpty()) {
-                activity.requestPermissions(missing.toArray(new String[0]), REQUEST_BT_PERMISSIONS);
+                ctx.requestPermissions(missing.toArray(new String[0]), REQUEST_BT_PERMISSIONS);
                 return;
             }
         }
@@ -913,13 +913,13 @@ public final class AgendaMobileApp implements NeuroMobileApp {
 
         try {
             if (!bluetoothAdapter.isEnabled()) {
-                activity.startActivityForResult(
+                ctx.startActivityForResult(
                         new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE), REQUEST_ENABLE_BT);
                 return;
             }
             Intent discoverable = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
             discoverable.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, DISCOVERABLE_SECONDS);
-            activity.startActivityForResult(discoverable, REQUEST_DISCOVERABLE);
+            ctx.startActivityForResult(discoverable, REQUEST_DISCOVERABLE);
         } catch (SecurityException ex) {
             toast("Falta permiso para usar Bluetooth: " + ex.getMessage());
         }
