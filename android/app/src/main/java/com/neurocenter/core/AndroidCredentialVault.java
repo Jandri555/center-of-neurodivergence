@@ -3,13 +3,11 @@ package com.neurocenter.core;
 import android.content.Context;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
-import android.net.Uri;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -105,13 +103,15 @@ public final class AndroidCredentialVault {
             try (DataInputStream in = new DataInputStream(Files.newInputStream(file))) {
                 int ivLength = in.readInt();
                 if (ivLength < 12 || ivLength > 16) throw new IOException("Vector de inicialización no válido.");
-                iv = in.readNBytes(ivLength);
+                iv = new byte[ivLength];
+                in.readFully(iv);
                 int encryptedLength = in.readInt();
                 if (encryptedLength < 16 || encryptedLength > 1024 * 1024
                         || encryptedLength != in.available()) {
                     throw new IOException("Contenido cifrado no válido.");
                 }
-                encrypted = in.readNBytes(encryptedLength);
+                encrypted = new byte[encryptedLength];
+                in.readFully(encrypted);
             }
             SecretKey key = getExistingKey(alias(appId, name));
             if (key == null) throw new IOException("No existe la clave de Android Keystore.");
