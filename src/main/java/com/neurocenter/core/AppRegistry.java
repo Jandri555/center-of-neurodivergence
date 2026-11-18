@@ -270,11 +270,18 @@ public final class AppRegistry {
     }
 
     public void removeByFilename(String filename) throws SQLException {
-        try (Connection connection = connect();
-             PreparedStatement statement = connection.prepareStatement(
-                     "DELETE FROM installed_apps WHERE jar_filename = ?")) {
-            statement.setString(1, filename);
-            statement.executeUpdate();
+        try (Connection connection = connect()) {
+            try (PreparedStatement permissions = connection.prepareStatement(
+                    "DELETE FROM app_permissions WHERE app_id IN "
+                            + "(SELECT id FROM installed_apps WHERE jar_filename = ?)")) {
+                permissions.setString(1, filename);
+                permissions.executeUpdate();
+            }
+            try (PreparedStatement app = connection.prepareStatement(
+                    "DELETE FROM installed_apps WHERE jar_filename = ?")) {
+                app.setString(1, filename);
+                app.executeUpdate();
+            }
         }
     }
 
