@@ -86,5 +86,8 @@ jobs:
       - name: Build, test and install the desktop API
         run: mvn --batch-mode --no-transfer-progress clean install
 
+      - name: Verify Java 21 Security Manager runtime
+        run: java -Djava.security.manager=allow -jar target/center-of-neurodivergence.jar --security-self-test
+
       - name: Build the external app example
         run: mvn --batch-mode --no-transfer-progress -f example-app/pom.xml clean verify
