@@ -13,6 +13,7 @@ import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.Icon;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JDialog;
@@ -116,7 +117,7 @@ public final class MainWindow extends JFrame {
         try {
             appRegistry = new AppRegistry(AppPaths.root().resolve("apps.db"));
             AppLoader.Result externalApps = AppLoader.load(
-                    AppPaths.appsDir(), appRegistry.installedJarFilenames());
+                    AppPaths.appsDir(), appRegistry.securityProfilesByJar());
             loadErrors.addAll(externalApps.errors());
             autorunJars.addAll(appRegistry.autorunJarFilenames());
             for (AppLoader.LoadedApp loaded : externalApps.apps()) {
@@ -918,10 +919,11 @@ public final class MainWindow extends JFrame {
             return;
         }
 
-        String[] options = {"Instalar app", "Desinstalar app", "Configurar inicio automático"};
+        String[] options = {"Instalar app", "Desinstalar app", "Configurar inicio automático",
+                "Configurar permisos"};
         int choice = JOptionPane.showOptionDialog(this,
-                "Gestiona las aplicaciones externas instaladas. Los cambios de instalación y desinstalación "
-                        + "se aplican al reiniciar.",
+                "Las apps externas solo acceden a sus propios datos por defecto. "
+                        + "Puedes conceder permisos adicionales desde aquí.",
                 "Gestor de apps", JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE,
                 null, options, options[0]);
 
@@ -954,6 +956,8 @@ public final class MainWindow extends JFrame {
             uninstallExternalApp();
         } else if (choice == 2) {
             configureAppAutorun();
+        } else if (choice == 3) {
+            configureAppPermissions();
         }
     }
 
@@ -984,6 +988,60 @@ public final class MainWindow extends JFrame {
             }
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, "No se pudo cambiar el inicio automático: " + ex.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void configureAppPermissions() {
+        try {
+            List<AppRegistry.AppRecord> installed = appRegistry.listApps();
+            if (installed.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "No hay apps externas instaladas.");
+                return;
+            }
+
+            AppRegistry.AppRecord selected = (AppRegistry.AppRecord) JOptionPane.showInputDialog(
+                    this, "Selecciona la aplicación cuyos permisos quieres configurar:",
+                    "Permisos de aplicaciones", JOptionPane.QUESTION_MESSAGE, null,
+                    installed.toArray(AppRegistry.AppRecord[]::new), installed.get(0));
+            if (selected == null) return;
+
+            Set<String> granted = appRegistry.grantedPermissions(selected.id());
+            JPanel options = new JPanel();
+            options.setLayout(new BoxLayout(options, BoxLayout.Y_AXIS));
+            options.add(new JLabel("Permisos para «" + selected.name() + "»:"));
+            options.add(Box.createVerticalStrut(8));
+
+            Map<String, JCheckBox> controls = new LinkedHashMap<>();
+            for (NeuroCenterSecurity.AppPermission permission : NeuroCenterSecurity.supportedPermissions()) {
+                JCheckBox checkbox = new JCheckBox(permission.name(), granted.contains(permission.id()));
+                checkbox.setToolTipText(permission.description());
+                checkbox.setAlignmentX(Component.LEFT_ALIGNMENT);
+                controls.put(permission.id(), checkbox);
+                options.add(checkbox);
+                JLabel description = new JLabel("  " + permission.description());
+                description.setBorder(new EmptyBorder(0, 20, 7, 0));
+                description.setAlignmentX(Component.LEFT_ALIGNMENT);
+                options.add(description);
+            }
+
+            int answer = JOptionPane.showConfirmDialog(this, options,
+                    "Permisos de «" + selected.name() + "»",
+                    JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+            if (answer != JOptionPane.OK_OPTION) return;
+
+            Set<String> updated = new HashSet<>();
+            controls.forEach((permissionId, checkbox) -> {
+                if (checkbox.isSelected()) updated.add(permissionId);
+            });
+            appRegistry.setGrantedPermissions(selected.id(), updated);
+
+            JOptionPane.showMessageDialog(this,
+                    "Permisos guardados. Se aplicarán cuando reinicies NeuroCenter.\\n\\n"
+                            + "Concedidos: " + NeuroCenterSecurity.permissionSummary(updated));
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this,
+                    "No se pudieron guardar los permisos: " + ex.getMessage(),
                     "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
