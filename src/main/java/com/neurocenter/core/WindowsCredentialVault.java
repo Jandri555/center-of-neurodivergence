@@ -1,6 +1,7 @@
 package com.neurocenter.core;
 
 import com.sun.jna.Memory;
+import com.sun.jna.LastErrorException;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
 import com.sun.jna.Structure;
@@ -106,8 +107,12 @@ public final class WindowsCredentialVault {
             credential.userName = new WString("application-secret");
             credential.write();
 
-            if (Advapi32.INSTANCE.CredWriteW(credential, 0) == 0) {
-                throw windowsError("No se pudo guardar la credencial");
+            try {
+                if (Advapi32.INSTANCE.CredWriteW(credential, 0) == 0) {
+                    throw windowsError("No se pudo guardar la credencial");
+                }
+            } catch (LastErrorException error) {
+                throw windowsError("No se pudo guardar la credencial", error.getErrorCode());
             }
         } finally {
             nativeBlob.clear();
@@ -118,10 +123,15 @@ public final class WindowsCredentialVault {
 
     private static char[] loadPrivileged(String target) {
         PointerByReference result = new PointerByReference();
-        if (Advapi32.INSTANCE.CredReadW(new WString(target), CRED_TYPE_GENERIC, 0, result) == 0) {
-            int error = Native.getLastError();
-            if (error == ERROR_NOT_FOUND) return null;
-            throw windowsError("No se pudo leer la credencial", error);
+        try {
+            if (Advapi32.INSTANCE.CredReadW(new WString(target), CRED_TYPE_GENERIC, 0, result) == 0) {
+                int error = Native.getLastError();
+                if (error == ERROR_NOT_FOUND) return null;
+                throw windowsError("No se pudo leer la credencial", error);
+            }
+        } catch (LastErrorException error) {
+            if (error.getErrorCode() == ERROR_NOT_FOUND) return null;
+            throw windowsError("No se pudo leer la credencial", error.getErrorCode());
         }
 
         Pointer credentialPointer = result.getValue();
@@ -151,10 +161,16 @@ public final class WindowsCredentialVault {
     }
 
     private static void deletePrivileged(String target) {
-        if (Advapi32.INSTANCE.CredDeleteW(new WString(target), CRED_TYPE_GENERIC, 0) == 0) {
-            int error = Native.getLastError();
-            if (error != ERROR_NOT_FOUND) {
-                throw windowsError("No se pudo eliminar la credencial", error);
+        try {
+            if (Advapi32.INSTANCE.CredDeleteW(new WString(target), CRED_TYPE_GENERIC, 0) == 0) {
+                int error = Native.getLastError();
+                if (error != ERROR_NOT_FOUND) {
+                    throw windowsError("No se pudo eliminar la credencial", error);
+                }
+            }
+        } catch (LastErrorException error) {
+            if (error.getErrorCode() != ERROR_NOT_FOUND) {
+                throw windowsError("No se pudo eliminar la credencial", error.getErrorCode());
             }
         }
     }
@@ -187,9 +203,9 @@ public final class WindowsCredentialVault {
     private interface Advapi32 extends StdCallLibrary {
         Advapi32 INSTANCE = Native.load("Advapi32", Advapi32.class);
 
-        int CredWriteW(Credential credential, int flags);
-        int CredReadW(WString targetName, int type, int flags, PointerByReference credential);
-        int CredDeleteW(WString targetName, int type, int flags);
+        int CredWriteW(Credential credential, int flags) throws LastErrorException;
+        int CredReadW(WString targetName, int type, int flags, PointerByReference credential) throws LastErrorException;
+        int CredDeleteW(WString targetName, int type, int flags) throws LastErrorException;
         void CredFree(Pointer credential);
     }
 
