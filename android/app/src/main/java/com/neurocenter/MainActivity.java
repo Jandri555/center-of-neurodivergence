@@ -188,9 +188,17 @@ public final class MainActivity extends Activity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        // La actividad no se recrea al girar: se reconstruye el marco y se reutilizan las vistas de las apps.
+        // Las vistas antiguas cuelgan del contenedor anterior. Reconstruimos cada sesión
+        // para no dejar el contenido activo dentro de una jerarquía ya desconectada.
+        AppSession active = sessions.get(activeId);
+        dispatchPause(active);
+        for (AppSession session : new ArrayList<>(sessions.values())) {
+            if (session.ready && !session.closing) rebuildSessionView(session);
+            else if (!session.closing) session.view = loadingView(session.app.name());
+        }
         homeView = buildHome();
         buildUi();
+        dispatchResume(active);
     }
 
     @Override
@@ -944,7 +952,7 @@ public final class MainActivity extends Activity {
             requirePermission(NeuroMobilePermissions.FILES_READ_DOCUMENTS);
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
                     .addCategory(Intent.CATEGORY_OPENABLE)
-                    .setType(mimeType == null || mimeType.isBlank() ? "*/*" : mimeType);
+                    .setType(mimeType == null || mimeType.trim().isEmpty() ? "*/*" : mimeType);
             startAppActivityForResult(app.id(), intent, requestCode);
         }
 
@@ -953,7 +961,7 @@ public final class MainActivity extends Activity {
             requirePermission(NeuroMobilePermissions.FILES_WRITE_DOCUMENTS);
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
                     .addCategory(Intent.CATEGORY_OPENABLE)
-                    .setType(mimeType == null || mimeType.isBlank() ? "*/*" : mimeType)
+                    .setType(mimeType == null || mimeType.trim().isEmpty() ? "*/*" : mimeType)
                     .putExtra(Intent.EXTRA_TITLE, suggestedName == null ? "documento" : suggestedName);
             startAppActivityForResult(app.id(), intent, requestCode);
         }
@@ -1362,9 +1370,11 @@ public final class MainActivity extends Activity {
     private void confirmInstallApp(Uri uri) {
         String name = displayName(uri);
         confirm("Instalar app",
-                "¿Instalar «" + name + "»?\n\nUna app externa es código que se ejecuta con los permisos de "
-                        + "Center of Neurodivergence, sin aislamiento. Instala únicamente paquetes de fuentes "
-                        + "de confianza.",
+                "¿Instalar «" + name + "»?\n\nEl código DEX se ejecuta dentro del proceso de NeuroCenter. "
+                        + "Los permisos de NeuroMobileContext controlan las operaciones realizadas mediante "
+                        + "la API del host, pero Android no aísla clases cargadas dinámicamente: una app externa "
+                        + "maliciosa podría acceder directamente a las API y permisos del proceso. Instala solo "
+                        + "código de fuentes en las que confíes.",
                 "Instalar", () -> installApp(uri, name));
     }
 
@@ -1532,8 +1542,9 @@ public final class MainActivity extends Activity {
                     showMessage("Permisos guardados",
                             "Se han guardado los permisos de «" + app.name + "».\n\nConcedidos: "
                                     + NeuroMobilePermissions.summary(updated)
-                                    + "\n\nLos cambios se aplican inmediatamente a las operaciones realizadas "
-                                    + "a través de NeuroMobileContext.");
+                                    + "\n\nSe aplican inmediatamente a las operaciones realizadas mediante "
+                                    + "NeuroMobileContext. No son un aislamiento del proceso Android: instala "
+                                    + "solo código externo de confianza.");
                 } catch (RuntimeException ex) {
                     showMessage("Error de permisos", "No se pudieron guardar: " + ex.getMessage());
                 }
