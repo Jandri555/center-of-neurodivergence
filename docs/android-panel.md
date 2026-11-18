@@ -70,3 +70,25 @@ Ejemplo: `android/example-app` → `gradle -p android :example-app:assembleDebug
 5. Instalar `example-app` (APK). Debe aparecer en Inicio como «App externa». Desinstalarla.
 6. Conectar el USB en modo accesorio: el panel debe abrir la Agenda y pedir permiso de accesorio.
 7. Back: cierra el menú → vuelve a Inicio → sale de la app.
+
+
+## Permisos de apps externas en Android
+
+Los permisos se guardan en la tabla `app_permissions` de `apps.db`. Una app recién instalada no recibe ninguna capacidad adicional. Desde **Ajustes → Gestionar apps → Configurar permisos** se pueden conceder o revocar:
+
+| Permiso | API del host |
+|---|---|
+| `network.connect` | `ctx.openConnection(url)` |
+| `network.listen` | `ctx.openServerSocket(port)` |
+| `files.read.documents` | `ctx.requestDocumentRead(...)` y `ctx.openDocumentInputStream(uri)` |
+| `files.write.documents` | `ctx.requestDocumentWrite(...)` y `ctx.openDocumentOutputStream(uri)` |
+| `clipboard.access` | `ctx.readClipboardText()` / `ctx.writeClipboardText(...)` |
+| `credentials.access` | `ctx.saveSecret(...)` / `ctx.loadSecret(...)` / `ctx.deleteSecret(...)` |
+| `bluetooth.access` | Requerido por `ctx.requestPermissions(...)` para permisos Bluetooth |
+| `notifications.access` | Requerido por `ctx.requestPermissions(...)` para notificaciones |
+
+Los secretos se cifran con AES-GCM y claves por aplicación en Android Keystore. La solicitud de actividades y permisos se multiplexa en el host y sus respuestas se devuelven a la sesión que originó cada solicitud, aunque otra app pase a primer plano.
+
+**Límite de seguridad importante:** estas concesiones se comprueban en las operaciones ofrecidas por `NeuroMobileContext`. No equivalen al aislamiento de escritorio basado en Java 21 Security Manager. El cargador Android usa `DexClassLoader`, por lo que el código externo comparte proceso, UID y permisos Android con NeuroCenter; además recibe un `Activity` para crear interfaz. Puede llamar directamente a API de Android y saltarse las comprobaciones de la API del host. Por tanto, este gestor es un sistema de capacidades cooperativo para apps de confianza, no una sandbox frente a código hostil. Para conseguir aislamiento real habría que ejecutar cada app como paquete/proceso Android independiente y comunicarla con NeuroCenter mediante IPC; eso requiere una arquitectura distinta a la de vistas embebidas actual.
+
+Cada paquete Android declara exactamente una clase `NeuroMobileApp`, de modo que su identidad, datos y permisos sean inequívocos.
