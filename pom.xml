@@ -14,12 +14,14 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
+        <lombok.version>1.18.42</lombok.version>
         <!-- Ubicación habitual de WiX 3.14 instalado mediante Chocolatey.
              Se puede cambiar con -Dwix.bin="ruta/a/WiX/bin". -->
         <wix.bin>C:/Program Files (x86)/WiX Toolset v3.14/bin</wix.bin>
     </properties>
 
     <dependencies>
+        <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><version>${lombok.version}</version><scope>provided</scope></dependency>
         <dependency>
             <groupId>com.formdev</groupId>
             <artifactId>flatlaf</artifactId>
@@ -61,6 +63,7 @@
     <build>
         <finalName>center-of-neurodivergence</finalName>
         <plugins>
+            <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.13.0</version><configuration><release>${maven.compiler.release}</release><annotationProcessorPaths><path><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><version>${lombok.version}</version></path></annotationProcessorPaths></configuration></plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>

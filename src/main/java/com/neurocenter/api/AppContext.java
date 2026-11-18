@@ -1,6 +1,7 @@
 package com.neurocenter.api;
 
 import java.awt.Window;
+import com.neurocenter.api.plugin.ServiceRegistry;
 
 /**
  * Servicios que el panel ofrece a cada app.
@@ -18,6 +19,9 @@ public interface AppContext extends NeuroAppContext {
     default NeuroPlatform platform() {
         return NeuroPlatform.DESKTOP;
     }
+
+    /** Servicios publicados por plugins. Las invocaciones se ejecutan en contexto privilegiado. */
+    ServiceRegistry services();
 
     /** Muestra un mensaje en la barra de estado inferior. */
     void setStatus(String message);

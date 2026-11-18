@@ -96,6 +96,13 @@ public final class NeuroCenterSecurity {
         }
     }
 
+    /** Registra un JAR de plugin como código de confianza total antes de cargar sus clases. */
+    static void registerTrustedPlugin(Path jar) throws Exception {
+        NeuroCenterPolicy active = policy;
+        if (active == null || System.getSecurityManager() == null) throw new IllegalStateException("La seguridad no está inicializada.");
+        active.registerTrustedPlugin(jar.toRealPath());
+    }
+
     /** Registra los permisos efectivos de un JAR antes de cargar sus clases. */
     static void registerExternalApp(Path jar, String appId, Set<String> grantedPermissions) throws Exception {
         NeuroCenterPolicy active = policy;
@@ -199,6 +206,7 @@ public final class NeuroCenterSecurity {
         private final String hostLocation;
         private final String appsDirectoryPrefix;
         private final boolean caseInsensitivePaths;
+        private final Set<String> trustedPlugins = java.util.concurrent.ConcurrentHashMap.newKeySet();
         private final java.util.concurrent.ConcurrentMap<String, PermissionCollection> appPermissions =
                 new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -210,6 +218,8 @@ public final class NeuroCenterSecurity {
             String appsUri = appsDirectory.toAbsolutePath().normalize().toUri().normalize().toString();
             this.appsDirectoryPrefix = appsUri.endsWith("/") ? appsUri : appsUri + "/";
         }
+
+        void registerTrustedPlugin(Path jar) throws Exception { trustedPlugins.add(locationKey(jar.toUri().toURL())); }
 
         void registerApp(Path jar, Path dataDirectory, Set<String> grantedPermissions) throws Exception {
             Path canonicalJar = jar.toRealPath();
@@ -277,7 +287,7 @@ public final class NeuroCenterSecurity {
             if (location == null) return delegate.implies(domain, permission);
 
             String key = locationKey(location);
-            if (hostLocation.equals(key)) return true;
+            if (hostLocation.equals(key) || trustedPlugins.contains(key)) return true;
 
             PermissionCollection appGrant = appPermissions.get(key);
             if (appGrant != null) return appGrant.implies(permission);
@@ -311,7 +321,7 @@ public final class NeuroCenterSecurity {
 
         private PermissionCollection permissionsFor(URL location, ProtectionDomain domain) {
             String key = locationKey(location);
-            if (hostLocation.equals(key)) return allPermissions();
+            if (hostLocation.equals(key) || trustedPlugins.contains(key)) return allPermissions();
 
             PermissionCollection appGrant = appPermissions.get(key);
             if (appGrant != null) return appGrant;

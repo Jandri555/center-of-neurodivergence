@@ -2,6 +2,9 @@ package com.neurocenter.core;
 
 import com.neurocenter.api.NeuroApp;
 import com.neurocenter.api.AppContext;
+import com.neurocenter.api.plugin.EventBus;
+import com.neurocenter.api.plugin.ExtensionRegistry;
+import com.neurocenter.api.plugin.ServiceRegistry;
 import com.neurocenter.apps.agenda.AgendaApp;
 import com.neurocenter.apps.pdfreader.PdfReaderApp;
 import com.neurocenter.ui.BadgeIcon;
@@ -83,6 +86,10 @@ public final class MainWindow extends JFrame {
 
     private final PropertiesStore appSettings;
     private AppRegistry appRegistry;
+    private final ServiceRegistry pluginServices = new ServiceRegistry();
+    private final EventBus pluginEvents = new EventBus();
+    private final ExtensionRegistry pluginExtensions = new ExtensionRegistry();
+    private PluginManager pluginManager;
     private final Map<String, NeuroApp> apps = new LinkedHashMap<>();
     private final Set<String> externalAppIds = new HashSet<>();
     private final Map<String, String> externalJarByAppId = new HashMap<>();
@@ -116,6 +123,9 @@ public final class MainWindow extends JFrame {
         Set<String> autorunJars = new HashSet<>();
         try {
             appRegistry = new AppRegistry(AppPaths.root().resolve("apps.db"));
+            pluginManager = new PluginManager(PluginPaths.pluginsDir(), pluginServices, pluginEvents,
+                    pluginExtensions, app -> register(app, false));
+            loadErrors.addAll(pluginManager.loadAll());
             AppLoader.Result externalApps = AppLoader.load(
                     AppPaths.appsDir(), appRegistry.securityProfilesByJar());
             loadErrors.addAll(externalApps.errors());
@@ -338,6 +348,7 @@ public final class MainWindow extends JFrame {
             }
         }
 
+        if (pluginManager != null) pluginManager.close();
         dispose();
         Thread terminator = new Thread(() -> {
             for (AppSession session : sessions) {
@@ -782,12 +793,13 @@ public final class MainWindow extends JFrame {
         JLabel message = new JLabel("Ajustes generales");
         root.add(message, BorderLayout.CENTER);
 
-        JPanel buttons = new JPanel(new GridLayout(1, 3, 8, 0));
-        String[] labels = {"Cambiar tema", "Gestionar temas", "Gestionar apps"};
+        JPanel buttons = new JPanel(new GridLayout(1, 4, 8, 0));
+        String[] labels = {"Cambiar tema", "Gestionar temas", "Gestionar apps", "Gestionar plugins"};
         Runnable[] actions = {
                 this::chooseTheme,
                 this::manageThemes,
-                this::manageApps
+                this::manageApps,
+                this::managePlugins
         };
         for (int i = 0; i < labels.length; i++) {
             final int index = i;
@@ -807,6 +819,35 @@ public final class MainWindow extends JFrame {
         dialog.setMinimumSize(new Dimension(500, dialog.getPreferredSize().height));
         dialog.setLocationRelativeTo(this);
         dialog.setVisible(true);
+    }
+
+    private void managePlugins() {
+        if (pluginManager == null) {
+            JOptionPane.showMessageDialog(this, "El gestor de plugins no se pudo inicializar.", "Gestionar plugins", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+        chooser.setDialogTitle("Instalar plugin de NeuroCenter");
+        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Plugins NeuroCenter (*.ncp)", "ncp"));
+        JButton install = new JButton("Instalar .ncp");
+        JPanel panel = new JPanel(new BorderLayout(0, 12));
+        StringBuilder html = new StringBuilder("<html><b>Plugins cargados</b><br>");
+        if (pluginManager.getPlugins().isEmpty()) html.append("No hay plugins cargados.");
+        else for (PluginManager.PluginInfo info : pluginManager.getPlugins()) html.append("• ").append(esc(info.name())).append(" ").append(esc(info.version())).append("<br>");
+        html.append("<br>Los plugins tienen acceso completo al sistema. Instala únicamente paquetes de confianza.<br>La instalación se activa al reiniciar NeuroCenter.</html>");
+        panel.add(new JLabel(html.toString()), BorderLayout.CENTER);
+        panel.add(install, BorderLayout.SOUTH);
+        install.addActionListener(e -> {
+            if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                try {
+                    pluginManager.install(chooser.getSelectedFile().toPath());
+                    JOptionPane.showMessageDialog(this, "Plugin instalado. Reinicia NeuroCenter para cargarlo.", "Gestionar plugins", JOptionPane.INFORMATION_MESSAGE);
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(this, ex.getMessage(), "No se pudo instalar", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+        JOptionPane.showMessageDialog(this, panel, "Gestionar plugins", JOptionPane.PLAIN_MESSAGE);
     }
 
     private void chooseTheme() {
@@ -1130,6 +1171,7 @@ public final class MainWindow extends JFrame {
         Ctx(NeuroApp app) { this.app = app; }
 
         @Override public Path dataDir() { return AppPaths.appDataDir(app.id()); }
+        @Override public ServiceRegistry services() { return pluginServices; }
 
         private synchronized PropertiesStore store() {
             if (store == null) store = new PropertiesStore(dataDir().resolve("settings.properties"));

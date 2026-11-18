@@ -45,6 +45,7 @@ public final class AppPaths {
             Files.createDirectories(appsDir());
             Files.createDirectories(themesDir());
             Files.createDirectories(dataDir());
+            PluginPaths.ensure();
 
             Path pending = ROOT.resolve("pending-uninstall.txt");
             if (Files.isRegularFile(pending)) {
