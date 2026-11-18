@@ -115,10 +115,9 @@ public final class AppLoader {
             copyLimited(source, part);
             Meta meta = readMeta(context, part.toFile(), isApk(fileName), fileName);
             meta.targets.require(NeuroPlatform.MOBILE, "la app «" + meta.name + "»");
-            if (meta.classNames.isEmpty()) {
-                throw new IOException("La app es compatible con móvil, pero no declara ninguna clase "
-                        + "NeuroMobileApp. Añade el metadato " + META_CLASS + " o el archivo "
-                        + SERVICES_ENTRY + ".");
+            if (meta.classNames.size() != 1) {
+                throw new IOException("Cada paquete Android debe declarar exactamente una clase "
+                        + "NeuroMobileApp. Esto permite asociar identidad, datos y permisos a una sola app.");
             }
             if (meta.id.trim().isEmpty()) throw new IOException("El paquete no proporciona un identificador válido.");
             if (registry.containsId(meta.id))
@@ -211,23 +210,27 @@ public final class AppLoader {
         File packageFile = file.toFile();
         Meta meta = readMeta(context, packageFile, isApk(name), name);
         meta.targets.require(NeuroPlatform.MOBILE, "la app «" + meta.name + "»");
-        if (meta.classNames.isEmpty())
-            throw new IOException("no declara ninguna app. Falta el metadato " + META_CLASS
-                    + " o " + SERVICES_ENTRY + ".");
+        if (meta.classNames.size() != 1)
+            throw new IOException("El paquete debe declarar exactamente una clase NeuroMobileApp.");
 
         // Android 14+: DexClassLoader lanza SecurityException si el archivo se puede escribir.
-        packageFile.setReadOnly();
+        if (!packageFile.setReadOnly()) {
+            throw new IOException("No se pudo garantizar que el paquete sea de solo lectura.");
+        }
 
         // Con optimizedDirectory = null, ART gestiona la caché compilada (API 26+).
         DexClassLoader loader = new DexClassLoader(packageFile.getAbsolutePath(), null, null,
                 AppLoader.class.getClassLoader());
-        for (String className : meta.classNames) {
-            Class<?> type = Class.forName(className, true, loader);
-            if (!NeuroMobileApp.class.isAssignableFrom(type))
-                throw new IOException(className + " no implementa com.neurocenter.api.NeuroMobileApp.");
-            NeuroMobileApp app = (NeuroMobileApp) type.getDeclaredConstructor().newInstance();
-            out.add(new LoadedApp(app, name));
+        String className = meta.classNames.iterator().next();
+        Class<?> type = Class.forName(className, true, loader);
+        if (!NeuroMobileApp.class.isAssignableFrom(type))
+            throw new IOException(className + " no implementa com.neurocenter.api.NeuroMobileApp.");
+        NeuroMobileApp app = (NeuroMobileApp) type.getDeclaredConstructor().newInstance();
+        if (app.id() == null || !meta.id.equals(app.id())) {
+            throw new IOException("El identificador declarado en el manifiesto («" + meta.id
+                    + "») no coincide con NeuroMobileApp.id() («" + app.id() + "").");
         }
+        out.add(new LoadedApp(app, name));
     }
 
     // ------------------------------------------------------------------ metadatos
