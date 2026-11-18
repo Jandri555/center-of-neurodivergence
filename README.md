@@ -11,14 +11,15 @@ Panel de escritorio en Java (Swing + FlatLaf) con varias apps integradas y exten
 
 ## Requisitos
 
-- JDK 17 o superior
+- JDK 21 (Temurin recomendado)
+- Maven 3.9 o superior
 - Maven 3.9 o superior
 
 ## Compilar y ejecutar
 
 ```bash
 mvn package
-java -jar target/center-of-neurodivergence.jar
+java -Djava.security.manager=allow -jar target/center-of-neurodivergence.jar
 ```
 
 
@@ -56,10 +57,10 @@ mvn package "-Dwix.bin=D:/Ruta/a/WiX/bin"
 
 La ruta predeterminada es `C:/Program Files (x86)/WiX Toolset v3.14/bin`.
 
-El instalador incluye un runtime de Java y crea accesos directos en el menú Inicio. La compilación de GitHub Actions instala WiX automáticamente y publica el `.exe` como artefacto de la ejecución.
+El instalador incluye un runtime privado de Java 21 y crea accesos directos en el menú Inicio. El lanzador activa el modo que permite a NeuroCenter instalar su Security Manager y la política de permisos antes de cargar aplicaciones externas. La compilación de GitHub Actions instala WiX automáticamente y publica el `.exe` como artefacto de la ejecución.
 
 
-**Compatibilidad con Temurin 25:** no se debe pasar manualmente `--module-path` a `jpackage` apuntando a `%JAVA_HOME%\\jmods`. Temurin 25 habilita JEP 493 y puede crear el runtime sin JMOD; forzar una carpeta `jmods` antigua puede mezclar módulos de distintas versiones de Java. Maven deja que `jpackage`/ `jlink` usen el runtime del mismo JDK que ejecuta la compilación.
+**Runtime fijado a Java 21:** el proyecto compila con `maven.compiler.release=21`, CI utiliza Temurin 21 y `jpackage` genera el runtime incluido desde ese mismo JDK. No se debe compilar el EXE con JDK 24 o posterior, porque esas versiones deshabilitan Security Manager.
 
 ## Datos de usuario
 
@@ -106,7 +107,11 @@ La API móvil se publica en el módulo Gradle `:neurocenter-api` del proyecto `a
 
 **Estado del host móvil:** el proyecto Android ya incluye la API móvil como biblioteca reutilizable, pero aún no incorpora el gestor/cargador de paquetes externos Android. Por tanto, la detección de plataforma y los contratos de las dos implementaciones están definidos, pero todavía no se pueden instalar y ejecutar APK de apps externas desde el host Android.
 
-**Seguridad:** una app externa es código ejecutado con los permisos de tu usuario. No existe aislamiento de seguridad entre una app externa y la aplicación principal. Instala únicamente paquetes de fuentes de confianza.
+**Seguridad de apps externas (Java 21):** NeuroCenter activa Security Manager al arrancar y aplica una política distinta al JAR de cada app. Por defecto, una app solo puede leer su propio JAR, utilizar su directorio privado `data/<id>/` y realizar las operaciones básicas necesarias para su interfaz. No puede leer o modificar el resto de los archivos del usuario, abrir conexiones de red, ejecutar procesos ni cargar bibliotecas nativas por los mecanismos ordinarios de Java.
+
+En **Ajustes → Gestionar apps → Configurar permisos** puedes conceder capacidades adicionales: conexiones de salida, conexiones entrantes, lectura o modificación de Documentos/Escritorio/Descargas y acceso al portapapeles. Los cambios se aplican al reiniciar. Las apps recién instaladas no reciben permisos adicionales.
+
+Esto es una barrera de permisos de Java, no un sandbox del sistema operativo: el código nativo y las vulnerabilidades de la JVM quedan fuera de su protección. Solo instala apps de desarrolladores de confianza. Security Manager funciona en Java 21, pero fue retirado en Java 24; por eso NeuroCenter fija su runtime a Java 21 y habrá que migrar esta arquitectura si se cambia de versión.
 
 ## Sincronización de Agenda con Android (en desarrollo)
 
