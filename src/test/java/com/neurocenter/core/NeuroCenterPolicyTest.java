@@ -24,7 +24,7 @@ class NeuroCenterPolicyTest {
 
         ProtectionDomain app = domain(paths.appJar().toRealPath().toUri().toURL());
 
-        assertTrue(policy.implies(app, new FilePermission(paths.appJar().toString(), "read")));
+        assertTrue(policy.implies(app, new FilePermission(paths.appJar().toRealPath().toString(), "read")));
         assertTrue(policy.implies(app,
                 new FilePermission(paths.data().resolve("settings.properties").toString(), "read")));
         assertTrue(policy.implies(app,
@@ -45,7 +45,7 @@ class NeuroCenterPolicyTest {
         NeuroCenterSecurity.NeuroCenterPolicy policy = newPolicy(paths.hostJar(), paths.apps());
         policy.registerApp(paths.appJar(), paths.data(), Set.of("network.connect"));
 
-        ProtectionDomain app = domain(paths.appJar().toUri().toURL());
+        ProtectionDomain app = domain(paths.appJar().toRealPath().toUri().toURL());
 
         assertTrue(policy.implies(app,
                 new SocketPermission("example.com:443", "connect,resolve")));
