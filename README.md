@@ -152,6 +152,12 @@ Ejemplo de `theme.json`:
     "mobile": false
   },
   "base": "dark",
+  "background": {
+    "image": "resources/background.png",
+    "darkening": 30,
+    "transparency": 10
+  },
+  "centerIcon": "resources/center-icon.png",
   "colors": {
     "background": "#171923",
     "surface": "#222635",
@@ -175,7 +181,15 @@ Ejemplo de `theme.json`:
 
 `compatibility.desktop` y `compatibility.mobile` indican en qué plataformas se puede aplicar el tema. Cada flag ausente equivale a `false`; ambos ausentes o ambos a `false` hacen que el tema no sea compatible con ningún dispositivo. Los temas antiguos también deben actualizar su manifiesto. Si se intenta instalar o aplicar en escritorio un tema solo móvil, se muestra un error de dispositivo no compatible. El host Android todavía no incluye el gestor de temas externos.
 
-`base` debe ser `light` u `dark` y determina el aspecto base de FlatLaf; `colors` sobrescribe los colores indicados. `appIcons` es opcional y usa los identificadores internos de las apps. Las rutas de iconos deben estar dentro de `resources/`. Se admiten imágenes que Java pueda leer, preferiblemente PNG. La app Android todavía no aplica temas externos: el flag móvil queda definido en el formato para el futuro gestor de temas Android.
+`base` debe ser `light` u `dark` y determina el aspecto base de FlatLaf; `colors` sobrescribe los colores indicados.
+
+- `background.image`: PNG de fondo. Se escala para cubrir el área de la ventana sin deformarse.
+- `background.darkening`: oscurecimiento de 0 a 100. El valor 0 no oscurece y 100 produce negro.
+- `background.transparency`: transparencia de la imagen de 0 a 100. El valor 0 es opaco y 100 hace invisible la imagen.
+- `centerIcon`: PNG para el icono de NeuroCenter. Se aplica a la ventana y a la bandeja del sistema. En Windows también actualiza los accesos directos existentes del Escritorio, menú Inicio y carpeta de accesos anclados a la barra de tareas, siempre que apunten al ejecutable de NeuroCenter. Si se omite, se restaura el icono integrado en el EXE.
+- `appIcons`: iconos opcionales de apps, asociados mediante sus identificadores internos.
+
+Todas las rutas deben permanecer dentro de `resources/`. El fondo y el icono de NeuroCenter deben ser PNG; los iconos de apps admiten formatos de imagen que Java pueda decodificar, aunque se recomienda PNG. Los recursos se validan al instalar el paquete. La app Android todavía no aplica temas externos: el flag móvil queda definido en el formato para el futuro gestor de temas Android.
 
 Por seguridad, el instalador rechaza rutas ZIP inseguras, archivos fuera de `theme.json` y `resources/`, más de 200 entradas o más de 20 MB descomprimidos.
 
