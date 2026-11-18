@@ -38,7 +38,7 @@ public final class Main {
         } catch (Exception ex) {
             singleInstance.close();
             JOptionPane.showMessageDialog(null,
-                    "No se pudo activar la protección de aplicaciones externas.\\n\\n"
+                    "No se pudo activar la protección de aplicaciones externas.\n\n"
                             + ex.getMessage(),
                     "No se pudo iniciar", JOptionPane.ERROR_MESSAGE);
             return;
