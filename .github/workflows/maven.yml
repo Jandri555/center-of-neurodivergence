@@ -21,17 +21,17 @@ concurrency:
 jobs:
 
   build-windows-exe:
-    name: Build Windows EXE installer (Java 17)
+    name: Build Windows EXE installer (Java 21)
     runs-on: windows-2022
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
           cache: maven
 
       - name: Install WiX Toolset 3.14
@@ -70,17 +70,17 @@ jobs:
           if-no-files-found: error
 
   build:
-    name: Build and test (Java 17)
+    name: Build and test (Java 21)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
           cache: maven
 
       - name: Build, test and install the desktop API
