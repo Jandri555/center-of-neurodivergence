@@ -87,6 +87,9 @@ public final class ThemeArchive {
             if (!base.equals("light") && !base.equals("dark"))
                 throw new IOException("El campo «base» debe ser «light» o «dark».");
 
+            // Comprueba también las imágenes referenciadas antes de instalar el tema.
+            ThemeManager.validateAssets(temp, json);
+
             Path destination = root.resolve(id);
             if (Files.exists(destination)) throw new IOException("Ya existe un tema con el identificador «" + id + "».");
             try {
