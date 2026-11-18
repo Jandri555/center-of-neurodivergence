@@ -10,10 +10,18 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.util.jar.Manifest;
 import java.security.AllPermission;
+import java.security.AccessControlContext;
+import java.security.AccessControlException;
+import java.security.AccessController;
 import java.security.CodeSource;
 import java.security.Permission;
+import java.security.PrivilegedAction;
+import java.security.ProtectionDomain;
 import java.security.PermissionCollection;
 import java.security.Permissions;
 import java.security.Policy;
@@ -99,6 +107,75 @@ public final class NeuroCenterSecurity {
         Path canonicalJar = jar.toRealPath();
         Path dataDirectory = AppPaths.appDataDir(appId);
         active.registerApp(canonicalJar, dataDirectory, grantedPermissions);
+    }
+
+    /**
+     * Smoke test usado por CI. Comprueba la instalación dinámica en Java 21 y
+     * que una ProtectionDomain de app no puede leer fuera de su carpeta privada,
+     * abrir red, cargar clases dinámicamente ni retirar el Security Manager.
+     */
+    public static void runSelfTest() throws Exception {
+        if (System.getSecurityManager() == null || policy == null) {
+            throw new IllegalStateException("Security Manager o política de NeuroCenter no instalados.");
+        }
+
+        String testId = "security-self-test-" + UUID.randomUUID();
+        Path testJar = AppPaths.appsDir().resolve(testId + ".jar");
+        Path privateDirectory = AppPaths.appDataDir(testId);
+        Path allowedFile = privateDirectory.resolve("allowed.txt");
+        Path forbiddenFile = AppPaths.dataDir().resolve(testId + "-forbidden.txt");
+
+        try {
+            Files.writeString(testJar, "test jar");
+            Files.writeString(allowedFile, "private data");
+            Files.writeString(forbiddenFile, "outside data");
+
+            registerExternalApp(testJar, testId, Set.of());
+
+            CodeSource codeSource = new CodeSource(
+                    testJar.toRealPath().toUri().toURL(),
+                    (java.security.cert.Certificate[]) null);
+            ProtectionDomain appDomain = new ProtectionDomain(
+                    codeSource, null, ClassLoader.getSystemClassLoader(), null);
+            AccessControlContext appContext = new AccessControlContext(
+                    new ProtectionDomain[]{appDomain});
+
+            String contents = AccessController.doPrivileged(
+                    (PrivilegedAction<String>) () -> {
+                        try {
+                            return Files.readString(allowedFile);
+                        } catch (java.io.IOException error) {
+                            throw new UncheckedIOException(error);
+                        }
+                    }, appContext);
+            if (!"private data".equals(contents)) {
+                throw new IllegalStateException("La app de prueba no pudo leer sus propios datos.");
+            }
+
+            expectDenied(appContext, new FilePermission(forbiddenFile.toString(), "read"));
+            expectDenied(appContext, new SocketPermission("example.com:443", "connect"));
+            expectDenied(appContext, new RuntimePermission("createClassLoader"));
+            expectDenied(appContext, new RuntimePermission("loadLibrary.neurocenter_test"));
+            expectDenied(appContext, new RuntimePermission("setSecurityManager"));
+            expectDenied(appContext, new SecurityPermission("setPolicy"));
+        } finally {
+            Files.deleteIfExists(allowedFile);
+            Files.deleteIfExists(forbiddenFile);
+            Files.deleteIfExists(testJar);
+            Files.deleteIfExists(privateDirectory);
+        }
+    }
+
+    private static void expectDenied(AccessControlContext context, Permission permission) {
+        try {
+            AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+                AccessController.checkPermission(permission);
+                return null;
+            }, context);
+        } catch (AccessControlException expected) {
+            return;
+        }
+        throw new IllegalStateException("Una operación que debía bloquearse recibió permiso: " + permission);
     }
 
     public static List<AppPermission> supportedPermissions() {
