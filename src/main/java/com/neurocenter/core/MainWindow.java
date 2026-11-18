@@ -38,6 +38,7 @@ import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.AWTException;
 import java.awt.Frame;
+import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.MenuItem;
@@ -135,6 +136,7 @@ public final class MainWindow extends JFrame {
         setSize(1240, 800);
         setLocationRelativeTo(null);
         initializeTrayIcon();
+        refreshProgramIcon();
         showApp(HOME);
 
         // Las apps con autorun arrancan en segundo plano, pero Inicio permanece
@@ -218,8 +220,39 @@ public final class MainWindow extends JFrame {
         }
     }
 
-    /** Crea un icono sencillo para la bandeja sin depender de archivos externos. */
+    /**
+     * Actualiza el icono de ventana, bandeja y accesos directos de Windows.
+     * La búsqueda de .lnk se hace fuera del EDT y solo modifica los que apuntan
+     * exactamente al ejecutable de esta instalación.
+     */
+    private void refreshProgramIcon() {
+        setIconImage(createTrayImage());
+        if (trayIcon != null) {
+            trayIcon.setImage(createTrayImage());
+            trayIcon.setToolTip(AppInfo.NAME);
+        }
+
+        Path customIcon = ThemeManager.centerIconPath();
+        Thread updater = new Thread(() -> {
+            try {
+                int updated = WindowsShortcutManager.refresh(customIcon);
+                if (updated > 0) {
+                    System.out.println("Icono de NeuroCenter actualizado en " + updated + " accesos directos.");
+                }
+            } catch (Exception ex) {
+                System.err.println("No se pudieron actualizar los accesos directos de NeuroCenter: "
+                        + ex.getMessage());
+            }
+        }, "windows-shortcut-icon-refresh");
+        updater.setDaemon(true);
+        updater.start();
+    }
+
+    /** Crea el icono de la bandeja desde el tema o usa el icono integrado de reserva. */
     private Image createTrayImage() {
+        Image themed = ThemeManager.centerIconImage(32);
+        if (themed != null) return themed;
+
         BufferedImage image = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
         Graphics2D graphics = image.createGraphics();
         try {
@@ -325,8 +358,17 @@ public final class MainWindow extends JFrame {
     // ------------------------------------------------------------------ interfaz
 
     private void buildUi() {
-        setLayout(new BorderLayout());
-        add(buildSidebar(), BorderLayout.WEST);
+        JPanel rootPanel = new JPanel(new BorderLayout()) {
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                super.paintComponent(graphics);
+                ThemeManager.paintBackground((Graphics2D) graphics, getWidth(), getHeight());
+            }
+        };
+        rootPanel.setOpaque(true);
+        setContentPane(rootPanel);
+
+        rootPanel.add(buildSidebar(), BorderLayout.WEST);
 
         settingsButton = new JButton("⚙");
         settingsButton.setToolTipText("Ajustes generales");
@@ -338,23 +380,28 @@ public final class MainWindow extends JFrame {
         settingsButton.setOpaque(false);
         settingsButton.addActionListener(e -> openSettings());
         JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 8));
+        topBar.setOpaque(false);
         topBar.add(settingsButton);
-        add(topBar, BorderLayout.NORTH);
+        rootPanel.add(topBar, BorderLayout.NORTH);
 
+        content.setOpaque(false);
         content.add(buildHome(), HOME);
-        add(content, BorderLayout.CENTER);
+        rootPanel.add(content, BorderLayout.CENTER);
 
         JPanel statusBar = new JPanel(new BorderLayout());
+        statusBar.setOpaque(false);
         statusBar.setBorder(new EmptyBorder(5, 14, 5, 14));
         statusBar.add(statusLabel, BorderLayout.CENTER);
         JPanel south = new JPanel(new BorderLayout());
+        south.setOpaque(false);
         south.add(new JSeparator(), BorderLayout.NORTH);
         south.add(statusBar, BorderLayout.CENTER);
-        add(south, BorderLayout.SOUTH);
+        rootPanel.add(south, BorderLayout.SOUTH);
     }
 
     private JComponent buildSidebar() {
         JPanel side = new JPanel();
+        side.setOpaque(false);
         side.setLayout(new BoxLayout(side, BoxLayout.Y_AXIS));
         side.setBorder(new EmptyBorder(22, 12, 14, 12));
         side.setPreferredSize(new Dimension(236, 10));
@@ -386,6 +433,7 @@ public final class MainWindow extends JFrame {
         side.add(Box.createVerticalGlue());
 
         JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setOpaque(false);
         wrapper.add(side, BorderLayout.CENTER);
         wrapper.add(new JSeparator(SwingConstants.VERTICAL), BorderLayout.EAST);
         return wrapper;
@@ -443,6 +491,7 @@ public final class MainWindow extends JFrame {
 
     private JComponent buildHome() {
         JPanel root = new JPanel(new BorderLayout(0, 24));
+        root.setOpaque(false);
         root.setBorder(new EmptyBorder(36, 44, 24, 44));
 
         JLabel heading = new JLabel("<html><div style='font-size:22pt'><b>Tus apps</b></div>"
@@ -450,10 +499,14 @@ public final class MainWindow extends JFrame {
         root.add(heading, BorderLayout.NORTH);
 
         JPanel grid = new JPanel(new GridLayout(0, 2, 16, 16));
+        grid.setOpaque(false);
         for (NeuroApp p : apps.values()) grid.add(buildCard(p));
         JPanel gridTop = new JPanel(new BorderLayout());
+        gridTop.setOpaque(false);
         gridTop.add(grid, BorderLayout.NORTH);
         JScrollPane scroll = new JScrollPane(gridTop);
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
         scroll.setBorder(null);
         scroll.getVerticalScrollBar().setUnitIncrement(16);
         root.add(scroll, BorderLayout.CENTER);
@@ -788,6 +841,8 @@ public final class MainWindow extends JFrame {
     }
 
     private void refreshThemeIcons() {
+        refreshProgramIcon();
+        repaint();
         for (Map.Entry<String, JToggleButton> entry : navButtons.entrySet()) {
             NeuroApp app = apps.get(entry.getKey());
             if (app != null) entry.getValue().setIcon(iconFor(app, 24));
