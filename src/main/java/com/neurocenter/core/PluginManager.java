@@ -67,7 +67,7 @@ public final class PluginManager implements AutoCloseable {
         } catch (IOException error) { return List.of(); }
     }
 
-    public synchronized boolean isEnabled(String packageName) {
+    public synchronized boolean isEnabled(String packageName) throws IOException {
         return !Files.exists(disabledMarker(safeArchive(packageName)));
     }
 
