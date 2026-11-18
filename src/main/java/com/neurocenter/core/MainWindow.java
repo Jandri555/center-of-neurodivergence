@@ -116,7 +116,7 @@ public final class MainWindow extends JFrame {
         this.appSettings = appSettings;
 
         // 1) Apps integradas en el propio .jar
-        register(new AgendaApp(), false);
+        register(new AgendaApp(pluginServices), false);
         register(new PdfReaderApp(), false);
 
         // 2) Apps externas: solo se cargan los JAR inscritos en el registro SQLite.

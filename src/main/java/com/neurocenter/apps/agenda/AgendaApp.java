@@ -4,6 +4,8 @@ import com.neurocenter.api.NeuroApp;
 import com.neurocenter.api.AppContext;
 import com.neurocenter.api.services.AgendaService;
 import com.neurocenter.api.services.ExternalTask;
+import com.neurocenter.api.plugin.ServiceRegistry;
+import com.neurocenter.core.AppPaths;
 
 import javax.swing.JComponent;
 import javax.swing.JOptionPane;
@@ -20,10 +22,40 @@ import java.util.List;
  */
 public final class AgendaApp implements NeuroApp {
 
-    private AgendaStore store;
+    private final AgendaStore store;
     private AppContext context;
     private Timer reminderTimer;
     private AgendaPanel agendaPanel;
+
+
+    public AgendaApp(ServiceRegistry services) {
+        store = new AgendaStore(AppPaths.appDataDir("agenda").resolve("agenda.json"));
+        store.load();
+        services.register(AgendaService.class, (source, tasks) -> {
+            if (source == null || source.isBlank()) throw new IllegalArgumentException("El origen de importación es obligatorio.");
+            int changed = 0;
+            for (ExternalTask task : tasks) {
+                AgendaEntry existing = store.all().stream()
+                        .filter(item -> source.equals(item.externalSource) && task.externalId().equals(item.externalId))
+                        .findFirst().orElse(null);
+                if (existing == null) {
+                    existing = new AgendaEntry();
+                    existing.externalSource = source;
+                    existing.externalId = task.externalId();
+                    store.add(existing);
+                }
+                existing.type = AgendaEntry.TASK;
+                existing.title = task.title();
+                existing.date = task.dueDate() == null ? null : task.dueDate().toString();
+                existing.time = task.dueTime() == null ? null : task.dueTime().toString();
+                existing.notes = task.notes();
+                existing.done = task.completed();
+                changed++;
+            }
+            if (changed > 0) store.save();
+            return changed;
+        });
+    }
 
     @Override public String id() { return "agenda"; }
     @Override public String name() { return "Agenda"; }
@@ -35,9 +67,6 @@ public final class AgendaApp implements NeuroApp {
     @Override
     public void start(AppContext ctx) {
         this.context = ctx;
-        store = new AgendaStore(ctx.dataDir().resolve("agenda.json"));
-        store.load();
-
         ctx.services().register(AgendaService.class, (source, tasks) -> {
             if (source == null || source.isBlank()) throw new IllegalArgumentException("El origen de importación es obligatorio.");
             int changed = 0;
@@ -78,7 +107,6 @@ public final class AgendaApp implements NeuroApp {
     @Override
     public void stop() {
         if (reminderTimer != null) reminderTimer.stop();
-        if (context != null) context.services().unregister(AgendaService.class);
         if (agendaPanel != null) {
             agendaPanel.closeSyncSession();
             agendaPanel = null;
