@@ -233,3 +233,29 @@ com.neurocenter
 - No se admiten PDF protegidos con contraseña.
 - Los cambios de instalación y desinstalación requieren reiniciar la aplicación.
 - El reflujo de texto del PDF usa heurísticas y puede alterar el orden en documentos complejos.
+
+
+## Sistema de plugins (API v1)
+
+NeuroCenter separa las aplicaciones de los plugins:
+
+- **Aplicaciones:** implementan `NeuroApp`, se cargan como JAR externos y conservan su política de permisos.
+- **Plugins:** implementan `NeuroPlugin`, se distribuyen como paquetes ZIP `.ncp` y se ejecutan como código de confianza total.
+
+Los plugins se instalan desde **Ajustes → Gestionar plugins**. Pueden registrar servicios, escuchar eventos, contribuir a puntos de extensión y registrar nuevas aplicaciones en el centro. La API de aplicaciones expone `AppContext.services()`, `events()` y `extensions()`.
+
+### Ciclo de vida de un plugin
+
+`onLoad(PluginContext)` → `onEnable()` → `onDisable()` → `onUnload()`.
+
+Un paquete `.ncp` contiene `plugin.json`, `plugin.jar` y, opcionalmente, dependencias JAR en `lib/`. El manifiesto declara `id`, `name`, `version`, `apiVersion` y `entrypoint`.
+
+### Servicios y privilegios
+
+Los plugins tienen `AllPermission`; no existe un diálogo de permisos para ellos. Las aplicaciones no heredan esos permisos: consumen interfaces de servicio a través de un proxy privilegiado. Instala únicamente plugins de confianza, ya que un plugin puede leer/modificar archivos, acceder a la red, cargar código nativo y alterar el propio proceso.
+
+El primer contrato funcional es `AgendaBridgeService`. El plugin Agenda Bridge traduce las solicitudes de una aplicación a `AgendaService`, que actualiza la agenda de forma idempotente usando el origen y el identificador externo de cada tarea.
+
+### Lombok
+
+NeuroCenter utiliza Lombok `1.18.42` como dependencia `provided` y procesador de anotaciones de Maven. Lombok solo interviene durante la compilación; no se incorpora al runtime distribuido.
