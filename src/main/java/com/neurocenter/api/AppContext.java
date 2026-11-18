@@ -43,7 +43,9 @@ public interface AppContext extends NeuroAppContext {
      * Abre un enlace HTTP o HTTPS con el navegador predeterminado a través del host.
      * La app no necesita permisos de ejecución del sistema para esta operación.
      */
-    void openExternalUrl(URI uri);
+    default void openExternalUrl(URI uri) {
+        throw new UnsupportedOperationException("El host no proporciona apertura de enlaces externos.");
+    }
 
     /** Trae la ventana al frente (y la restaura si estaba minimizada). Útil para avisos. */
     void requestAttention();
