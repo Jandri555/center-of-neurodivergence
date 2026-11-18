@@ -253,8 +253,10 @@ public final class ThemeManager {
         if (windowBackground != null) UIManager.put("RootPane.background", windowBackground);
 
         activeTheme = theme;
-        activeBackgroundImage = theme.background() == null
+        BufferedImage backgroundSource = theme.background() == null
                 ? null : readImageOrNull(theme.background().image(), "imagen de fondo");
+        activeBackgroundImage = backgroundSource == null ? null
+                : darkenImage(backgroundSource, theme.background().darkening());
         activeCenterIconImage = theme.centerIcon() == null
                 ? null : readImageOrNull(theme.centerIcon(), "icono de NeuroCenter");
         FlatLaf.updateUI();
@@ -390,6 +392,24 @@ public final class ThemeManager {
         }
     }
 
+    private static BufferedImage darkenImage(BufferedImage source, int darkness) {
+        if (darkness <= 0) return source;
+        BufferedImage result = new BufferedImage(source.getWidth(), source.getHeight(),
+                BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = result.createGraphics();
+        try {
+            graphics.drawImage(source, 0, 0, null);
+            // SRC_ATOP conserva el canal alfa original: solo se oscurecen los
+            // píxeles que realmente pertenecen a la imagen, no el fondo base.
+            graphics.setComposite(AlphaComposite.SrcAtop.derive(darkness / 100f));
+            graphics.setColor(Color.BLACK);
+            graphics.fillRect(0, 0, result.getWidth(), result.getHeight());
+        } finally {
+            graphics.dispose();
+        }
+        return result;
+    }
+
     /** Pinta el fondo del tema ocupando el área disponible, sin deformar la imagen. */
     public static synchronized void paintBackground(Graphics2D graphics, int width, int height) {
         if (width <= 0 || height <= 0) return;
@@ -413,13 +433,6 @@ public final class ThemeManager {
         float imageOpacity = 1f - activeTheme.background().transparency() / 100f;
         graphics.setComposite(AlphaComposite.SrcOver.derive(imageOpacity));
         graphics.drawImage(image, x, y, drawWidth, drawHeight, null);
-        graphics.setComposite(AlphaComposite.SrcOver);
-
-        int darkness = activeTheme.background().darkening();
-        if (darkness > 0) {
-            graphics.setColor(new Color(0, 0, 0, Math.round(darkness * 255f / 100f)));
-            graphics.fillRect(0, 0, width, height);
-        }
         graphics.setComposite(oldComposite);
         if (oldHint != null) graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, oldHint);
     }
