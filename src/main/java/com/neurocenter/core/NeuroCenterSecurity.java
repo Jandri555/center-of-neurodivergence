@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.security.AllPermission;
 import java.security.CodeSource;
@@ -19,7 +18,6 @@ import java.security.PermissionCollection;
 import java.security.Permissions;
 import java.security.Policy;
 import java.security.ProtectionDomain;
-import java.security.SecurityPermission;
 import java.util.PropertyPermission;
 
 /**
@@ -120,7 +118,7 @@ public final class NeuroCenterSecurity {
                 .orElse("Ninguno");
     }
 
-    private static final class NeuroCenterPolicy extends Policy {
+    static final class NeuroCenterPolicy extends Policy {
         private final Policy delegate;
         private final String hostLocation;
         private final Path appsDirectory;
