@@ -52,29 +52,32 @@ public final class WindowsShortcutManager {
     private WindowsShortcutManager() {}
 
     /**
-     * @param customIcon ruta del ICO personalizado; null restaura el icono integrado en el EXE.
+     * @param customIconPng ruta del PNG personalizado; null restaura el icono integrado en el EXE.
      * @return número de accesos directos actualizados.
      */
-    public static int refresh(Path customIcon) throws IOException, InterruptedException {
+    public static int refresh(Path customIconPng) throws IOException, InterruptedException {
         if (!isWindows()) return 0;
 
         Path executable = applicationExecutable();
         if (executable == null) {
             throw new IOException("No se pudo localizar el ejecutable instalado de NeuroCenter.");
         }
-        if (customIcon != null && !Files.isRegularFile(customIcon)) {
-            throw new IOException("No se encuentra el icono personalizado: " + customIcon);
+        if (customIconPng != null && !Files.isRegularFile(customIconPng)) {
+            throw new IOException("No se encuentra el icono personalizado: " + customIconPng);
         }
 
         List<String> roots = shortcutRoots();
         if (roots.isEmpty()) return 0;
+
+        Path iconFile = customIconPng == null ? null
+                : WindowsIconFile.write(customIconPng, AppPaths.root().resolve("center-icon.ico"));
 
         ProcessBuilder builder = new ProcessBuilder(
                 "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
                 "-ExecutionPolicy", "Bypass", "-Command", POWERSHELL_SCRIPT);
         Map<String, String> environment = builder.environment();
         environment.put("NC_SHORTCUT_TARGET", executable.toString());
-        environment.put("NC_SHORTCUT_ICON", customIcon == null ? "" : customIcon.toAbsolutePath().toString());
+        environment.put("NC_SHORTCUT_ICON", iconFile == null ? "" : iconFile.toString());
         environment.put("NC_SHORTCUT_ROOTS", String.join(";", roots));
         builder.redirectErrorStream(true);
 
@@ -88,6 +91,7 @@ public final class WindowsShortcutManager {
         if (process.exitValue() != 0) {
             throw new IOException("PowerShell no pudo actualizar los accesos directos. " + output);
         }
+        if (iconFile == null) Files.deleteIfExists(AppPaths.root().resolve("center-icon.ico"));
         try {
             return Integer.parseInt(output.lines().reduce((first, second) -> second).orElse("0").trim());
         } catch (NumberFormatException ex) {
