@@ -15,12 +15,18 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
         <lombok.version>1.18.42</lombok.version>
+        <jna.version>5.19.1</jna.version>
         <!-- Ubicación habitual de WiX 3.14 instalado mediante Chocolatey.
              Se puede cambiar con -Dwix.bin="ruta/a/WiX/bin". -->
         <wix.bin>C:/Program Files (x86)/WiX Toolset v3.14/bin</wix.bin>
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna</artifactId>
+            <version>${jna.version}</version>
+        </dependency>
         <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><version>${lombok.version}</version><scope>provided</scope></dependency>
         <dependency>
             <groupId>com.formdev</groupId>
