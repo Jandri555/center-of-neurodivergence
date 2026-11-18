@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.io.FilePermission;
 import java.net.SocketPermission;
 import java.net.URL;
+import java.net.URLPermission;
 import java.security.CodeSource;
 import java.security.Policy;
 import java.security.ProtectionDomain;
@@ -53,6 +54,19 @@ class NeuroCenterPolicyTest {
                 new SocketPermission("example.com:443", "listen")));
         assertFalse(policy.implies(app,
                 new FilePermission(paths.otherFile().toString(), "read")));
+    }
+
+    @Test
+    void networkPermissionAllowsNestedHttpsRequestsWithHeaders() throws Exception {
+        var paths = createPaths();
+        NeuroCenterSecurity.NeuroCenterPolicy policy = newPolicy(paths.hostJar(), paths.apps());
+        policy.registerApp(paths.appJar(), paths.data(), Set.of("network.connect"));
+
+        ProtectionDomain app = domain(paths.appJar().toRealPath().toUri().toURL());
+
+        assertTrue(policy.implies(app, new URLPermission(
+                "https://centros.edu.xunta.gal/iesteis/aulavirtual/webservice/rest/server.php",
+                "POST:Accept,Content-Type")));
     }
 
     @Test
