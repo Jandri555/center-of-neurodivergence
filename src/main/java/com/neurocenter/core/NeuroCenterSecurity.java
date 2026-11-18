@@ -204,8 +204,11 @@ public final class NeuroCenterSecurity {
 
         NeuroCenterPolicy(Policy delegate, URL hostLocation, Path appsDirectory) {
             this.delegate = delegate;
+            this.caseInsensitivePaths = System.getProperty("os.name", "")
+                    .toLowerCase(java.util.Locale.ROOT).contains("win");
             this.hostLocation = locationKey(hostLocation);
-            this.appsDirectory = appsDirectory.toAbsolutePath().normalize();
+            String appsUri = appsDirectory.toAbsolutePath().normalize().toUri().normalize().toString();
+            this.appsDirectoryPrefix = appsUri.endsWith("/") ? appsUri : appsUri + "/";
         }
 
         void registerApp(Path jar, Path dataDirectory, Set<String> grantedPermissions) throws Exception {
