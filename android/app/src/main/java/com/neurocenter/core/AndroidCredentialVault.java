@@ -210,7 +210,7 @@ public final class AndroidCredentialVault {
     private static void validate(String appId, String name) {
         if (appId == null || !appId.matches("[A-Za-z0-9._-]{1,128}"))
             throw new IllegalArgumentException("Identificador de aplicación no válido.");
-        if (name == null || name.isBlank() || name.length() > 128)
+        if (name == null || name.trim().isEmpty() || name.length() > 128)
             throw new IllegalArgumentException("Nombre de credencial no válido.");
     }
 }
