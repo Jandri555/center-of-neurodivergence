@@ -96,6 +96,16 @@ public final class AppLoader {
                 try {
                     ServiceLoader<NeuroApp> serviceLoader = ServiceLoader.load(NeuroApp.class, loader);
                     for (NeuroApp app : serviceLoader) {
+                        String actualId = app.id();
+                        if (actualId == null || !profile.appId().equals(actualId)) {
+                            errors.add(name + ": el identificador de NeuroApp («" + actualId
+                                    + "») no coincide con NeuroCenter-App-Id («" + profile.appId() + "»).");
+                            continue;
+                        }
+                        if (found > 0) {
+                            errors.add(name + ": un JAR solo puede registrar una app; cada app debe instalarse por separado.");
+                            break;
+                        }
                         apps.add(new LoadedApp(app, name));
                         found++;
                     }
