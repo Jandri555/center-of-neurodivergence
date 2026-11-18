@@ -38,6 +38,7 @@ import java.awt.Component;
 import java.awt.Container;
 import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.Desktop;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.AWTException;
@@ -60,11 +61,16 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
 import java.io.StringWriter;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.net.URI;
 import java.nio.file.Path;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1208,6 +1214,32 @@ public final class MainWindow extends JFrame {
         }
 
         @Override public Window window() { return MainWindow.this; }
+
+        @Override public void openExternalUrl(URI uri) {
+            if (uri == null || uri.getHost() == null
+                    || (!"http".equalsIgnoreCase(uri.getScheme())
+                    && !"https".equalsIgnoreCase(uri.getScheme()))) {
+                throw new IllegalArgumentException("Solo se pueden abrir enlaces HTTP o HTTPS.");
+            }
+
+            // La integración con el navegador pertenece al host de confianza.
+            // No se concede a la app permiso general para ejecutar archivos.
+            AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+                try {
+                    if (!Desktop.isDesktopSupported()) {
+                        throw new IllegalStateException("Este sistema no permite abrir el navegador desde NeuroCenter.");
+                    }
+                    Desktop desktop = Desktop.getDesktop();
+                    if (!desktop.isSupported(Desktop.Action.BROWSE)) {
+                        throw new IllegalStateException("No hay un navegador predeterminado disponible.");
+                    }
+                    desktop.browse(uri);
+                    return null;
+                } catch (IOException error) {
+                    throw new UncheckedIOException("No se pudo abrir el enlace.", error);
+                }
+            });
+        }
 
         @Override public void requestAttention() {
             SwingUtilities.invokeLater(() -> {
