@@ -2,6 +2,7 @@ package com.neurocenter;
 
 import com.neurocenter.core.AppPaths;
 import com.neurocenter.core.MainWindow;
+import com.neurocenter.core.NeuroCenterSecurity;
 import com.neurocenter.core.PropertiesStore;
 import com.neurocenter.core.SingleInstance;
 import com.neurocenter.core.ThemeManager;
@@ -30,6 +31,18 @@ public final class Main {
             return;
         }
         if (singleInstance == null) return;
+
+        // Activar la política antes de que AppLoader descubra o ejecute JAR externos.
+        try {
+            NeuroCenterSecurity.install();
+        } catch (Exception ex) {
+            singleInstance.close();
+            JOptionPane.showMessageDialog(null,
+                    "No se pudo activar la protección de aplicaciones externas.\\n\\n"
+                            + ex.getMessage(),
+                    "No se pudo iniciar", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
 
         Runtime.getRuntime().addShutdownHook(
                 new Thread(singleInstance::close, "single-instance-shutdown"));
