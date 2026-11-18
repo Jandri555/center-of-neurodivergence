@@ -1,0 +1,3 @@
+package com.neurocenter.api.plugin;
+import java.util.*;import java.util.concurrent.*;
+public final class ExtensionRegistry {private final Map<String,CopyOnWriteArrayList<Object>> items=new ConcurrentHashMap<>();public <T> void contribute(String point,T value){if(point==null||point.isBlank())throw new IllegalArgumentException("Punto de extensión vacío.");items.computeIfAbsent(point,k->new CopyOnWriteArrayList<>()).add(Objects.requireNonNull(value));}public <T> List<T> contributions(String point,Class<T> type){return items.getOrDefault(point,new CopyOnWriteArrayList<>()).stream().filter(type::isInstance).map(type::cast).toList();}public void clear(String point){items.remove(point);}}

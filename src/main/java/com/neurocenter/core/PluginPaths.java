@@ -1,0 +1,3 @@
+package com.neurocenter.core;
+import java.io.IOException;import java.nio.file.*;
+public final class PluginPaths {private PluginPaths(){}public static Path pluginsDir(){return AppPaths.root().resolve("plugins");}public static Path dataDir(String id){String s=id==null?"":id.replaceAll("[^A-Za-z0-9._-]","_");if(s.isBlank()||s.chars().allMatch(c->c=='.'))s="_";Path p=AppPaths.root().resolve("plugin-data").resolve(s);try{Files.createDirectories(p);}catch(IOException e){throw new java.io.UncheckedIOException(e);}return p;}public static void ensure()throws IOException{Files.createDirectories(pluginsDir());Files.createDirectories(AppPaths.root().resolve("plugin-data"));}}

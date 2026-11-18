@@ -1,0 +1,3 @@
+package com.neurocenter.api.plugin;
+import java.util.List;import java.util.concurrent.CopyOnWriteArrayList;import java.util.function.Consumer;
+public final class EventBus {private final List<Listener<?>> listeners=new CopyOnWriteArrayList<>();public <T> Subscription subscribe(Class<T> c,Consumer<T> consumer){Listener<T> l=new Listener<>(c,consumer);listeners.add(l);return ()->listeners.remove(l);}public void publish(Object e){if(e!=null)listeners.forEach(l->l.dispatch(e));}@FunctionalInterface public interface Subscription extends AutoCloseable{@Override void close();}private record Listener<T>(Class<T> type,Consumer<T> consumer){void dispatch(Object e){if(type.isInstance(e))consumer.accept(type.cast(e));}}}
