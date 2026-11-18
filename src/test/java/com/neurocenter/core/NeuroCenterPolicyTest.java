@@ -22,7 +22,7 @@ class NeuroCenterPolicyTest {
         NeuroCenterSecurity.NeuroCenterPolicy policy = newPolicy(paths.hostJar(), paths.apps());
         policy.registerApp(paths.appJar(), paths.data(), Set.of());
 
-        ProtectionDomain app = domain(paths.appJar().toUri().toURL());
+        ProtectionDomain app = domain(paths.appJar().toRealPath().toUri().toURL());
 
         assertTrue(policy.implies(app, new FilePermission(paths.appJar().toString(), "read")));
         assertTrue(policy.implies(app,
@@ -60,7 +60,7 @@ class NeuroCenterPolicyTest {
         var paths = createPaths();
         NeuroCenterSecurity.NeuroCenterPolicy policy = newPolicy(paths.hostJar(), paths.apps());
 
-        ProtectionDomain host = domain(paths.hostJar().toUri().toURL());
+        ProtectionDomain host = domain(paths.hostJar().toRealPath().toUri().toURL());
         ProtectionDomain unregistered = domain(paths.appJar().toUri().toURL());
 
         assertTrue(policy.implies(host, new FilePermission("<<ALL FILES>>", "read,write,delete")));
@@ -71,7 +71,7 @@ class NeuroCenterPolicyTest {
     private static NeuroCenterSecurity.NeuroCenterPolicy newPolicy(java.nio.file.Path hostJar,
                                                                     java.nio.file.Path apps) throws Exception {
         return new NeuroCenterSecurity.NeuroCenterPolicy(
-                Policy.getPolicy(), hostJar.toUri().toURL(), apps);
+                Policy.getPolicy(), hostJar.toRealPath().toUri().toURL(), apps);
     }
 
     private static ProtectionDomain domain(URL location) {
