@@ -2,6 +2,8 @@ package com.neurocenter.core;
 
 import com.neurocenter.api.NeuroApp;
 import com.neurocenter.api.AppContext;
+import com.neurocenter.api.agenda.AgendaService;
+import com.neurocenter.apps.agenda.AgendaServiceProvider;
 import com.neurocenter.apps.agenda.AgendaApp;
 import com.neurocenter.apps.pdfreader.PdfReaderApp;
 import com.neurocenter.ui.BadgeIcon;
@@ -1068,6 +1070,7 @@ public final class MainWindow extends JFrame {
     private final class Ctx implements AppContext {
         private final NeuroApp app;
         private PropertiesStore store;
+        private AgendaService agendaService;
 
         Ctx(NeuroApp app) { this.app = app; }
 
@@ -1081,6 +1084,14 @@ public final class MainWindow extends JFrame {
         @Override public String getSetting(String key, String defaultValue) { return store().get(key, defaultValue); }
 
         @Override public void putSetting(String key, String value) { store().put(key, value); }
+
+        @Override public synchronized AgendaService agenda() {
+            if (agendaService == null) {
+                Path agendaFile = AppPaths.appDataDir("agenda").resolve("agenda.json");
+                agendaService = AgendaServiceProvider.open(agendaFile);
+            }
+            return agendaService;
+        }
 
         @Override public void setStatus(String message) {
             String text = message == null || message.isBlank() ? " " : message;
