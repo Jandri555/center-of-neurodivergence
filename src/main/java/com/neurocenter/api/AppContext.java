@@ -47,6 +47,24 @@ public interface AppContext extends NeuroAppContext {
         throw new UnsupportedOperationException("El host no proporciona apertura de enlaces externos.");
     }
 
+    /**
+     * Guarda un secreto en el almacén seguro del sistema operativo.
+     * Las claves se aíslan automáticamente por identificador de aplicación.
+     */
+    default void saveSecret(String key, char[] secret) {
+        throw new UnsupportedOperationException("El host no proporciona un almacén seguro de credenciales.");
+    }
+
+    /** Recupera un secreto guardado, o null cuando no existe. */
+    default char[] loadSecret(String key) {
+        throw new UnsupportedOperationException("El host no proporciona un almacén seguro de credenciales.");
+    }
+
+    /** Elimina un secreto guardado. */
+    default void deleteSecret(String key) {
+        throw new UnsupportedOperationException("El host no proporciona un almacén seguro de credenciales.");
+    }
+
     /** Trae la ventana al frente (y la restaura si estaba minimizada). Útil para avisos. */
     void requestAttention();
 }
