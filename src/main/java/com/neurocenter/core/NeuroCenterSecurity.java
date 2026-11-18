@@ -197,7 +197,8 @@ public final class NeuroCenterSecurity {
     static final class NeuroCenterPolicy extends Policy {
         private final Policy delegate;
         private final String hostLocation;
-        private final Path appsDirectory;
+        private final String appsDirectoryPrefix;
+        private final boolean caseInsensitivePaths;
         private final java.util.concurrent.ConcurrentMap<String, PermissionCollection> appPermissions =
                 new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -319,13 +320,13 @@ public final class NeuroCenterSecurity {
         }
 
         private boolean isInsideAppsDirectory(URL location) {
-            try {
-                if (!"file".equalsIgnoreCase(location.getProtocol())) return false;
-                Path path = Path.of(location.toURI()).toAbsolutePath().normalize();
-                return path.startsWith(appsDirectory);
-            } catch (Exception ignored) {
-                return false;
+            if (!"file".equalsIgnoreCase(location.getProtocol())) return false;
+            String key = locationKey(location);
+            if (caseInsensitivePaths) {
+                return key.toLowerCase(java.util.Locale.ROOT)
+                        .startsWith(appsDirectoryPrefix.toLowerCase(java.util.Locale.ROOT));
             }
+            return key.startsWith(appsDirectoryPrefix);
         }
 
         private static PermissionCollection allPermissions() {
@@ -335,15 +336,19 @@ public final class NeuroCenterSecurity {
             return permissions;
         }
 
-        private static String locationKey(URL url) {
+        /**
+         * Normaliza la URL sin consultar el sistema de archivos. Policy.implies
+         * se ejecuta dentro de las comprobaciones de permisos y no debe provocar
+         * comprobaciones FilePermission recursivas.
+         */
+        private String locationKey(URL url) {
             try {
-                if ("file".equalsIgnoreCase(url.getProtocol())) {
-                    return Path.of(url.toURI()).toAbsolutePath().normalize().toUri().toString();
-                }
+                String key = url.toURI().normalize().toString();
+                return caseInsensitivePaths ? key.toLowerCase(java.util.Locale.ROOT) : key;
             } catch (Exception ignored) {
-                // Se conserva la URL original si no se puede convertir en Path.
+                String key = url.toExternalForm();
+                return caseInsensitivePaths ? key.toLowerCase(java.util.Locale.ROOT) : key;
             }
-            return url.toExternalForm();
         }
 
         private static List<Path> userDocumentDirectories() {
