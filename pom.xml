@@ -190,8 +190,8 @@
                                             <arg value="${project.build.finalName}.jar"/>
                                             <arg value="--main-class"/>
                                             <arg value="com.neurocenter.Main"/>
-                                            <!-- Dejar que Temurin 25 gestione el enlazado del runtime
-                                                 mediante JEP 493, sin forzar una carpeta JMOD externa. -->
+                                            <!-- El runtime incluido se genera con el mismo JDK 21 que compila
+                                                 el proyecto; no mezclar módulos de otros JDK. -->
                                             <arg value="--java-options"/>
                                             <arg value="-Djava.security.manager=allow"/>
                                             <arg value="--dest"/>
