@@ -125,13 +125,13 @@ public final class NeuroCenterSecurity {
         private final java.util.concurrent.ConcurrentMap<String, PermissionCollection> appPermissions =
                 new java.util.concurrent.ConcurrentHashMap<>();
 
-        private NeuroCenterPolicy(Policy delegate, URL hostLocation, Path appsDirectory) {
+        NeuroCenterPolicy(Policy delegate, URL hostLocation, Path appsDirectory) {
             this.delegate = delegate;
             this.hostLocation = locationKey(hostLocation);
             this.appsDirectory = appsDirectory.toAbsolutePath().normalize();
         }
 
-        private void registerApp(Path jar, Path dataDirectory, Set<String> grantedPermissions) throws Exception {
+        void registerApp(Path jar, Path dataDirectory, Set<String> grantedPermissions) throws Exception {
             Path canonicalJar = jar.toRealPath();
             Set<String> safeGrants = new LinkedHashSet<>();
             if (grantedPermissions != null) {
