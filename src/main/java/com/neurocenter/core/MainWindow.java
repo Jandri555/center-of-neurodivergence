@@ -1203,6 +1203,18 @@ public final class MainWindow extends JFrame {
 
         @Override public void putSetting(String key, String value) { store().put(key, value); }
 
+        @Override public void saveSecret(String key, char[] secret) {
+            WindowsCredentialVault.save(app.id(), key, secret);
+        }
+
+        @Override public char[] loadSecret(String key) {
+            return WindowsCredentialVault.load(app.id(), key);
+        }
+
+        @Override public void deleteSecret(String key) {
+            WindowsCredentialVault.delete(app.id(), key);
+        }
+
         @Override public void setStatus(String message) {
             String text = message == null || message.isBlank() ? " " : message;
             if (SwingUtilities.isEventDispatchThread()) statusLabel.setText(text);
