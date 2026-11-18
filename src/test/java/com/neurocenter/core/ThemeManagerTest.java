@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import javax.imageio.ImageIO;
+import javax.swing.UIManager;
+import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -41,6 +43,25 @@ class ThemeManagerTest {
 
         assertTrue(light.centerIcon() == null);
         assertTrue(light.background() == null);
+    }
+
+    @Test
+    void usesPanelSurfaceInsteadOfWindowColorAsBaseForWallpaper() {
+        Object previousPanel = UIManager.get("Panel.background");
+        Object previousWindow = UIManager.get("Window.background");
+        Color panel = new Color(250, 250, 250);
+        Color window = new Color(220, 220, 220);
+        try {
+            UIManager.put("Panel.background", panel);
+            UIManager.put("Window.background", window);
+
+            assertEquals(panel, ThemeManager.backgroundBaseColor());
+        } finally {
+            if (previousPanel == null) UIManager.getDefaults().remove("Panel.background");
+            else UIManager.put("Panel.background", previousPanel);
+            if (previousWindow == null) UIManager.getDefaults().remove("Window.background");
+            else UIManager.put("Window.background", previousWindow);
+        }
     }
 
     @Test
