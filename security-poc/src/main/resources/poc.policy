@@ -1,0 +1,5 @@
+// Only the proof-of-concept application JAR receives permissions.
+// The Java runtime itself has the platform permissions it needs.
+grant codeBase "file:${user.dir}/target/security-manager-poc-0.1.0.jar" {
+    permission java.io.FilePermission "${user.dir}/target/poc-data/allowed/-", "read,write,delete";
+};
