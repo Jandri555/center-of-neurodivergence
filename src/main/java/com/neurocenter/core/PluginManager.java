@@ -41,6 +41,7 @@ public final class PluginManager implements AutoCloseable {
             Files.createDirectories(directory);
             try (var files = Files.list(directory)) {
                 for (Path archive : files.filter(p -> p.toString().endsWith(".ncp")).sorted().toList()) {
+                    if (Files.exists(disabledMarker(archive))) continue;
                     try { loadArchive(archive); }
                     catch (Throwable error) { errors.add(archive.getFileName() + ": " + error.getMessage()); }
                 }
@@ -57,6 +58,57 @@ public final class PluginManager implements AutoCloseable {
         Files.createDirectories(directory);
         Files.copy(packageFile, directory.resolve(packageFile.getFileName()), StandardCopyOption.REPLACE_EXISTING);
     }
+
+
+    public synchronized List<String> installedPackageNames() {
+        try (var files = Files.list(directory)) {
+            return files.filter(p -> p.getFileName().toString().endsWith(".ncp"))
+                    .map(p -> p.getFileName().toString()).sorted().toList();
+        } catch (IOException error) { return List.of(); }
+    }
+
+    public synchronized boolean isEnabled(String packageName) {
+        return !Files.exists(disabledMarker(safeArchive(packageName)));
+    }
+
+    public synchronized void setEnabled(String packageName, boolean enabled) throws IOException {
+        Path archive = safeArchive(packageName);
+        if (!Files.isRegularFile(archive)) throw new IOException("No existe ese paquete.");
+        Path marker = disabledMarker(archive);
+        if (enabled) Files.deleteIfExists(marker);
+        else Files.writeString(marker, "disabled");
+    }
+
+    public synchronized void uninstall(String packageName) throws IOException {
+        Path archive = safeArchive(packageName);
+        if (!Files.isRegularFile(archive)) throw new IOException("No existe ese paquete.");
+        if (plugins.stream().anyMatch(p -> p.packageName().equals(packageName)))
+            throw new IOException("El plugin está cargado. Desactívalo, reinicia NeuroCenter y vuelve a desinstalarlo.");
+        String pluginId = null;
+        try (InputStream input = Files.newInputStream(archive); ZipInputStream zip = new ZipInputStream(input)) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (entry.getName().equals("plugin.json")) {
+                    Manifest manifest = gson.fromJson(new String(zip.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8), Manifest.class);
+                    if (manifest != null) pluginId = manifest.id;
+                    break;
+                }
+            }
+        }
+        Files.deleteIfExists(archive);
+        Files.deleteIfExists(disabledMarker(archive));
+        if (pluginId != null && pluginId.matches("[A-Za-z0-9._-]{3,120}"))
+            deleteTree(directory.resolve(pluginId).normalize());
+    }
+
+    private Path safeArchive(String name) throws IOException {
+        if (name == null || !name.matches("[A-Za-z0-9._-]+\\.ncp")) throw new IOException("Nombre de paquete no válido.");
+        Path path = directory.resolve(name).normalize();
+        if (!path.getParent().equals(directory.normalize())) throw new IOException("Ruta no válida.");
+        return path;
+    }
+
+    private Path disabledMarker(Path archive) { return directory.resolve(archive.getFileName() + ".disabled"); }
 
     private void loadArchive(Path archive) throws Exception {
         Path staging = Files.createTempDirectory(directory, ".plugin-stage-");
@@ -162,4 +214,6 @@ public final class PluginManager implements AutoCloseable {
     private record LoadedPlugin(String id, NeuroPlugin plugin, URLClassLoader loader) {}
     public record PluginInfo(String id, String name, String version, String packageName) {}
     public record PluginLoadedEvent(String pluginId, String version) {}
+    public record ApplicationStartedEvent(String appId, String appName) {}
+    public record ApplicationStoppedEvent(String appId, String appName) {}
 }

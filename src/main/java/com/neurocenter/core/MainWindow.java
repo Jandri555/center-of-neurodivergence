@@ -637,6 +637,7 @@ public final class MainWindow extends JFrame {
             return;
         }
 
+        pluginEvents.publish(new PluginManager.ApplicationStartedEvent(session.id, session.app.name()));
         try {
             JComponent panel = session.app.createPanel(session.context);
             if (panel == null) throw new IllegalStateException("createPanel devolvió null");
@@ -709,6 +710,7 @@ public final class MainWindow extends JFrame {
             } finally {
                 session.worker.shutdown();
                 SwingUtilities.invokeLater(() -> {
+                    pluginEvents.publish(new PluginManager.ApplicationStoppedEvent(session.id, session.app.name()));
                     if (appSessions.get(session.id) == session) {
                         appSessions.remove(session.id);
                     }
@@ -848,6 +850,46 @@ public final class MainWindow extends JFrame {
             }
         });
         JOptionPane.showMessageDialog(this, panel, "Gestionar plugins", JOptionPane.PLAIN_MESSAGE);
+    }
+
+    private void managePlugins() {
+        if (pluginManager == null) {
+            JOptionPane.showMessageDialog(this, "El gestor de plugins no se pudo inicializar.", "Gestionar plugins", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        String[] actions = {"Instalar plugin", "Activar o desactivar", "Desinstalar plugin", "Cerrar"};
+        int action = JOptionPane.showOptionDialog(this,
+                "Los plugins tienen acceso completo al sistema. Instala solo paquetes de confianza.\nLos cambios de estado requieren reiniciar NeuroCenter.",
+                "Gestionar plugins", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE,
+                null, actions, actions[0]);
+        try {
+            if (action == 0) {
+                javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+                chooser.setDialogTitle("Instalar plugin de NeuroCenter");
+                chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Plugins NeuroCenter (*.ncp)", "ncp"));
+                if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                    pluginManager.install(chooser.getSelectedFile().toPath());
+                    JOptionPane.showMessageDialog(this, "Plugin instalado. Reinicia NeuroCenter para cargarlo.");
+                }
+            } else if (action == 1 || action == 2) {
+                List<String> packages = pluginManager.installedPackageNames();
+                if (packages.isEmpty()) { JOptionPane.showMessageDialog(this, "No hay plugins instalados."); return; }
+                String selected = (String) JOptionPane.showInputDialog(this, "Selecciona un paquete:",
+                        "Gestionar plugins", JOptionPane.PLAIN_MESSAGE, null, packages.toArray(), packages.get(0));
+                if (selected == null) return;
+                if (action == 1) {
+                    boolean enabled = !pluginManager.isEnabled(selected);
+                    pluginManager.setEnabled(selected, enabled);
+                    JOptionPane.showMessageDialog(this, (enabled ? "Se activará" : "Se desactivará")
+                            + " «" + selected + "» al reiniciar NeuroCenter.");
+                } else {
+                    pluginManager.uninstall(selected);
+                    JOptionPane.showMessageDialog(this, "Plugin desinstalado.");
+                }
+            }
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error al gestionar plugins", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     private void chooseTheme() {
@@ -1172,6 +1214,8 @@ public final class MainWindow extends JFrame {
 
         @Override public Path dataDir() { return AppPaths.appDataDir(app.id()); }
         @Override public ServiceRegistry services() { return pluginServices; }
+        @Override public EventBus events() { return pluginEvents; }
+        @Override public ExtensionRegistry extensions() { return pluginExtensions; }
 
         private synchronized PropertiesStore store() {
             if (store == null) store = new PropertiesStore(dataDir().resolve("settings.properties"));
