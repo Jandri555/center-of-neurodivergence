@@ -3,6 +3,9 @@ package com.neurocenter;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.Manifest;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.database.Cursor;
@@ -36,6 +39,7 @@ import android.content.res.ColorStateList;
 
 import com.neurocenter.api.NeuroMobileApp;
 import com.neurocenter.api.NeuroMobileContext;
+import com.neurocenter.api.NeuroMobilePermissions;
 import com.neurocenter.apps.agenda.AgendaMobileApp;
 import com.neurocenter.core.AppInfo;
 import com.neurocenter.core.AppLoader;
@@ -50,6 +54,10 @@ import com.neurocenter.ui.Ui;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.ServerSocket;
+import java.net.URL;
+import java.net.URLConnection;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.reflect.Field;
@@ -95,6 +103,8 @@ public final class MainActivity extends Activity {
     private final Set<String> autorunFiles = new HashSet<>();
     private final Map<String, AppSession> sessions = new LinkedHashMap<>();
     private final List<String> loadErrors = new ArrayList<>();
+    private final Map<Integer, PendingAppRequest> pendingAppRequests = new HashMap<>();
+    private int nextAppRequestCode = 0x7000;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "neurocenter-io");
         thread.setDaemon(true);
@@ -191,6 +201,7 @@ public final class MainActivity extends Activity {
         }
         for (AppSession session : new ArrayList<>(sessions.values())) stopSession(session);
         sessions.clear();
+        pendingAppRequests.clear();
         ioExecutor.shutdown();
         if (registry != null) registry.close();
         super.onDestroy();
@@ -612,6 +623,16 @@ public final class MainActivity extends Activity {
     // ------------------------------------------------------------------ sesiones de apps
 
     /** Una app abierta: cada una tiene su propio hilo para onStart()/onStop(). */
+    private static final class PendingAppRequest {
+        final String appId;
+        final int originalRequestCode;
+
+        PendingAppRequest(String appId, int originalRequestCode) {
+            this.appId = appId;
+            this.originalRequestCode = originalRequestCode;
+        }
+    }
+
     private static final class AppSession {
         final String id;
         final NeuroMobileApp app;
@@ -760,6 +781,7 @@ public final class MainActivity extends Activity {
         if (session.closing) return;
         dispatchPause(session);
         session.closing = true;
+        pendingAppRequests.entrySet().removeIf(entry -> entry.getValue().appId.equals(session.id));
         if (session.id.equals(activeId)) setActive(HOME);
         setStatusText("Cerrando " + session.app.name() + "…");
         if (drawerOpen) rebuildDrawer();
@@ -871,6 +893,146 @@ public final class MainActivity extends Activity {
             return store;
         }
 
+        private boolean external() {
+            return externalAppIds.contains(app.id());
+        }
+
+        @Override
+        public boolean hasPermission(String permissionId) {
+            if (!NeuroMobilePermissions.isSupported(permissionId)) return false;
+            if (!external()) return true;
+            AppRegistry currentRegistry = registry;
+            if (currentRegistry == null) return false;
+            try {
+                return currentRegistry.grantedPermissions(app.id()).contains(permissionId);
+            } catch (RuntimeException ex) {
+                Log.e(TAG, "No se pudo comprobar el permiso " + permissionId + " de " + app.id(), ex);
+                return false;
+            }
+        }
+
+        @Override
+        public void requirePermission(String permissionId) {
+            if (!NeuroMobilePermissions.isSupported(permissionId) || !hasPermission(permissionId)) {
+                NeuroMobilePermissions.Permission permission = NeuroMobilePermissions.find(permissionId);
+                String name = permission == null ? permissionId : permission.name();
+                throw new SecurityException("La app «" + app.name() + "» no tiene concedido el permiso «"
+                        + name + "». Concédelo en Ajustes → Gestionar apps → Configurar permisos.");
+            }
+        }
+
+        @Override
+        public URLConnection openConnection(URL url) throws IOException {
+            if (url == null || url.getHost() == null
+                    || (!"http".equalsIgnoreCase(url.getProtocol())
+                    && !"https".equalsIgnoreCase(url.getProtocol()))) {
+                throw new IllegalArgumentException("Solo se permiten conexiones HTTP o HTTPS.");
+            }
+            requirePermission(NeuroMobilePermissions.NETWORK_CONNECT);
+            return url.openConnection();
+        }
+
+        @Override
+        public ServerSocket openServerSocket(int port) throws IOException {
+            if (port < 0 || port > 65535) throw new IllegalArgumentException("Puerto no válido.");
+            requirePermission(NeuroMobilePermissions.NETWORK_LISTEN);
+            return new ServerSocket(port);
+        }
+
+        @Override
+        public void requestDocumentRead(String mimeType, int requestCode) {
+            requirePermission(NeuroMobilePermissions.FILES_READ_DOCUMENTS);
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                    .addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType(mimeType == null || mimeType.isBlank() ? "*/*" : mimeType);
+            startAppActivityForResult(app.id(), intent, requestCode);
+        }
+
+        @Override
+        public void requestDocumentWrite(String mimeType, String suggestedName, int requestCode) {
+            requirePermission(NeuroMobilePermissions.FILES_WRITE_DOCUMENTS);
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                    .addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType(mimeType == null || mimeType.isBlank() ? "*/*" : mimeType)
+                    .putExtra(Intent.EXTRA_TITLE, suggestedName == null ? "documento" : suggestedName);
+            startAppActivityForResult(app.id(), intent, requestCode);
+        }
+
+        @Override
+        public InputStream openDocumentInputStream(Uri uri) throws IOException {
+            requirePermission(NeuroMobilePermissions.FILES_READ_DOCUMENTS);
+            if (uri == null) throw new IllegalArgumentException("URI no válido.");
+            InputStream in = getContentResolver().openInputStream(uri);
+            if (in == null) throw new IOException("No se pudo abrir el documento.");
+            return in;
+        }
+
+        @Override
+        public OutputStream openDocumentOutputStream(Uri uri) throws IOException {
+            requirePermission(NeuroMobilePermissions.FILES_WRITE_DOCUMENTS);
+            if (uri == null) throw new IllegalArgumentException("URI no válido.");
+            OutputStream out = getContentResolver().openOutputStream(uri, "wt");
+            if (out == null) throw new IOException("No se pudo abrir el documento para escritura.");
+            return out;
+        }
+
+        @Override
+        public CharSequence readClipboardText() {
+            requirePermission(NeuroMobilePermissions.CLIPBOARD_ACCESS);
+            ClipboardManager manager = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (manager == null || !manager.hasPrimaryClip()) return null;
+            ClipData clip = manager.getPrimaryClip();
+            if (clip == null || clip.getItemCount() == 0) return null;
+            return clip.getItemAt(0).coerceToText(MainActivity.this);
+        }
+
+        @Override
+        public void writeClipboardText(CharSequence text) {
+            requirePermission(NeuroMobilePermissions.CLIPBOARD_ACCESS);
+            ClipboardManager manager = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (manager == null) throw new IllegalStateException("El portapapeles no está disponible.");
+            manager.setPrimaryClip(ClipData.newPlainText("NeuroCenter", text == null ? "" : text));
+        }
+
+        @Override
+        public void saveSecret(String key, char[] secret) throws IOException {
+            requirePermission(NeuroMobilePermissions.CREDENTIALS_ACCESS);
+            AndroidCredentialVault.save(MainActivity.this, app.id(), key, secret);
+        }
+
+        @Override
+        public char[] loadSecret(String key) throws IOException {
+            requirePermission(NeuroMobilePermissions.CREDENTIALS_ACCESS);
+            return AndroidCredentialVault.load(MainActivity.this, app.id(), key);
+        }
+
+        @Override
+        public void deleteSecret(String key) throws IOException {
+            requirePermission(NeuroMobilePermissions.CREDENTIALS_ACCESS);
+            AndroidCredentialVault.delete(MainActivity.this, app.id(), key);
+        }
+
+        @Override
+        public void startActivityForResult(Intent intent, int requestCode) {
+            startAppActivityForResult(app.id(), intent, requestCode);
+        }
+
+        @Override
+        public void requestPermissions(String[] permissions, int requestCode) {
+            if (permissions == null || permissions.length == 0) {
+                throw new IllegalArgumentException("No se ha indicado ningún permiso Android.");
+            }
+            for (String permission : permissions) {
+                if (Manifest.permission.BLUETOOTH_CONNECT.equals(permission)
+                        || Manifest.permission.BLUETOOTH_ADVERTISE.equals(permission)) {
+                    requirePermission(NeuroMobilePermissions.BLUETOOTH_ACCESS);
+                } else if (Manifest.permission.POST_NOTIFICATIONS.equals(permission)) {
+                    requirePermission(NeuroMobilePermissions.NOTIFICATIONS_ACCESS);
+                }
+            }
+            startAppPermissionRequest(app.id(), permissions, requestCode);
+        }
+
         @Override public String getSetting(String key, String defaultValue) { return store().get(key, defaultValue); }
 
         @Override public void putSetting(String key, String value) { store().put(key, value); }
@@ -894,6 +1056,59 @@ public final class MainActivity extends Activity {
         }
 
         @Override public boolean isDarkTheme() { return ThemeManager.palette().dark; }
+    }
+
+    // ------------------------------------------------------------------ resultados iniciados por apps
+
+    private int allocateAppRequestCode() {
+        for (int attempts = 0; attempts < 0x0FFF; attempts++) {
+            int candidate = nextAppRequestCode++;
+            if (nextAppRequestCode > 0x7FFE) nextAppRequestCode = 0x7000;
+            if (!pendingAppRequests.containsKey(candidate)) return candidate;
+        }
+        throw new IllegalStateException("Hay demasiadas solicitudes Android pendientes.");
+    }
+
+    private void startAppActivityForResult(String appId, Intent intent, int originalRequestCode) {
+        if (intent == null) throw new IllegalArgumentException("Intent no válido.");
+        if (originalRequestCode < 0 || originalRequestCode > 0xFFFF) {
+            throw new IllegalArgumentException("El código de solicitud debe estar entre 0 y 65535.");
+        }
+        runOnUiThread(() -> {
+            AppSession session = sessions.get(appId);
+            if (session == null || session.closing) {
+                throw new IllegalStateException("La app ya no está abierta.");
+            }
+            int hostCode = allocateAppRequestCode();
+            pendingAppRequests.put(hostCode, new PendingAppRequest(appId, originalRequestCode));
+            try {
+                MainActivity.this.startActivityForResult(intent, hostCode);
+            } catch (RuntimeException ex) {
+                pendingAppRequests.remove(hostCode);
+                throw ex;
+            }
+        });
+    }
+
+    private void startAppPermissionRequest(String appId, String[] permissions, int originalRequestCode) {
+        if (originalRequestCode < 0 || originalRequestCode > 0xFFFF) {
+            throw new IllegalArgumentException("El código de solicitud debe estar entre 0 y 65535.");
+        }
+        String[] copy = permissions.clone();
+        runOnUiThread(() -> {
+            AppSession session = sessions.get(appId);
+            if (session == null || session.closing) {
+                throw new IllegalStateException("La app ya no está abierta.");
+            }
+            int hostCode = allocateAppRequestCode();
+            pendingAppRequests.put(hostCode, new PendingAppRequest(appId, originalRequestCode));
+            try {
+                MainActivity.this.requestPermissions(copy, hostCode);
+            } catch (RuntimeException ex) {
+                pendingAppRequests.remove(hostCode);
+                throw ex;
+            }
+        });
     }
 
     // ------------------------------------------------------------------ retroceso
@@ -948,16 +1163,22 @@ public final class MainActivity extends Activity {
             }
             return;
         }
-        AppSession session = sessions.get(activeId);
-        if (session != null && session.ready) session.app.onActivityResult(requestCode, resultCode, data);
+        PendingAppRequest pending = pendingAppRequests.remove(requestCode);
+        if (pending == null) return;
+        AppSession session = sessions.get(pending.appId);
+        if (session != null && session.ready && !session.closing) {
+            session.app.onActivityResult(pending.originalRequestCode, resultCode, data);
+        }
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        AppSession session = sessions.get(activeId);
-        if (session != null && session.ready) {
-            session.app.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        PendingAppRequest pending = pendingAppRequests.remove(requestCode);
+        if (pending == null) return;
+        AppSession session = sessions.get(pending.appId);
+        if (session != null && session.ready && !session.closing) {
+            session.app.onRequestPermissionsResult(pending.originalRequestCode, permissions, grantResults);
         }
     }
 
@@ -1100,13 +1321,15 @@ public final class MainActivity extends Activity {
             showMessage("Gestionar apps", "El registro SQLite de aplicaciones no está disponible.");
             return;
         }
-        String[] labels = {"Instalar app (.apk / .jar)", "Desinstalar app", "Configurar inicio automático"};
+        String[] labels = {"Instalar app (.apk / .jar)", "Desinstalar app",
+                "Configurar inicio automático", "Configurar permisos"};
         Ui.show(Ui.dialog(this)
                 .setTitle("Gestor de apps")
                 .setItems(labels, (dialog, which) -> {
                     if (which == 0) pickFile(REQUEST_INSTALL_APP);
                     else if (which == 1) uninstallExternalApp();
-                    else configureAutorun();
+                    else if (which == 2) configureAutorun();
+                    else configureAppPermissions();
                 })
                 .setNegativeButton("Cerrar", null));
     }
@@ -1248,6 +1471,76 @@ public final class MainActivity extends Activity {
                         "No se pudo desinstalar la app: " + ex.getMessage()));
             }
         });
+    }
+
+    private void configureAppPermissions() {
+        List<AppRegistry.AppRecord> installed = registry.listApps();
+        if (installed.isEmpty()) {
+            showMessage("Permisos de aplicaciones", "No hay apps externas instaladas.");
+            return;
+        }
+        String[] names = new String[installed.size()];
+        for (int i = 0; i < installed.size(); i++) {
+            AppRegistry.AppRecord record = installed.get(i);
+            Set<String> grants = registry.grantedPermissions(record.id);
+            names[i] = record.name + " — " + NeuroMobilePermissions.summary(grants);
+        }
+        Ui.show(Ui.dialog(this)
+                .setTitle("Permisos de aplicaciones")
+                .setItems(names, (dialog, which) -> editPermissions(installed.get(which)))
+                .setNegativeButton("Cerrar", null));
+    }
+
+    private void editPermissions(AppRegistry.AppRecord app) {
+        Set<String> current = new HashSet<>(registry.grantedPermissions(app.id));
+        LinearLayout options = new LinearLayout(this);
+        options.setOrientation(LinearLayout.VERTICAL);
+        options.setPadding(dp(18), dp(8), dp(18), dp(8));
+        Map<String, android.widget.CheckBox> controls = new LinkedHashMap<>();
+
+        for (NeuroMobilePermissions.Permission permission : NeuroMobilePermissions.supported()) {
+            android.widget.CheckBox checkbox = new android.widget.CheckBox(this);
+            checkbox.setText(permission.name());
+            checkbox.setChecked(current.contains(permission.id()));
+            checkbox.setTextColor(ThemeManager.palette().text);
+            controls.put(permission.id(), checkbox);
+            TextView description = Ui.text(this, permission.description(), 12, false,
+                    ThemeManager.palette().muted);
+            description.setPadding(dp(34), 0, 0, dp(10));
+            options.addView(checkbox);
+            options.addView(description);
+        }
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(options);
+        AlertDialog dialog = Ui.dialog(this)
+                .setTitle("Permisos de «" + app.name + "»")
+                .setView(scroll)
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Guardar", null)
+                .create();
+        dialog.setOnShowListener(ignored -> {
+            android.widget.Button save = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            save.setOnClickListener(v -> {
+                Set<String> updated = new HashSet<>();
+                controls.forEach((id, checkbox) -> {
+                    if (checkbox.isChecked()) updated.add(id);
+                });
+                try {
+                    registry.setGrantedPermissions(app.id, updated);
+                    dialog.dismiss();
+                    showMessage("Permisos guardados",
+                            "Se han guardado los permisos de «" + app.name + "».\n\nConcedidos: "
+                                    + NeuroMobilePermissions.summary(updated)
+                                    + "\n\nLos cambios se aplican inmediatamente a las operaciones realizadas "
+                                    + "a través de NeuroMobileContext.");
+                } catch (RuntimeException ex) {
+                    showMessage("Error de permisos", "No se pudieron guardar: " + ex.getMessage());
+                }
+            });
+        });
+        dialog.show();
+        Ui.style(dialog);
     }
 
     private void configureAutorun() {
