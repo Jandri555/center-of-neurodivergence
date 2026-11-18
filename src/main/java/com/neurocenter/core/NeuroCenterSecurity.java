@@ -54,7 +54,9 @@ public final class NeuroCenterSecurity {
             new AppPermission("files.write.documents", "Modificar documentos del usuario",
                     "Permite crear, modificar y eliminar archivos en Documentos, Escritorio y Descargas."),
             new AppPermission("clipboard.access", "Acceder al portapapeles",
-                    "Permite leer y modificar el portapapeles del sistema.")
+                    "Permite leer y modificar el portapapeles del sistema."),
+            new AppPermission("credentials.access", "Usar el almacén de credenciales",
+                    "Permite guardar, consultar y eliminar credenciales propias de la aplicación en el almacén seguro del sistema operativo.")
     );
 
     private static volatile NeuroCenterPolicy policy;
