@@ -131,6 +131,12 @@ public final class ThemeManager {
     private static void addBuiltIn(String id, String name, String base) {
         // Los temas integrados tienen una variante equivalente en ambas plataformas.
         JsonObject colors = new JsonObject();
+        if ("light".equals(base)) {
+            // Claro debe conservar un lienzo blanco, también al pintar el fondo
+            // de la ventana para los temas con o sin imagen personalizada.
+            colors.addProperty("background", "#FFFFFF");
+            colors.addProperty("surface", "#FFFFFF");
+        }
         if ("dark".equals(base)) {
             // Oscuro usa carbón profundo, pero conserva separación entre superficies.
             // Negro OLED sigue siendo un tema externo independiente con negro puro.
