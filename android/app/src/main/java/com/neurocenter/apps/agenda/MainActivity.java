@@ -45,6 +45,9 @@ import com.neurocenter.core.NcappWorkerService;
 import com.neurocenter.api.INcappWorker;
 import com.neurocenter.api.IJava21Probe;
 import com.neurocenter.core.Java21ProbeService;
+import com.neurocenter.core.NcappUiController;
+import android.database.Cursor;
+import android.provider.OpenableColumns;
 import android.content.ComponentName;
 import android.content.ServiceConnection;
 import android.os.IBinder;
@@ -139,6 +142,44 @@ public final class MainActivity extends Activity {
         buildScreen();
         refresh();
         updateBluetoothControls(BluetoothSyncService.isRunning());
+        handleNcappIntent(getIntent());
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleNcappIntent(intent);
+    }
+
+    private void handleNcappIntent(Intent intent) {
+        if (intent == null) return;
+        Uri source = null;
+        if (Intent.ACTION_VIEW.equals(intent.getAction())) {
+            source = intent.getData();
+        } else if (Intent.ACTION_SEND.equals(intent.getAction())) {
+            source = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+        }
+        if (source == null || !"content".equalsIgnoreCase(source.getScheme())) return;
+        String fileName = source.getLastPathSegment();
+        try (Cursor cursor = getContentResolver().query(source,
+                new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) fileName = cursor.getString(0);
+        } catch (RuntimeException ignored) {
+            // Algunos proveedores no ofrecen metadatos; se valida el propio paquete.
+        }
+        if (fileName == null
+                || !fileName.toLowerCase(java.util.Locale.ROOT).endsWith(".ncapp")) {
+            Toast.makeText(this, "Solo se pueden instalar archivos .ncapp.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        Uri selected = source;
+        new AlertDialog.Builder(this)
+                .setTitle("Instalar aplicación NeuroCenter")
+                .setMessage("¿Quieres instalar «" + fileName + "» dentro de NeuroCenter?")
+                .setPositiveButton("Instalar", (d, w) -> installNcapp(selected))
+                .setNegativeButton("Cancelar", null)
+                .show();
     }
 
     private void buildScreen() {
@@ -292,7 +333,7 @@ public final class MainActivity extends Activity {
                 .setNegativeButton("Cerrar", null);
         if (installed.isEmpty()) {
             dialog.setMessage("Aún no hay aplicaciones .ncapp instaladas. "
-                    + "El runtime Java 21 para ejecutarlas en Android sigue pendiente de integración.");
+                    + "Las aplicaciones Java 21 se abren en un proceso Android aislado.");
         } else {
             String[] labels = new String[installed.size()];
             for (int i = 0; i < installed.size(); i++) {
@@ -303,10 +344,10 @@ public final class MainActivity extends Activity {
                 NcappManager.InstalledApp app = installed.get(which);
                 new AlertDialog.Builder(this)
                         .setTitle(app.name())
-                        .setMessage("Archivo Java 21: " + app.id() + ".ncapp\n\n"
-                                + "Se puede verificar en un proceso aislado, pero todavía NO ejecutar: "
-                                + "falta incorporar y validar el OpenJDK 21 para Android.")
-                        .setPositiveButton("Comprobar aislamiento", (a, b) -> verifyNcappInSandbox(app))
+                        .setMessage("Archivo Java 21: " + app.id() + ".ncapp\n"
+                                + "Clase móvil: " + app.mobileClass()
+                                + "\nProceso independiente sin permisos Android del centro.")
+                        .setPositiveButton("Abrir", (a, b) -> NcappUiController.open(this, app))
                         .setNeutralButton("Desinstalar", (a, b) -> uninstallNcapp(app))
                         .setNegativeButton("Cerrar", null)
                         .show();
@@ -431,8 +472,8 @@ public final class MainActivity extends Activity {
                     try {
                         NcappPermissionStore.setGranted(this, app, updated);
                         dialog.dismiss();
-                        Toast.makeText(this, "Preferencias de permisos guardadas. "
-                                + "No se aplicarán hasta completar el motor Java 21.",
+                        Toast.makeText(this, "Preferencias guardadas. El proceso Java"
+                                + " sigue aislado; aún no hay puente de servicios privilegiados.",
                                 Toast.LENGTH_LONG).show();
                     } catch (RuntimeException ex) {
                         Toast.makeText(this, "No se guardaron los permisos: " + ex.getMessage(),
@@ -474,7 +515,7 @@ public final class MainActivity extends Activity {
             try {
                 NcappManager.InstalledApp app = NcappManager.install(this, source);
                 result = "Instalada " + app.name() + " (" + app.id() + "). "
-                        + "La ejecución estará disponible cuando incorporemos OpenJDK 21.";
+                        + "Puedes abrirla desde Aplicaciones de NeuroCenter.";
             } catch (Exception ex) {
                 result = "No se pudo instalar el .ncapp: " + ex.getMessage();
             }
@@ -1148,6 +1189,7 @@ public final class MainActivity extends Activity {
         }
         syncExecutor.shutdownNow();
         ncappExecutor.shutdownNow();
+        NcappUiController.closeAll(this);
         super.onDestroy();
     }
 
