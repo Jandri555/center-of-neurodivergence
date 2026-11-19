@@ -12,6 +12,8 @@ import android.content.pm.Signature;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+
+import com.neurocenter.api.NeuroCenterAppContract;
 import android.provider.Settings;
 
 import java.util.ArrayList;
@@ -35,9 +37,9 @@ import java.security.MessageDigest;
  */
 public final class AndroidExternalApps {
 
-    public static final String ACTION_OPEN = "com.neurocenter.action.OPEN_APP";
-    public static final String META_APP_ID = "com.neurocenter.app.id";
-    public static final String META_APP_DESCRIPTION = "com.neurocenter.app.description";
+    public static final String ACTION_OPEN = NeuroCenterAppContract.ACTION_OPEN_APP;
+    public static final String META_APP_ID = NeuroCenterAppContract.META_APP_ID;
+    public static final String META_APP_DESCRIPTION = NeuroCenterAppContract.META_APP_DESCRIPTION;
 
     private static final String APK_MIME_TYPE = "application/vnd.android.package-archive";
 
