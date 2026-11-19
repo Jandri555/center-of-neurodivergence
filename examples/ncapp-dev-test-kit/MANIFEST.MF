@@ -1,0 +1,9 @@
+Manifest-Version: 1.0
+NeuroCenter-App-Id: com.neurocenter.devtestkit
+NeuroCenter-App-Desktop: false
+NeuroCenter-App-Mobile: true
+NeuroCenter-Mobile-Class: com.neurocenter.devkit.DevTestKitMobile
+Implementation-Title: NeuroCenter Dev Test Kit
+Implementation-Version: 1.0.0
+Implementation-Vendor: NeuroCenter
+
