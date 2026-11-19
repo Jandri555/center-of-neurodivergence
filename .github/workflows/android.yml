@@ -28,6 +28,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build-android:
@@ -56,7 +57,22 @@ jobs:
         with:
           gradle-version: "9.6.0"
 
-      - name: Build both APK variants with bundled OpenJDK 21 ARM64
+      - name: Download pinned patched OpenJDK 21 ARM64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: neurocenter-openjdk21-arm64-experimental
+          run-id: 44626201264
+          repository: Jandri555/center-of-neurodivergence
+          github-token: ${{ github.token }}
+          path: android/.cache
+
+      - name: Verify patched JRE 21 archive digest
+        run: |
+          echo "4dcd5e4b441eda8a425304471879ecb46ef42fc086ddef213e7d8383c8439d3c  android/.cache/jre21-android-arm64-20261119-release.tar.xz" | sha256sum -c -
+
+      - name: Build both APK variants with bundled patched OpenJDK 21 ARM64
+        env:
+          NEUROCENTER_JRE21_ARCHIVE: ${{ github.workspace }}/android/.cache/jre21-android-arm64-20261119-release.tar.xz
         run: gradle --no-daemon -p android :app:assembleDebug :app:assembleRelease
 
       - name: Verify JRE 21 actually bundled into APK
@@ -70,6 +86,7 @@ jobs:
           data = Path("android/app/build/generated/java21/jniLibs/arm64-v8a/libnm.so").read_bytes()[:4]
           assert data == bytes.fromhex("dadafeca"), data
           jvm = Path("android/app/build/generated/java21/jniLibs/arm64-v8a/libjvm.so").read_bytes()
+          assert b"NEUROCENTER_JRE_HOME" in jvm
           assert b"%/libnm.so" in jvm
           assert b"%s%slibnm.so" in jvm
           assert b"%/lib/modules" not in jvm
