@@ -4,6 +4,10 @@ plugins {
 
 android {
     namespace = "com.neurocenter.api"
+
+    buildFeatures {
+        aidl = true
+    }
     compileSdk = 36
 
     defaultConfig {
