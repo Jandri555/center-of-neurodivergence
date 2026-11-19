@@ -14,6 +14,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.neurocenter.api.INcappWorker;
+import com.neurocenter.apps.agenda.NcappHostServices;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -62,6 +63,7 @@ public final class NcappUiController {
         private INcappWorker worker;
         private boolean bound;
         private volatile boolean closed;
+        private int remainingHostRequests = 8;
 
         Session(Activity activity, NcappManager.InstalledApp app) {
             this.activity = activity;
@@ -130,6 +132,7 @@ public final class NcappUiController {
             if (closed || worker == null) return;
             showText("Ejecutando «" + id + "»…");
             executor.execute(() -> {
+                remainingHostRequests = 8;
                 try {
                     present(worker.dispatchAction(id));
                 } catch (Exception ex) {
@@ -146,6 +149,29 @@ public final class NcappUiController {
             try {
                 if (json.length() > 32768) throw new IllegalArgumentException("JSON demasiado grande.");
                 JSONObject screen = new JSONObject(json);
+                JSONObject hostRequest = screen.optJSONObject("hostRequest");
+                if (hostRequest != null) {
+                    if (--remainingHostRequests < 0) {
+                        throw new SecurityException("Demasiadas solicitudes consecutivas al host.");
+                    }
+                    String capability = hostRequest.getString("capability");
+                    if (!"agenda.read".equals(capability) && !"agenda.write".equals(capability)) {
+                        throw new SecurityException("Esta capacidad todavía no tiene puente móvil: "
+                                + capability);
+                    }
+                    String requestJson = hostRequest.toString();
+                    executor.execute(() -> {
+                        try {
+                            if (closed || worker == null) return;
+                            String result = NcappHostServices.handle(activity, app, requestJson);
+                            present(worker.deliverHostResponse(capability, result));
+                        } catch (Exception failure) {
+                            error("Error de la API de NeuroCenter: " + failure);
+                        }
+                    });
+                    return;
+                }
+                remainingHostRequests = 8;
                 String title = screen.optString("title", app.name());
                 String message = screen.optString("text", "");
                 if (title.length() > 180 || message.length() > 10000) {

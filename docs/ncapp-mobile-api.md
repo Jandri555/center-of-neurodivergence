@@ -68,3 +68,26 @@ y pruebas de ataques. Si falla, NO se debe desactivar el aislamiento ni cargar
 el Java externo en la aplicación principal para hacerlo funcionar.
 
 Android 10 es el mínimo (API 29); actualmente solo ARM64.
+
+## Permisos y servicios del host (API experimental)
+
+Una interfaz puede devolver una petición en lugar de una pantalla:
+
+~~~json
+{"hostRequest":{"capability":"agenda.read","operation":"list"}}
+~~~
+
+El proceso principal de NeuroCenter verifica el permiso actual de ese
+paquete (identificador y SHA-256) y ejecuta la operación si está concedida.
+Después la app Java 21 recibe:
+
+~~~java
+String onHostResponse(String capability, String responseJson);
+~~~
+
+La respuesta contiene ok:true y los datos, o bien ok:false y error.
+Se admiten de momento agenda.read/list y agenda.write/addTask
+(campos title, date y time ISO opcionales y notes opcional).
+Revocar el permiso en el gestor bloquea las siguientes operaciones.
+Las demás capacidades todavía no tienen puente móvil. El proceso
+aislado no puede acceder a AgendaStore por su cuenta.
