@@ -1,7 +1,7 @@
 diff --git a/src/hotspot/os/linux/os_linux.cpp b/src/hotspot/os/linux/os_linux.cpp
 --- a/src/hotspot/os/linux/os_linux.cpp
 +++ b/src/hotspot/os/linux/os_linux.cpp
-@@ -517,6 +517,17 @@ void os::init_system_properties_values() {
+@@ -517,6 +517,18 @@ void os::init_system_properties_values() {
        }
      }
      Arguments::set_java_home(buf);
