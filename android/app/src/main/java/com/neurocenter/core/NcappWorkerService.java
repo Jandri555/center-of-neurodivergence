@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
+import android.util.Log;
 
 import com.neurocenter.api.INcappWorker;
 
@@ -130,8 +131,15 @@ public final class NcappWorkerService extends Service {
         super.onDestroy();
     }
 
+    @Override public void onCreate() {
+        super.onCreate();
+        Log.i("NeuroCenter-Sandbox", "Servicio ncapp creado, UID="
+                + Process.myUid() + ", isIsolated=" + Process.isIsolated());
+    }
+
     @Override public IBinder onBind(Intent intent) {
         if (!Process.isIsolated()) throw new SecurityException("Sandbox no aislado.");
+        Log.i("NeuroCenter-Sandbox", "onBind correcto en UID aislado " + Process.myUid());
         return binder;
     }
 }

@@ -7,6 +7,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.IBinder;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
 import android.os.ParcelFileDescriptor;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -34,6 +37,7 @@ import java.util.concurrent.Executors;
  */
 public final class NcappUiController {
     private static final Map<Activity, List<Session>> ACTIVE = new WeakHashMap<>();
+    private static final String LOG_TAG = "NeuroCenter-NCAPP";
 
     private NcappUiController() {}
 
@@ -50,19 +54,22 @@ public final class NcappUiController {
         synchronized (ACTIVE) {
             sessions = ACTIVE.remove(activity);
         }
-        if (sessions != null) for (Session session : sessions) session.close();
+        if (sessions != null) for (Session session : new ArrayList<>(sessions)) session.close();
     }
 
     private static final class Session {
         private final Activity activity;
         private final NcappManager.InstalledApp app;
         private final ExecutorService executor = Executors.newSingleThreadExecutor();
+        private final Handler mainHandler = new Handler(Looper.getMainLooper());
+        private Runnable watchdog;
         private final LinearLayout panel;
         private final AlertDialog dialog;
         private ServiceConnection connection;
         private INcappWorker worker;
         private boolean bound;
         private volatile boolean closed;
+        private volatile boolean failed;
         private int remainingHostRequests = 8;
 
         Session(Activity activity, NcappManager.InstalledApp app) {
@@ -82,25 +89,42 @@ public final class NcappUiController {
         }
 
         void start() {
-            showText("Preparando OpenJDK 21 y el proceso aislado…");
+            showText("Creando proceso aislado de Android…");
             dialog.show();
+            armTimeout(20000, "No se ha podido conectar con el proceso aislado. "
+                    + "Puede haberse cerrado durante Application.onCreate u onBind. "
+                    + "Consulta el registro de Android.");
             Intent intent = new Intent(activity, NcappWorkerService.class);
             connection = new ServiceConnection() {
                 @Override public void onServiceConnected(ComponentName name, IBinder binder) {
+                    if (closed || failed) return;
+                    Log.i(LOG_TAG, "Proceso aislado conectado: " + name.flattenToShortString());
                     worker = INcappWorker.Stub.asInterface(binder);
+                    armTimeout(180000, "Se ha agotado el tiempo preparando OpenJDK 21 "
+                            + "o esperando la ejecución de HotSpot. Consulta logcat.");
+                    showText("Proceso aislado conectado. Comprobando el paquete…");
                     executor.execute(Session.this::launch);
                 }
 
                 @Override public void onServiceDisconnected(ComponentName name) {
                     worker = null;
-                    error("La aplicación Java 21 ha terminado inesperadamente.");
+                    error("El proceso aislado se ha cerrado antes de responder. "
+                            + "Consulta AndroidRuntime y NeuroCenter-Sandbox en logcat.");
+                }
+
+                @Override public void onNullBinding(ComponentName name) {
+                    error("El servicio aislado no ha devuelto un enlace Binder.");
+                }
+
+                @Override public void onBindingDied(ComponentName name) {
+                    error("Se ha perdido la conexión con el servicio aislado de Android.");
                 }
             };
             try {
                 bound = activity.bindIsolatedService(intent, Context.BIND_AUTO_CREATE,
                         "ncapp_" + UUID.randomUUID().toString().replace("-", ""),
                         activity.getMainExecutor(), connection);
-                if (!bound) error("No se pudo crear un proceso Android aislado.");
+                if (!bound) error("Android no ha podido crear el proceso aislado.");
             } catch (RuntimeException ex) {
                 error("Error creando el sandbox: " + ex.getMessage());
             }
@@ -108,6 +132,7 @@ public final class NcappUiController {
 
         void launch() {
             try {
+                showText("Validando el archivo .ncapp instalado…");
                 NcappManager.InstalledApp current = NcappManager.inspect(app.archive());
                 if (!current.id().equals(app.id())
                         || !current.mobileClass().equals(app.mobileClass())
@@ -117,11 +142,15 @@ public final class NcappUiController {
                 if (worker == null || !worker.isIsolated()) {
                     throw new SecurityException("El proceso Java no tiene un UID aislado.");
                 }
+                showText("Preparando la imagen de OpenJDK 21… "
+                        + "En la primera ejecución puede necesitar descomprimir sus módulos.");
                 try (ParcelFileDescriptor home = Java21Runtime.openSandboxHome(activity);
                      ParcelFileDescriptor archive = ParcelFileDescriptor.open(
                              app.archive(), ParcelFileDescriptor.MODE_READ_ONLY)) {
+                    showText("Lanzando HotSpot Java 21 dentro del proceso aislado…");
                     String output = worker.launchApp(home, archive, app.mobileClass(),
                             app.sha256(), activity.getApplicationInfo().nativeLibraryDir);
+                    disarmTimeout();
                     present(output);
                 }
             } catch (Exception ex) {
@@ -130,7 +159,7 @@ public final class NcappUiController {
         }
 
         void action(String id) {
-            if (closed || worker == null) return;
+            if (closed || failed || worker == null) return;
             showText("Ejecutando «" + id + "»…");
             executor.execute(() -> {
                 remainingHostRequests = 8;
@@ -143,6 +172,7 @@ public final class NcappUiController {
         }
 
         void present(String json) {
+            if (closed || failed) return;
             if (json == null || json.startsWith("NCAPP_ERROR:")) {
                 error(json == null ? "La JVM no devolvió una interfaz." : json);
                 return;
@@ -196,7 +226,7 @@ public final class NcappUiController {
                     }
                 }
                 activity.runOnUiThread(() -> {
-                    if (closed) return;
+                    if (closed || failed) return;
                     dialog.setTitle(title);
                     panel.removeAllViews();
                     TextView copy = new TextView(activity);
@@ -218,7 +248,7 @@ public final class NcappUiController {
 
         void showText(String message) {
             activity.runOnUiThread(() -> {
-                if (closed) return;
+                if (closed || failed) return;
                 panel.removeAllViews();
                 TextView copy = new TextView(activity);
                 copy.setText(message);
@@ -227,19 +257,58 @@ public final class NcappUiController {
             });
         }
 
+        /** El servicio puede morir antes de onServiceConnected: nunca dejamos la UI esperando. */
         void error(String message) {
-            showText(message);
+            Log.e(LOG_TAG, "Fallo en .ncapp " + app.id() + ": " + message);
+            activity.runOnUiThread(() -> {
+                if (closed || failed) return;
+                clearWatchdog();
+                panel.removeAllViews();
+                TextView copy = new TextView(activity);
+                copy.setText(message);
+                copy.setTextSize(16);
+                panel.addView(copy);
+                failed = true;
+                releaseConnection();
+                executor.shutdownNow();
+            });
         }
 
-        void close() {
-            if (closed) return;
-            closed = true;
-            executor.shutdownNow();
+        void armTimeout(long millis, String message) {
+            activity.runOnUiThread(() -> {
+                if (closed || failed) return;
+                clearWatchdog();
+                watchdog = () -> error(message);
+                mainHandler.postDelayed(watchdog, millis);
+            });
+        }
+
+        void disarmTimeout() {
+            activity.runOnUiThread(this::clearWatchdog);
+        }
+
+        private void clearWatchdog() {
+            if (watchdog != null) {
+                mainHandler.removeCallbacks(watchdog);
+                watchdog = null;
+            }
+        }
+
+        private void releaseConnection() {
+            worker = null;
             if (bound && connection != null) {
                 bound = false;
                 try { activity.unbindService(connection); }
                 catch (IllegalArgumentException ignored) { }
             }
+        }
+
+        void close() {
+            if (closed) return;
+            closed = true;
+            clearWatchdog();
+            executor.shutdownNow();
+            releaseConnection();
             synchronized (ACTIVE) {
                 List<Session> sessions = ACTIVE.get(activity);
                 if (sessions != null) {
