@@ -8,6 +8,10 @@
 #include <limits.h>
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/syscall.h>
 
 /*
  * OpenJDK 21 launcher inside a real isolatedProcess. The Android host only
@@ -82,6 +86,107 @@ static void enable_debug_pipe(int received_fd) {
 }
 #endif
 
+#define MAX_NCAPP_BYTES (128L * 1024L * 1024L)
+
+/*
+ * A Binder-received, read-only descriptor is accessible for read()/pread()
+ * but OpenJDK's classpath loader needs to open the JAR again by *path*.
+ * /proc/self/fd/<binder-fd> can be blocked by Android SELinux because it
+ * points to a host-owned app_data_file even when the original FD is readable.
+ *
+ * Instead, make a *sealed, non-executable in-memory copy* owned by the isolated
+ * UID. The host never supplies a directory, path permission or executable.
+ * Keep the memfd open until process death because ZipFile may reopen it later.
+ */
+static int g_classpath_fd = -1;
+static int make_isolated_classpath(int source_fd, char *path, size_t path_size) {
+    if (g_classpath_fd >= 0) {
+        errno = EALREADY;
+        return -1;
+    }
+    struct stat sb;
+    if (fstat(source_fd, &sb) != 0 || !S_ISREG(sb.st_mode)
+            || sb.st_size <= 0 || sb.st_size > MAX_NCAPP_BYTES) {
+        errno = EINVAL;
+        return -1;
+    }
+
+#if defined(SYS_memfd_create)
+    /* MFD_NOEXEC_SEAL is Linux 6.3+, so fall back for older Android kernels. */
+    const unsigned int noexec_seal = 0x0008U;
+    int fd = (int)syscall(SYS_memfd_create, "neurocenter-ncapp",
+                          MFD_CLOEXEC | MFD_ALLOW_SEALING | noexec_seal);
+    if (fd < 0 && errno == EINVAL) {
+        fd = (int)syscall(SYS_memfd_create, "neurocenter-ncapp",
+                          MFD_CLOEXEC | MFD_ALLOW_SEALING);
+    }
+#else
+    errno = ENOSYS;
+    int fd = -1;
+#endif
+    if (fd < 0) return -1;
+
+    char buf[32768];
+    off_t at = 0;
+    while (at < sb.st_size) {
+        size_t request = (size_t)(sb.st_size - at);
+        if (request > sizeof(buf)) request = sizeof(buf);
+        ssize_t n = pread(source_fd, buf, request, at);
+        if (n <= 0) {
+            if (n == 0) errno = EIO;
+            close(fd);
+            return -1;
+        }
+        ssize_t offset = 0;
+        while (offset < n) {
+            ssize_t written = write(fd, buf + offset, (size_t)(n - offset));
+            if (written <= 0) {
+                if (written == 0) errno = EIO;
+                close(fd);
+                return -1;
+            }
+            offset += written;
+        }
+        at += n;
+    }
+    /* Always seal writes. If unavailable, DO NOT use an unsealed archive. */
+    if (fcntl(fd, F_ADD_SEALS,
+              F_SEAL_WRITE | F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_SEAL) != 0) {
+        close(fd);
+        return -1;
+    }
+    if (lseek(fd, 0, SEEK_SET) < 0) {
+        close(fd);
+        return -1;
+    }
+
+    int count = snprintf(path, path_size, "/proc/self/fd/%d", fd);
+    if (count < 0 || (size_t)count >= path_size) {
+        errno = ENAMETOOLONG;
+        close(fd);
+        return -1;
+    }
+    /* Verifies reopening the *isolated* memfd, not the original host file. */
+    int probe = open(path, O_RDONLY | O_CLOEXEC);
+    if (probe < 0) {
+        close(fd);
+        return -1;
+    }
+    unsigned char magic[4];
+    ssize_t read_bytes = pread(probe, magic, sizeof magic, 0);
+    close(probe);
+    if (read_bytes != 4 || magic[0] != 0x50 || magic[1] != 0x4b) {
+        errno = EINVAL;
+        close(fd);
+        return -1;
+    }
+    g_classpath_fd = fd;
+    ncapp_note(ANDROID_LOG_INFO,
+               "JVM classpath: sealed isolated memfd (%lld bytes)",
+               (long long)sb.st_size);
+    return 0;
+}
+
 static jstring err(JNIEnv *android_env, const char *name, const char *details) {
     char buffer[1024];
     snprintf(buffer, sizeof buffer, "NCAPP_ERROR:%s: %s", name,
@@ -152,7 +257,37 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
     snprintf(libjvm, sizeof libjvm, "%s/libjvm.so", libs);
     snprintf(homeOption, sizeof homeOption, "-Djava.home=%s", home);
     snprintf(libraryOption, sizeof libraryOption, "-Djava.library.path=%s", libs);
-    snprintf(appOption, sizeof appOption, "-Djava.class.path=%s", archive);
+    /* A numeric fd is passed by Binder, never a host path with permissions. */
+    const char *prefix = "/proc/self/fd/";
+    if (strncmp(archive, prefix, strlen(prefix)) != 0) {
+        (*android_env)->ReleaseStringUTFChars(android_env, jhome, home);
+        (*android_env)->ReleaseStringUTFChars(android_env, jarchive, archive);
+        (*android_env)->ReleaseStringUTFChars(android_env, jentry, entry);
+        (*android_env)->ReleaseStringUTFChars(android_env, jlibs, libs);
+        return err(android_env, "jar", "Descriptor inválido");
+    }
+    char *end = NULL;
+    errno = 0;
+    long source_fd = strtol(archive + strlen(prefix), &end, 10);
+    if (errno != 0 || end == archive + strlen(prefix) || *end != '\0'
+            || source_fd < 0 || source_fd > INT_MAX) {
+        (*android_env)->ReleaseStringUTFChars(android_env, jhome, home);
+        (*android_env)->ReleaseStringUTFChars(android_env, jarchive, archive);
+        (*android_env)->ReleaseStringUTFChars(android_env, jentry, entry);
+        (*android_env)->ReleaseStringUTFChars(android_env, jlibs, libs);
+        return err(android_env, "jar", "FD no válido");
+    }
+    char isolated_path[64];
+    if (make_isolated_classpath((int)source_fd, isolated_path, sizeof isolated_path) != 0) {
+        char details[128];
+        snprintf(details, sizeof details, "No se pudo crear JAR aislado en memoria: errno=%d", errno);
+        (*android_env)->ReleaseStringUTFChars(android_env, jhome, home);
+        (*android_env)->ReleaseStringUTFChars(android_env, jarchive, archive);
+        (*android_env)->ReleaseStringUTFChars(android_env, jentry, entry);
+        (*android_env)->ReleaseStringUTFChars(android_env, jlibs, libs);
+        return err(android_env, "jar", details);
+    }
+    snprintf(appOption, sizeof appOption, "-Djava.class.path=%s", isolated_path);
     setenv("JAVA_HOME", home, 1);
     // Read only by a NeuroCenter-patched HotSpot build; it may not be used
     // to grant access to any host-private files from an isolated UID.
