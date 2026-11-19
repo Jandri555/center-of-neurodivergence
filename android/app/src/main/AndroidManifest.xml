@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- NeuroCenter solo consulta paquetes que publican el contrato OPEN_APP. -->
+    <queries>
+        <intent>
+            <action android:name="com.neurocenter.action.OPEN_APP" />
+        </intent>
+    </queries>
+
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.usb.accessory" android:required="false" />
 
@@ -13,6 +20,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Opcional en Android 13+: permite mostrar la notificación persistente del servicio. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Acceso especial para entregar APK al instalador del sistema, sujeto a autorización del usuario. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name="com.neurocenter.apps.agenda.AgendaApplication"
