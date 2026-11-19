@@ -185,8 +185,12 @@ public final class AndroidCredentialVault {
         return result;
     }
 
-    private static String alias(String appId, String name) throws Exception {
-        return PREFIX + digest(appId + ":" + name);
+    private static String alias(String appId, String name) throws IOException {
+        try {
+            return PREFIX + digest(appId + ":" + name);
+        } catch (Exception ex) {
+            throw new IOException("No se pudo calcular el identificador de credencial.", ex);
+        }
     }
 
     private static String fileName(String name) throws IOException {
