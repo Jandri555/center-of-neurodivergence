@@ -67,3 +67,21 @@ La versión anterior instalaba la JIMAGE en `files/jre21/lib/modules` y trataba 
 4. `java.home` se fija al `nativeLibraryDir` real; el host ya no comparte un FD de carpeta. Se siguen comprobando el SHA-256 de la .ncapp y el aislamiento del proceso.
 
 **Este cambio es experimental, no una garantía de funcionalidad o seguridad.** Debemos validar en hardware la instalación, el acceso a `libnm.so`, el arranque JNI de HotSpot y la carga de clases. Las clases Java pueden intentar abrir rutas estándar como `java.home/conf/security/java.security`; al no existir esa jerarquía todavía pueden producirse errores. No se hará fallback a una JVM con permisos del host.
+
+## Variantes Android DEBUG y RELEASE (1.6.9+)
+
+La compilación genera **dos APK con el mismo applicationId `com.neurocenter`**. Se instalan uno encima del otro, no simultáneamente. La variante DEBUG añade `-debug` a `versionName` y al nombre visible del lanzador.
+
+- **DEBUG:** el anfitrión crea un pipe unilateral antes de `JNI_CreateJavaVM`. El extremo de escritura se pasa por Binder al `isolatedProcess`, nunca acceso a directorios privados. El puente nativo Debug envía mensajes por ese FD y redirige stdout/stderr **solo dentro del proceso aislado**. El anfitrión drena el pipe en un hilo y conserva hasta 64 KiB recientes en RAM. Después de un fallo permite copiar y **Compartir informe** (texto plano, sin ADB). Se añade el historial de salida de Android cuando está disponible (API 30+). No se guarda ni envía automáticamente y puede contener datos privados.
+- **RELEASE:** usa la implementación Java sin captura del `src/release`; el puente JNI no incluye el código DEBUG gracias a la definición CMake condicionada a `Debug`. No muestra opciones de exportar ni usa pipes de diagnóstico. No se modifica el aislamiento ni la política de permisos de las `.ncapp`.
+
+El PIPE no garantiza capturar todo: un fallo anterior a su instalación, mensajes enviados exclusivamente a logcat o un cierre brusco sin emitir texto pueden dejarlo vacío. La propia ejecución de HotSpot en Android **continúa siendo experimental**.
+
+**Firma:** para poder actualizar una instalación de prueba existente, ambos APK generados por CI están firmados temporalmente con la misma clave de prueba `stableDebug`. El llamado RELEASE es por ahora una **build de prueba sin herramientas de diagnóstico, NO una release publicable**. Antes de distribuir NeuroCenter, sustituir por una clave privada de producción protegida y configurar un proceso de firma de releases.
+
+**Construcción local:**
+```sh
+gradle -p android :app:assembleDebug :app:assembleRelease
+```
+
+Artefactos esperados: `android/app/build/outputs/apk/debug/app-debug.apk` y `android/app/build/outputs/apk/release/app-release.apk`.
