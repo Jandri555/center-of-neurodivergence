@@ -113,6 +113,7 @@ public final class AndroidExternalApps {
 
             String versionName = "";
             long versionCode = 0L;
+            String signer;
             try {
                 PackageInfo info = getPackageInfo(manager, packageName);
                 versionName = info.versionName == null ? "" : info.versionName;
@@ -121,7 +122,7 @@ public final class AndroidExternalApps {
                 } else {
                     versionCode = info.versionCode;
                 }
-                String signer = signingDigest(info);
+                signer = signingDigest(info);
                 if (signer == null) continue;
             } catch (PackageManager.NameNotFoundException ignored) {
                 // El paquete puede desinstalarse mientras se actualiza el listado.
