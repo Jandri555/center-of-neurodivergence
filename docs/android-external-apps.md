@@ -58,7 +58,7 @@ Son permisos propios, independientes de Android. Controlarán operaciones que la
 
 La futura API de servicios debe exponerse mediante IPC/Binder y comprobar siempre la identidad del llamante usando el UID real obtenido de Binder y su paquete instalado. Nunca debe aceptar un `packageName` enviado libremente en un Intent/Bundle como prueba de identidad. Las concesiones se guardarán por paquete y capacidad y se comprobarán en cada operación.
 
-**Estado:** el descubrimiento y lanzamiento de paquetes independientes y la solicitud al instalador del sistema están implementados en `AndroidExternalApps`. La API IPC de capacidades NeuroCenter y la migración del panel móvil para usar este gestor aún son tareas pendientes; no se debe presentar el modelo completo de plugins como terminado hasta que existan esas comprobaciones y pruebas.
+**Estado:** están implementados el descubrimiento y lanzamiento de paquetes independientes, el paso de APK al instalador del sistema, una pantalla de lista y un gestor de concesiones por paquete. También existe un servicio Binder que comprueba el UID real del llamante y aplica las capacidades en el servidor para Agenda y credenciales. Aún faltan pruebas de integración en dispositivo, revisión del flujo de ciclo de vida y la migración del shell móvil completo; no se debe presentar el modelo como listo para producción hasta completar esas pruebas.
 
 ## Instalación desde NeuroCenter
 
@@ -75,3 +75,47 @@ El permiso `REQUEST_INSTALL_PACKAGES` está sujeto a las políticas de distribuc
 5. Verificar descubrimiento, lanzamiento, actualización y desinstalación con el instalador oficial.
 6. Probar un paquete que no declare el intent-filter y comprobar que no aparece en NeuroCenter.
 7. Verificar que el servicio IPC rechaza UID, paquete o capacidades no autorizadas antes de dar acceso a Agenda o a otros servicios del centro.
+
+
+## API Binder para servicios del centro
+
+La biblioteca `neurocenter-api` publica `INeuroCenterBridge` (AIDL) y `NeuroCenterCapabilities`. El servicio del host es un componente explícito:
+
+- Paquete: `com.neurocenter`
+- Clase: `com.neurocenter.apps.agenda.NeuroCenterBridgeService`
+- Acción de binding: `com.neurocenter.action.BIND_BRIDGE`
+
+Ejemplo de binding en una aplicación externa:
+
+```java
+Intent intent = new Intent("com.neurocenter.action.BIND_BRIDGE");
+intent.setComponent(new ComponentName(
+        "com.neurocenter",
+        "com.neurocenter.apps.agenda.NeuroCenterBridgeService"));
+
+ServiceConnection connection = new ServiceConnection() {
+    @Override
+    public void onServiceConnected(ComponentName name, IBinder binder) {
+        INeuroCenterBridge bridge = INeuroCenterBridge.Stub.asInterface(binder);
+        // Consultar primero la capacidad y gestionar SecurityException/RemoteException.
+    }
+
+    @Override
+    public void onServiceDisconnected(ComponentName name) {
+        // Descartar el proxy; Android puede volver a conectar el servicio.
+    }
+};
+bindService(intent, connection, Context.BIND_AUTO_CREATE);
+```
+
+Capacidades disponibles:
+
+| ID | Operaciones protegidas |
+|---|---|
+| `agenda.read` | Obtener una instantánea JSON de las entradas de la Agenda |
+| `agenda.write` | Crear tareas, cambiar su estado y eliminar entradas |
+| `credentials.access` | Guardar, recuperar y eliminar secretos cifrados con Android Keystore |
+
+El gestor de permisos de NeuroCenter guarda concesiones en `capabilities.db`, vinculadas al nombre de paquete Android. El servicio no acepta identidad del cliente por parámetros: resuelve el UID de Binder con PackageManager y rechaza UIDs ambiguos (por ejemplo, paquetes con `sharedUserId`). Cada método protegido vuelve a comprobar la capacidad antes de acceder al recurso.
+
+Las aplicaciones externas deben incluir `neurocenter-api` como dependencia Android para compilar el contrato AIDL. Para acceder a Android Bluetooth, cámara, notificaciones, red o documentos, deben seguir declarando y solicitando esos permisos/URI por sí mismas; las capacidades Binder no sustituyen permisos del sistema.
