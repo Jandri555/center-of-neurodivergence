@@ -308,7 +308,7 @@ public final class NcappUiController {
 
         /** El proceso remoto puede cerrarse por un fallo nativo sin devolver excepción Java. */
         void error(String message) {
-            String report = "NeuroCenter Android 1.6.7"
+            String report = "NeuroCenter Android 1.6.8"
                     + "\nPaquete: " + app.id()
                     + "\nProceso aislado PID: " + (isolatedPid > 0 ? isolatedPid : "no conectado")
                     + "\nFase: " + phase
@@ -374,7 +374,10 @@ public final class NcappUiController {
                         continue;
                     }
                     String classification;
-                    if (info.getReason() == ApplicationExitInfo.REASON_CRASH_NATIVE) {
+                    if (info.getReason() == ApplicationExitInfo.REASON_EXIT_SELF) {
+                        classification = "EL PROCESO TERMINÓ POR SÍ MISMO (exit("
+                                + info.getStatus() + ")); revisar HotSpot output en logcat";
+                    } else if (info.getReason() == ApplicationExitInfo.REASON_CRASH_NATIVE) {
                         classification = "CRASH NATIVO (HotSpot/JNI o librerías)";
                     } else if (info.getReason() == ApplicationExitInfo.REASON_CRASH) {
                         classification = "CRASH JAVA DEL PROCESO AISLADO";

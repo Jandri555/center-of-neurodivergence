@@ -2,6 +2,7 @@
 #include <android/log.h>
 #include <dlfcn.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
@@ -19,6 +20,25 @@ typedef jint(JNICALL *create_java_vm_t)(JavaVM **, void **, void *);
 static JavaVM *g_vm = NULL;
 static jobject g_app = NULL;
 static jmethodID g_action = NULL;
+
+/*
+ * JNI Invocation API's vfprintf hook. Some fatal HotSpot initialization
+ * errors are written to stderr immediately before exit(1), so Java cannot
+ * catch or report them through Binder. Mirror these messages to logcat.
+ * No exit()/abort() hooks: never alter JVM shutdown or its sandbox.
+ */
+static int hotspot_vfprintf(FILE *stream, const char *format, va_list args) {
+    char message[2048];
+    va_list copy;
+    va_copy(copy, args);
+    int count = vsnprintf(message, sizeof(message), format, copy);
+    va_end(copy);
+    if (count >= 0 && message[0] != '\0') {
+        __android_log_print(stream == stderr ? ANDROID_LOG_ERROR : ANDROID_LOG_INFO,
+                            TAG, "HotSpot output: %s", message);
+    }
+    return count;
+}
 
 static jstring err(JNIEnv *android_env, const char *name, const char *details) {
     char buffer[1024];
@@ -106,7 +126,8 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
         {.optionString = "-Djava.awt.headless=true"},
         {.optionString = "-Djava.security.manager=allow"},
         {.optionString = "-Djdk.lang.Process.launchMechanism=FORK"},
-        {.optionString = "-Xmx128m"}
+        {.optionString = "-Xmx128m"},
+        {.optionString = "vfprintf", .extraInfo = (void *)hotspot_vfprintf}
     };
     JavaVMInitArgs args = {
         .version = JNI_VERSION_1_6,
@@ -115,7 +136,8 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
         .ignoreUnrecognized = JNI_FALSE
     };
     JNIEnv *jre = NULL;
-    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 4: entrando en JNI_CreateJavaVM");
+    __android_log_print(ANDROID_LOG_INFO, TAG,
+                        "JVM stage 4: entrando en JNI_CreateJavaVM (vfprintf -> logcat)");
     jint status = create(&g_vm, (void**)&jre, &args);
     __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 5: JNI_CreateJavaVM retornó %d", status);
     if (status != JNI_OK || !g_vm || !jre) {
