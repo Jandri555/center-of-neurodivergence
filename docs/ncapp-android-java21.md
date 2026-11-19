@@ -14,8 +14,9 @@
 - ✅ Android: comprobación manual de un servicio `android:isolatedProcess=true` creado con `bindIsolatedService`, que recibe el archivo por descriptor Binder y devuelve su SHA-256. No ejecuta el archivo.
 - ✅ Preferencias de capacidades registradas por ID + SHA-256 del paquete. Modificar un paquete invalida sus permisos anteriores.
 - ✅ **OpenJDK 21 ARM64 incluido en la compilación del APK**: se descarga un release fijo de Amethyst, se verifica SHA-256 y se empaquetan módulos + bibliotecas nativas. Un servicio de diagnóstico independiente permite comprobar el arranque real de HotSpot 21; no equivale a haber pasado una prueba en dispositivo.
-- ⛔ Ejecutar código `.ncapp` en un proceso aislado sigue pendiente: los procesos `isolatedProcess` no pueden abrir rutas ordinarias del directorio privado de NeuroCenter, y el módulo `lib/modules` necesita acceso por ruta. La sonda no ejecuta aplicaciones de terceros.
-- ⛔ Falta IPC de la API de NeuroCenter, ejecución de código, motor de UI móvil, aislamiento de cada ejecución y pruebas de ataques.
+- 🧪 Prototipo de ejecución `.ncapp` en un UID aislado: el host pasa la carpeta JRE y el JAR mediante descriptores de solo lectura y utiliza HotSpot 21 para ejecutar la clase indicada por `NeuroCenter-Mobile-Class`. Requiere pruebas en dispositivo (JNI, ART/HotSpot y SELinux).
+- ✅ IPC de arranque y motor de interfaz móvil JSON (`title`, `text`, `actions`) implementados; se utiliza una instancia aislada distinta para cada ejecución.
+- ⛔ Falta el puente de servicios privilegiados con validación de capacidades y pruebas de ataques; no se conceden operaciones de host al Java externo.
 - ✅ Windows: el instalador jpackage registra .ncapp y entrega el archivo a la instancia ya iniciada.
 - ⛔ Falta registrar la asociación Android y probar en dispositivo real.
 
@@ -45,7 +46,7 @@ Todavía falta definir la interfaz móvil pública que implementarán las apps.
 7. Pruebas de permisos denegados, API de agenda, almacenamiento, red, Bluetooth y archivo corrupto; pruebas de actualización/revocación.
 8. Lanzar la UI de forma declarativa a través del host; no permitir referencias directas a Views del proceso host.
 
-**Estado de seguridad:** el proceso aislado verificado por Binder es un primer paso. Guardar una preferencia de permiso NO equivale a hacerla cumplir. Actualmente no se ejecuta código `.ncapp` en Android; se mantiene así intencionadamente hasta completar las barreras.
+**Estado de seguridad:** el lanzamiento aislado Java 21 está implementado a nivel de código, pero no validado en un móvil físico. Guardar una preferencia de permiso no equivale a hacerla cumplir; la API de host continúa cerrada para las `.ncapp`. Nunca ejecutar el JAR en el proceso principal como alternativa.
 
 Fuentes técnicas:
 - https://developer.android.com/reference/android/content/Context#bindIsolatedService(android.content.Intent,int,java.lang.String,java.util.concurrent.Executor,android.content.ServiceConnection)
