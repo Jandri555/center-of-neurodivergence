@@ -108,5 +108,7 @@ jobs:
           path: target/neurocenter-demo.ncapp
           if-no-files-found: error
 
-      - name: Build the external app example
-        run: mvn --batch-mode --no-transfer-progress -f example-app/pom.xml clean verify
+      - name: Build the external app example (.ncapp)
+        run: |
+          mvn --batch-mode --no-transfer-progress -f example-app/pom.xml clean verify
+          test -s example-app/target/hello-app.ncapp
