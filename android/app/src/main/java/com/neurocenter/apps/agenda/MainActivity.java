@@ -285,7 +285,7 @@ public final class MainActivity extends Activity {
     private void editExternalAppPermissions(AndroidExternalApps.InstalledApp app) {
         final java.util.Set<String> current;
         try (NeuroCenterCapabilityStore store = new NeuroCenterCapabilityStore(this)) {
-            current = new java.util.HashSet<>(store.grantedCapabilities(app.packageName()));
+            current = new java.util.HashSet<>(store.grantedCapabilities(app.packageName(), app.signingDigest()));
         } catch (IOException | RuntimeException ex) {
             Toast.makeText(this, "No se pudieron leer los permisos: " + ex.getMessage(),
                     Toast.LENGTH_LONG).show();
@@ -318,7 +318,7 @@ public final class MainActivity extends Activity {
                         if (control.isChecked()) updated.add(id);
                     });
                     try (NeuroCenterCapabilityStore store = new NeuroCenterCapabilityStore(this)) {
-                        store.setGrantedCapabilities(app.packageName(), updated);
+                        store.setGrantedCapabilities(app.packageName(), app.signingDigest(), updated);
                         dialog.dismiss();
                         Toast.makeText(this, "Permisos guardados para " + app.name(),
                                 Toast.LENGTH_SHORT).show();
