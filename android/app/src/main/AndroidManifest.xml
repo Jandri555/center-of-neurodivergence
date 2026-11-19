@@ -34,6 +34,10 @@
             android:exported="false"
             android:stopWithTask="false"
             android:foregroundServiceType="connectedDevice" />
+        <!-- Exported only for the explicit, UID-authenticated Binder protocol. -->
+        <service
+            android:name="com.neurocenter.apps.agenda.NeuroCenterBridgeService"
+            android:exported="true" />
         <activity
             android:name="com.neurocenter.apps.agenda.MainActivity"
             android:exported="true">
