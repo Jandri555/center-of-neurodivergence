@@ -77,6 +77,22 @@ El permiso `REQUEST_INSTALL_PACKAGES` está sujeto a las políticas de distribuc
 7. Verificar que el servicio IPC rechaza UID, paquete o capacidades no autorizadas antes de dar acceso a Agenda o a otros servicios del centro.
 
 
+## Correspondencia con los permisos de escritorio
+
+Los permisos no se copian literalmente: Android tiene su propio modelo de seguridad y algunos recursos no admiten una concesión global por app.
+
+| Permiso de escritorio | Tratamiento en Android |
+|---|---|
+| `network.connect` | La app declara `android.permission.INTERNET` en su propio APK. Android lo concede al instalar; NeuroCenter no puede revocarlo de forma independiente sin deshabilitar o desinstalar el paquete. |
+| `network.listen` | También pertenece al paquete Android y a su permiso de red. No existe un permiso Android de ejecución separado para abrir un socket servidor. |
+| `files.read.documents` | Se sustituye por Storage Access Framework: el usuario elige documentos y Android entrega URI con acceso limitado. No se concede lectura general de Documentos/Descargas. |
+| `files.write.documents` | Se sustituye por los selectores de creación/árbol de documentos y URI con permisos de escritura. |
+| `clipboard.access` | Se usa `ClipboardManager`; Android limita la lectura del portapapeles según el estado y foco de la app. No se simula una autorización que el sistema operativo no ofrece. |
+| `credentials.access` | Capacidad propia de NeuroCenter, comprobada dentro del servicio Binder y aislada por paquete + certificado. |
+| — | `agenda.read` y `agenda.write` son capacidades nuevas del centro para proteger la Agenda compartida. |
+
+Por tanto, los permisos Android de red, Bluetooth, cámara, ubicación, micrófono y notificaciones se declaran y solicitan en el APK consumidor. Las capacidades Binder solo protegen datos y servicios que pertenecen a NeuroCenter.
+
 ## API Binder para servicios del centro
 
 La biblioteca `neurocenter-api` publica `INeuroCenterBridge` (AIDL) y `NeuroCenterCapabilities`. El servicio del host es un componente explícito:
