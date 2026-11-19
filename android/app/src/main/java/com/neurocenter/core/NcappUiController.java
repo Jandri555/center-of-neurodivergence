@@ -2,6 +2,11 @@ package com.neurocenter.core;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.ActivityManager;
+import android.app.ApplicationExitInfo;
+import android.os.Build;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -70,6 +75,9 @@ public final class NcappUiController {
         private boolean bound;
         private volatile boolean closed;
         private volatile boolean failed;
+        private volatile int isolatedPid;
+        private volatile String phase = "Solicitando proceso aislado";
+        private final long createdAt = System.currentTimeMillis();
         private int remainingHostRequests = 8;
 
         Session(Activity activity, NcappManager.InstalledApp app) {
@@ -142,11 +150,22 @@ public final class NcappUiController {
                 if (worker == null || !worker.isIsolated()) {
                     throw new SecurityException("El proceso Java no tiene un UID aislado.");
                 }
+                isolatedPid = worker.processPid();
+                Log.i(LOG_TAG, "Worker aislado PID=" + isolatedPid + " para " + app.id());
                 showText("Preparando la imagen de OpenJDK 21… "
                         + "En la primera ejecución puede necesitar descomprimir sus módulos.");
                 try (ParcelFileDescriptor home = Java21Runtime.openSandboxHome(activity);
                      ParcelFileDescriptor archive = ParcelFileDescriptor.open(
                              app.archive(), ParcelFileDescriptor.MODE_READ_ONLY)) {
+                    showText("Verificando el acceso a módulos Java 21 y al archivo .ncapp…");
+                    String preflight = worker.preflight(home, archive,
+                            app.sha256(), activity.getApplicationInfo().nativeLibraryDir);
+                    Log.i(LOG_TAG, "Preflight PID=" + isolatedPid + ": " + preflight);
+                    if (!preflight.startsWith("OK:")) {
+                        error("No se pudo preparar OpenJDK 21 en el proceso aislado. "
+                                + preflight);
+                        return;
+                    }
                     showText("Lanzando HotSpot Java 21 dentro del proceso aislado…");
                     String output = worker.launchApp(home, archive, app.mobileClass(),
                             app.sha256(), activity.getApplicationInfo().nativeLibraryDir);
@@ -247,6 +266,7 @@ public final class NcappUiController {
         }
 
         void showText(String message) {
+            phase = message;
             activity.runOnUiThread(() -> {
                 if (closed || failed) return;
                 panel.removeAllViews();
@@ -257,21 +277,88 @@ public final class NcappUiController {
             });
         }
 
-        /** El servicio puede morir antes de onServiceConnected: nunca dejamos la UI esperando. */
+        /** El proceso remoto puede cerrarse por un fallo nativo sin devolver excepción Java. */
         void error(String message) {
-            Log.e(LOG_TAG, "Fallo en .ncapp " + app.id() + ": " + message);
+            String report = "NeuroCenter Android 1.6.3"
+                    + "\nPaquete: " + app.id()
+                    + "\nProceso aislado PID: " + (isolatedPid > 0 ? isolatedPid : "no conectado")
+                    + "\nFase: " + phase
+                    + "\nError: " + message;
+            Log.e(LOG_TAG, "Fallo .ncapp: " + report);
             activity.runOnUiThread(() -> {
                 if (closed || failed) return;
-                clearWatchdog();
-                panel.removeAllViews();
-                TextView copy = new TextView(activity);
-                copy.setText(message);
-                copy.setTextSize(16);
-                panel.addView(copy);
                 failed = true;
+                clearWatchdog();
                 releaseConnection();
                 executor.shutdownNow();
+                panel.removeAllViews();
+                TextView diagnostic = new TextView(activity);
+                diagnostic.setText(message + "\n\nFase: " + phase
+                        + "\nBuscando el motivo de cierre del proceso…");
+                diagnostic.setTextSize(15);
+                panel.addView(diagnostic);
+                final String[] fullReport = {report};
+                Button copy = new Button(activity);
+                copy.setText("Copiar informe de diagnóstico");
+                copy.setAllCaps(false);
+                copy.setOnClickListener(view -> {
+                    ClipboardManager clipboard = (ClipboardManager) activity
+                            .getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (clipboard != null) {
+                        clipboard.setPrimaryClip(ClipData.newPlainText(
+                                "NeuroCenter ncapp crash", fullReport[0]));
+                    }
+                });
+                panel.addView(copy);
+                mainHandler.postDelayed(() -> {
+                    if (closed) return;
+                    String exit = findExitReason();
+                    fullReport[0] = report + "\n" + exit;
+                    diagnostic.setText(message + "\n\nFase: " + phase
+                            + "\n" + exit + "\n\nPuedes copiar este diagnóstico.");
+                }, 1500);
             });
+        }
+
+        private String findExitReason() {
+            if (Build.VERSION.SDK_INT < 30) {
+                return "Android 10 no ofrece historial de terminación al programa. "
+                        + "Para conocer la causa necesitas logcat.";
+            }
+            if (isolatedPid <= 0) {
+                return "Sin PID del servicio. El proceso puede haber muerto antes "
+                        + "de establecer la conexión.";
+            }
+            try {
+                ActivityManager manager = activity.getSystemService(ActivityManager.class);
+                if (manager == null) return "El servicio de ActivityManager no está disponible.";
+                List<ApplicationExitInfo> exits = manager.getHistoricalProcessExitReasons(
+                        activity.getPackageName(), isolatedPid, 5);
+                for (ApplicationExitInfo info : exits) {
+                    if (info.getPid() != isolatedPid || info.getTimestamp() < createdAt - 5000) {
+                        continue;
+                    }
+                    String classification;
+                    if (info.getReason() == ApplicationExitInfo.REASON_CRASH_NATIVE) {
+                        classification = "CRASH NATIVO (HotSpot/JNI o librerías)";
+                    } else if (info.getReason() == ApplicationExitInfo.REASON_CRASH) {
+                        classification = "CRASH JAVA DEL PROCESO AISLADO";
+                    } else if (info.getReason() == ApplicationExitInfo.REASON_LOW_MEMORY) {
+                        classification = "ANDROID MATÓ EL PROCESO POR MEMORIA";
+                    } else if (info.getReason() == ApplicationExitInfo.REASON_ANR) {
+                        classification = "PROCESO SIN RESPUESTA (ANR)";
+                    } else {
+                        classification = "Código Android " + info.getReason();
+                    }
+                    return "Motivo registrado por Android: " + classification
+                            + "\nEstado/señal: " + info.getStatus()
+                            + "\nDetalle: " + info.getDescription();
+                }
+                return "Android aún no tiene información del cierre del PID "
+                        + isolatedPid + ". Consulta el registro logcat.";
+            } catch (Exception e) {
+                return "No se pudo consultar el historial de cierres: " + e.getMessage();
+            }
         }
 
         void armTimeout(long millis, String message) {
