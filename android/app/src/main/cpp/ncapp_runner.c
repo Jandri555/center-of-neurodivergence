@@ -320,7 +320,12 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
     jmethodID loadMethod = (*jre)->GetMethodID(jre, parentClass, "loadClass",
                                               "(Ljava/lang/String;)Ljava/lang/Class;");
     if (!loadMethod) return java_error(android_env, jre, "ClassLoader.loadClass");
-    jstring javaName = (*jre)->NewStringUTF(jre, entry);
+    /* JNI strings from Android ART have already been released at this point.
+       Use our retained validated className rather than a dangling pointer. */
+    char dottedName[sizeof className];
+    strcpy(dottedName, className);
+    for (char *p = dottedName; *p; p++) if (*p == '/') *p = '.';
+    jstring javaName = (*jre)->NewStringUTF(jre, dottedName);
     if (!javaName) return java_error(android_env, jre, "nombre de clase");
     ncapp_note(ANDROID_LOG_INFO, "JVM stage 6a: leyendo clase móvil desde Binder FD");
     jclass clazz = (jclass)(*jre)->CallObjectMethod(jre, g_jar_loader,
@@ -329,6 +334,22 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
         return java_error(android_env, jre, "clase móvil");
     }
     ncapp_note(ANDROID_LOG_INFO, "JVM stage 6b: clase móvil cargada");
+    /* Resource loading / ServiceLoader should use the isolated ncapp loader. */
+    jclass threadClass = (*jre)->FindClass(jre, "java/lang/Thread");
+    if (!threadClass) return java_error(android_env, jre, "Thread class");
+    jmethodID currentThread = (*jre)->GetStaticMethodID(jre, threadClass,
+                              "currentThread", "()Ljava/lang/Thread;");
+    jmethodID setContextLoader = (*jre)->GetMethodID(jre, threadClass,
+                              "setContextClassLoader", "(Ljava/lang/ClassLoader;)V");
+    if (!currentThread || !setContextLoader) {
+        return java_error(android_env, jre, "thread context loader");
+    }
+    jobject thread = (*jre)->CallStaticObjectMethod(jre, threadClass, currentThread);
+    if (!thread) return java_error(android_env, jre, "currentThread");
+    (*jre)->CallVoidMethod(jre, thread, setContextLoader, g_jar_loader);
+    if ((*jre)->ExceptionCheck(jre)) {
+        return java_error(android_env, jre, "thread context loader");
+    }
     jmethodID ctor = (*jre)->GetMethodID(jre, clazz, "<init>", "()V");
     if (!ctor) return java_error(android_env, jre, "constructor");
     jobject instance = (*jre)->NewObject(jre, clazz, ctor);
