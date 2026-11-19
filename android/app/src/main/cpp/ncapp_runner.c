@@ -13,6 +13,29 @@
 #include <sys/stat.h>
 #include <sys/syscall.h>
 
+/* Older Android NDK sysroot headers may omit Linux memfd seal constants. */
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
+#ifndef MFD_ALLOW_SEALING
+#define MFD_ALLOW_SEALING 0x0002U
+#endif
+#ifndef F_ADD_SEALS
+#define F_ADD_SEALS 1033
+#endif
+#ifndef F_SEAL_SEAL
+#define F_SEAL_SEAL 0x0001
+#endif
+#ifndef F_SEAL_SHRINK
+#define F_SEAL_SHRINK 0x0002
+#endif
+#ifndef F_SEAL_GROW
+#define F_SEAL_GROW 0x0004
+#endif
+#ifndef F_SEAL_WRITE
+#define F_SEAL_WRITE 0x0008
+#endif
+
 /*
  * OpenJDK 21 launcher inside a real isolatedProcess. The Android host only
  * provides read-only descriptors to the JRE image and the selected .ncapp.
