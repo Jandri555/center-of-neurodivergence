@@ -17,6 +17,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -42,6 +45,8 @@ public final class SingleInstance implements AutoCloseable {
     private final Object activationMonitor = new Object();
     private Runnable activationHandler;
     private boolean activationPending;
+    private Consumer<Path> ncappOpenHandler;
+    private final List<Path> pendingNcappOpens = new ArrayList<>();
 
     private SingleInstance(Path directory, FileChannel channel, FileLock lock) throws IOException {
         this.infoFile = directory.resolve("single-instance.info");
@@ -82,6 +87,11 @@ public final class SingleInstance implements AutoCloseable {
      * antes de decidir que la instancia existente sigue activa.
      */
     public static SingleInstance acquireOrActivate(Path directory) throws IOException {
+        return acquireOrActivate(directory, null);
+    }
+
+    /** Admite archivos .ncapp lanzados por la asociación de Windows. */
+    public static SingleInstance acquireOrActivate(Path directory, Path ncappToOpen) throws IOException {
         Files.createDirectories(directory);
         Path lockFile = directory.resolve("single-instance.lock");
         Path infoFile = directory.resolve("single-instance.info");
@@ -118,7 +128,7 @@ public final class SingleInstance implements AutoCloseable {
                 if (lock == null) channel.close();
             }
 
-            if (notifyExistingInstance(infoFile)) return null;
+            if (notifyExistingInstance(infoFile, ncappToOpen)) return null;
 
             try {
                 Thread.sleep(RETRY_DELAY_MILLIS);
@@ -143,6 +153,17 @@ public final class SingleInstance implements AutoCloseable {
         }
     }
 
+    /** Registra el receptor una vez mostrada la ventana; conserva solicitudes previas. */
+    public void setNcappOpenHandler(Consumer<Path> handler) {
+        if (handler == null) throw new IllegalArgumentException("Falta el controlador .ncapp.");
+        synchronized (activationMonitor) {
+            ncappOpenHandler = handler;
+            List<Path> queued = new ArrayList<>(pendingNcappOpens);
+            pendingNcappOpens.clear();
+            for (Path file : queued) handler.accept(file);
+        }
+    }
+
     private void listen() {
         while (!closed.get()) {
             try (Socket client = serverSocket.accept()) {
@@ -153,10 +174,28 @@ public final class SingleInstance implements AutoCloseable {
                              new java.io.OutputStreamWriter(client.getOutputStream(), StandardCharsets.UTF_8))) {
                     String suppliedToken = reader.readLine();
                     if (suppliedToken != null && tokensMatch(suppliedToken)) {
+                        String command = reader.readLine();
+                        if ("IMPORT_NCAPP".equals(command)) {
+                            String file = reader.readLine();
+                            if (file == null || file.length() > 4096
+                                    || !file.toLowerCase(java.util.Locale.ROOT).endsWith(".ncapp")) {
+                                writer.write("DENIED");
+                                writer.newLine();
+                                writer.flush();
+                                continue;
+                            }
+                            dispatchNcappOpen(Path.of(file));
+                        } else if ("ACTIVATE".equals(command)) {
+                            dispatchActivation();
+                        } else {
+                            writer.write("DENIED");
+                            writer.newLine();
+                            writer.flush();
+                            continue;
+                        }
                         writer.write("OK");
                         writer.newLine();
                         writer.flush();
-                        dispatchActivation();
                     } else {
                         writer.write("DENIED");
                         writer.newLine();
@@ -185,7 +224,14 @@ public final class SingleInstance implements AutoCloseable {
         }
     }
 
-    private static boolean notifyExistingInstance(Path infoFile) {
+    private void dispatchNcappOpen(Path file) {
+        synchronized (activationMonitor) {
+            if (ncappOpenHandler == null) pendingNcappOpens.add(file);
+            else ncappOpenHandler.accept(file);
+        }
+    }
+
+    private static boolean notifyExistingInstance(Path infoFile, Path ncappToOpen) {
         if (!Files.isRegularFile(infoFile)) return false;
 
         try {
@@ -205,6 +251,18 @@ public final class SingleInstance implements AutoCloseable {
                              new java.io.InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
                     writer.write(token);
                     writer.newLine();
+                    if (ncappToOpen != null) {
+                        String requested = ncappToOpen.toAbsolutePath().normalize().toString();
+                        if (requested.length() > 4096 || requested.contains("\\n")
+                                || requested.contains("\\r")) return false;
+                        writer.write("IMPORT_NCAPP");
+                        writer.newLine();
+                        writer.write(requested);
+                        writer.newLine();
+                    } else {
+                        writer.write("ACTIVATE");
+                        writer.newLine();
+                    }
                     writer.flush();
                     return "OK".equals(reader.readLine());
                 }

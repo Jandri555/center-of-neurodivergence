@@ -991,26 +991,7 @@ public final class MainWindow extends JFrame {
             javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
             chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Apps NeuroCenter (*.ncapp)", "ncapp"));
             if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
-                java.nio.file.Path source = chooser.getSelectedFile().toPath();
-                java.nio.file.Path target = AppPaths.appsDir().resolve(source.getFileName());
-                try {
-                    if (java.nio.file.Files.exists(target)) {
-                        throw new java.io.IOException("Ya existe un archivo con ese nombre.");
-                    }
-                    java.nio.file.Files.copy(source, target);
-                    try {
-                        appRegistry.registerJar(target);
-                    } catch (Exception ex) {
-                        java.nio.file.Files.deleteIfExists(target);
-                        throw ex;
-                    }
-                    JOptionPane.showMessageDialog(this,
-                            "App instalada. Estará disponible al reiniciar.\n"
-                                    + "El inicio automático se puede configurar desde este mismo gestor.");
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(this, "No se pudo instalar la app: " + ex.getMessage(),
-                            "Error al instalar", JOptionPane.ERROR_MESSAGE);
-                }
+                installNcapp(chooser.getSelectedFile().toPath());
             }
         } else if (choice == 1) {
             uninstallExternalApp();
@@ -1018,6 +999,52 @@ public final class MainWindow extends JFrame {
             configureAppAutorun();
         } else if (choice == 3) {
             configureAppPermissions();
+        }
+    }
+
+    /** Abre la confirmación de instalación, tanto desde el gestor como por doble clic. */
+    public void installNcapp(java.nio.file.Path source) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> installNcapp(source));
+            return;
+        }
+        activateFromAnotherLaunch();
+        if (appRegistry == null) {
+            JOptionPane.showMessageDialog(this, "El registro SQLite de aplicaciones no está disponible.",
+                    "Error al instalar", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        if (source == null || !source.getFileName().toString()
+                .toLowerCase(java.util.Locale.ROOT).endsWith(".ncapp")
+                || !java.nio.file.Files.isRegularFile(source)) {
+            JOptionPane.showMessageDialog(this, "Selecciona un archivo .ncapp válido.",
+                    "Error al instalar", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        if (JOptionPane.showConfirmDialog(this,
+                "¿Instalar la aplicación «" + source.getFileName() + "» en NeuroCenter?",
+                "Instalar aplicación .ncapp",
+                JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE) != JOptionPane.YES_OPTION) {
+            return;
+        }
+        java.nio.file.Path target = AppPaths.appsDir().resolve(source.getFileName());
+        try {
+            if (java.nio.file.Files.exists(target)) {
+                throw new java.io.IOException("Ya existe un archivo con ese nombre.");
+            }
+            java.nio.file.Files.copy(source, target);
+            try {
+                appRegistry.registerJar(target);
+            } catch (Exception ex) {
+                java.nio.file.Files.deleteIfExists(target);
+                throw ex;
+            }
+            JOptionPane.showMessageDialog(this,
+                    "App instalada. Estará disponible al reiniciar.\\n"
+                            + "El inicio automático se puede configurar desde este mismo gestor.");
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "No se pudo instalar la app: " + ex.getMessage(),
+                    "Error al instalar", JOptionPane.ERROR_MESSAGE);
         }
     }
 

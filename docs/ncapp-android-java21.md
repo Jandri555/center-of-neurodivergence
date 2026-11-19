@@ -15,7 +15,8 @@
 - ✅ Preferencias de capacidades registradas por ID + SHA-256 del paquete. Modificar un paquete invalida sus permisos anteriores.
 - ⛔ **OpenJDK 21 ARM64 todavía NO está incluido ni se inicia en el APK.** No afirmar que puede ejecutar `.ncapp` en Android.
 - ⛔ Falta IPC de la API de NeuroCenter, ejecución de código, motor de UI móvil, aislamiento de cada ejecución y pruebas de ataques.
-- ⛔ Falta instalar aplicaciones por doble clic (asociación del formato) y probar en dispositivo real.
+- ✅ Windows: el instalador jpackage registra .ncapp y entrega el archivo a la instancia ya iniciada.
+- ⛔ Falta registrar la asociación Android y probar en dispositivo real.
 
 ## Manifest de una .ncapp
 Este archivo es un JAR común con manifest principal:
