@@ -19,10 +19,9 @@ import sys
 import tarfile
 import urllib.request
 
-VERSION = "21"
-ARCHIVE_URL = ("https://github.com/AngelAuraMC/angelauramc-openjdk-build/"
-               "releases/download/download_jre21/jre21-android-arm64.tar.xz")
-EXPECTED_SHA256 = "8d41ec401ee59f7722df60ed991f81ad146e130452804bfdd8a05d3436f7bbfe"
+VERSION = "21-neurocenter-20261119"
+# Reproducible pinned sha256 of patched HotSpot 21 archive from Actions run 44626201264.
+EXPECTED_SHA256 = "4dcd5e4b441eda8a425304471879ecb46ef42fc086ddef213e7d8383c8439d3c"
 LIMIT_ARCHIVE = 70 * 1024 * 1024
 LIMIT_UNPACKED = 800 * 1024 * 1024
 LIMIT_MEMBERS = 16000
@@ -35,31 +34,22 @@ def digest_file(path):
     return digest.hexdigest()
 
 def fetch(cache):
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    if cache.exists() and digest_file(cache) == EXPECTED_SHA256:
-        return cache
-    temporary = cache.with_suffix(".partial")
-    temporary.unlink(missing_ok=True)
-    print("Downloading pinned OpenJDK 21 Android ARM64 runtime", flush=True)
-    try:
-        request = urllib.request.Request(ARCHIVE_URL,
-                                         headers={"User-Agent": "NeuroCenter-JRE21-Build/1.0"})
-        with urllib.request.urlopen(request, timeout=120) as source, open(temporary, "wb") as dest:
-            count = 0
-            while block := source.read(1024 * 1024):
-                count += len(block)
-                if count > LIMIT_ARCHIVE:
-                    raise ValueError("JRE download exceeds size limit")
-                dest.write(block)
-        observed = digest_file(temporary)
-        if observed != EXPECTED_SHA256:
-            raise ValueError("JRE21 SHA-256 mismatch; expected " + EXPECTED_SHA256
-                             + "; got " + observed)
-        temporary.replace(cache)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
-    return cache
+    # For CI, Actions downloads the verified patched JRE artifact first.
+    # Local builds can point to that archive explicitly or use the cache.
+    override = os.environ.get("NEUROCENTER_JRE21_ARCHIVE", "").strip()
+    archive = pathlib.Path(override).resolve() if override else cache
+    if not archive.is_file():
+        raise FileNotFoundError(
+            "Falta OpenJDK 21 parcheado. Descarga el artefacto "
+            "'neurocenter-openjdk21-arm64-experimental' de GitHub Actions "
+            "(run 44626201264) y establece NEUROCENTER_JRE21_ARCHIVE "
+            "con la ruta al tar.xz, o guárdalo en: " + str(cache))
+    observed = digest_file(archive)
+    if observed != EXPECTED_SHA256:
+        raise ValueError("JRE21 parcheado SHA-256 incorrecto; esperado "
+                         + EXPECTED_SHA256 + "; obtenido " + observed)
+    print("Verified patched OpenJDK 21 Android ARM64 archive", flush=True)
+    return archive
 
 def safe_path(value):
     value = value.removeprefix("./")
@@ -200,6 +190,8 @@ def prepare(archive, output):
                 if len(content) > LIMIT_UNPACKED or not content.startswith(b"\x7fELF"):
                     raise ValueError("Native library is not ELF: " + relative)
                 if basename == "libjvm.so":
+                    if b"NEUROCENTER_JRE_HOME" not in content:
+                        raise ValueError("OpenJDK JRE does not contain required NeuroCenter source patch")
                     content = patch_hotspot_module_paths(content)
                 native_digest = hashlib.sha256(content).hexdigest()
                 if basename in copied_libs:
@@ -234,5 +226,5 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         sys.exit("Usage: prepare_java21_runtime.py <build/generated/java21>")
     out = pathlib.Path(sys.argv[1]).resolve()
-    cache = pathlib.Path(__file__).resolve().parent.parent / ".cache" / "jre21-android-arm64.tar.xz"
+    cache = pathlib.Path(__file__).resolve().parent.parent / ".cache" / "jre21-android-arm64-neurocenter.tar.xz"
     prepare(fetch(cache), out)
