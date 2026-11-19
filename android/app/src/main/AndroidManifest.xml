@@ -38,6 +38,15 @@
         <service
             android:name="com.neurocenter.apps.agenda.NeuroCenterBridgeService"
             android:exported="true" />
+        <receiver
+            android:name="com.neurocenter.apps.agenda.NeuroCenterPackageReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_FULLY_REMOVED" />
+                <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
         <activity
             android:name="com.neurocenter.apps.agenda.MainActivity"
             android:exported="true">
