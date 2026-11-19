@@ -45,6 +45,67 @@ public final class NcappWorkerService extends Service {
             return Process.myPid();
         }
 
+        @Override public String diagnosticPing() {
+            String output = "OK: Binder activo; PID=" + Process.myPid()
+                    + "; UID=" + Process.myUid()
+                    + "; aislado=" + Process.isIsolated();
+            Log.i("NeuroCenter-Sandbox", "DIAG 0: " + output);
+            return Process.isIsolated() ? output : "DIAG_ERROR: el UID no está aislado";
+        }
+
+        @Override public String checkArchive(ParcelFileDescriptor archive, String expectedSha256) {
+            if (!Process.isIsolated()) return "DIAG_ERROR: UID no aislado";
+            if (archive == null || expectedSha256 == null
+                    || !expectedSha256.matches("[a-f0-9]{64}")) {
+                return "DIAG_ERROR: descriptor o SHA-256 inválidos";
+            }
+            Log.i("NeuroCenter-Sandbox", "DIAG 1: comprobando exclusivamente el JAR");
+            try {
+                String actual = sha256(archive);
+                return expectedSha256.equals(actual)
+                        ? "OK: SHA-256 del .ncapp coincide"
+                        : "DIAG_ERROR: SHA-256 del .ncapp no coincide";
+            } catch (Exception ex) {
+                Log.e("NeuroCenter-Sandbox", "DIAG 1: error al leer .ncapp", ex);
+                return "DIAG_ERROR: " + ex.getClass().getSimpleName() + ": " + ex.getMessage();
+            }
+        }
+
+        @Override public String checkModules(ParcelFileDescriptor home) {
+            if (!Process.isIsolated()) return "DIAG_ERROR: UID no aislado";
+            if (home == null) return "DIAG_ERROR: falta descriptor JRE";
+            Log.i("NeuroCenter-Sandbox", "DIAG 2: comprobando exclusivamente lib/modules");
+            FileDescriptor fd = null;
+            try {
+                fd = Os.open("/proc/self/fd/" + home.getFd() + "/lib/modules",
+                        OsConstants.O_RDONLY | OsConstants.O_CLOEXEC, 0);
+                return Os.fstat(fd).st_size > 1024
+                        ? "OK: imagen de módulos Java 21 accesible"
+                        : "DIAG_ERROR: lib/modules está vacío";
+            } catch (Exception ex) {
+                Log.e("NeuroCenter-Sandbox", "DIAG 2: módulos inaccesibles", ex);
+                return "DIAG_ERROR: " + ex.getClass().getSimpleName() + ": " + ex.getMessage();
+            } finally {
+                if (fd != null) {
+                    try { Os.close(fd); } catch (ErrnoException ex) {
+                        Log.w("NeuroCenter-Sandbox", "Error cerrando FD de módulos", ex);
+                    }
+                }
+                try { home.close(); } catch (IOException ignored) {}
+            }
+        }
+
+        @Override public String checkNativeLibrary(String libraryDir) {
+            if (!Process.isIsolated()) return "DIAG_ERROR: UID no aislado";
+            if (libraryDir == null || !libraryDir.equals(getApplicationInfo().nativeLibraryDir)) {
+                return "DIAG_ERROR: directorio de librerías no autorizado";
+            }
+            Log.i("NeuroCenter-Sandbox", "DIAG 3: comprobando exclusivamente libjvm.so");
+            File lib = new File(libraryDir, "libjvm.so");
+            return lib.isFile() && lib.canRead()
+                    ? "OK: libjvm.so accesible" : "DIAG_ERROR: libjvm.so inaccesible";
+        }
+
         /** Preflight: verifica FD y librerías sin crear una segunda JVM. */
         @Override public String preflight(ParcelFileDescriptor home,
                 ParcelFileDescriptor archive, String expectedSha256, String libraryDir) {
@@ -137,8 +198,11 @@ public final class NcappWorkerService extends Service {
         @Override public String sha256(ParcelFileDescriptor descriptor) {
             if (!Process.isIsolated()) throw new SecurityException("Proceso no aislado.");
             if (descriptor == null) throw new IllegalArgumentException("Falta archivo.");
-            try (ParcelFileDescriptor file = descriptor;
-                 FileInputStream input = new FileInputStream(file.getFileDescriptor())) {
+            // AutoCloseInputStream owns and closes the PFD exactly once.
+            // Previously both FileInputStream and ParcelFileDescriptor closed
+            // the same underlying FD, making diagnostics unreliable.
+            try (ParcelFileDescriptor.AutoCloseInputStream input =
+                         new ParcelFileDescriptor.AutoCloseInputStream(descriptor)) {
                 MessageDigest hash = MessageDigest.getInstance("SHA-256");
                 byte[] buffer = new byte[32 * 1024];
                 int read;

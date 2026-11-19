@@ -152,28 +152,43 @@ public final class NcappUiController {
                 }
                 isolatedPid = worker.processPid();
                 Log.i(LOG_TAG, "Worker aislado PID=" + isolatedPid + " para " + app.id());
+                showText("Verificación 0/4: conexión Binder sin archivos…");
+                String ping = worker.diagnosticPing();
+                Log.i(LOG_TAG, "Ping del worker: " + ping);
+                if (!ping.startsWith("OK:")) {
+                    error("No se pudo completar la conexión Binder: " + ping);
+                    return;
+                }
                 showText("Preparando la imagen de OpenJDK 21… "
                         + "En la primera ejecución puede necesitar descomprimir sus módulos.");
                 try (ParcelFileDescriptor home = Java21Runtime.openSandboxHome(activity);
                      ParcelFileDescriptor archive = ParcelFileDescriptor.open(
                              app.archive(), ParcelFileDescriptor.MODE_READ_ONLY)) {
-                    String[] phases = {
-                        "Comprobando integridad SHA-256 de la .ncapp…",
-                        "Comprobando acceso a módulos Java 21…",
-                        "Comprobando libjvm.so desde el UID aislado…"
-                    };
-                    for (int step = 1; step <= 3; step++) {
-                        showText("Verificación " + step + "/3: " + phases[step - 1]);
-                        Log.i(LOG_TAG, "Preflight paso " + step
-                                + " antes de Binder, PID=" + isolatedPid);
-                        String result = worker.preflightStep(step, home, archive, app.sha256(),
-                                activity.getApplicationInfo().nativeLibraryDir);
-                        Log.i(LOG_TAG, "Preflight paso " + step + ": " + result);
-                        if (!result.startsWith("OK:")) {
-                            error("Falló la verificación " + step + "/3: " + result);
-                            return;
-                        }
+                    showText("Verificación 1/4: envío y SHA-256 de .ncapp…");
+                    Log.i(LOG_TAG, "DIAG 1: enviando un FD de archivo, PID=" + isolatedPid);
+                    String jarCheck = worker.checkArchive(archive.dup(), app.sha256());
+                    Log.i(LOG_TAG, "DIAG 1: " + jarCheck);
+                    if (!jarCheck.startsWith("OK:")) {
+                        error("Error en verificación de .ncapp: " + jarCheck);
+                        return;
                     }
+                    showText("Verificación 2/4: acceso a módulos Java 21…");
+                    Log.i(LOG_TAG, "DIAG 2: enviando un FD de JRE, PID=" + isolatedPid);
+                    String moduleCheck = worker.checkModules(home.dup());
+                    Log.i(LOG_TAG, "DIAG 2: " + moduleCheck);
+                    if (!moduleCheck.startsWith("OK:")) {
+                        error("Error en verificación de módulos: " + moduleCheck);
+                        return;
+                    }
+                    showText("Verificación 3/4: bibliotecas nativas OpenJDK…");
+                    String nativeCheck = worker.checkNativeLibrary(
+                            activity.getApplicationInfo().nativeLibraryDir);
+                    Log.i(LOG_TAG, "DIAG 3: " + nativeCheck);
+                    if (!nativeCheck.startsWith("OK:")) {
+                        error("Error en verificación nativa: " + nativeCheck);
+                        return;
+                    }
+                    showText("Verificación 4/4: iniciando HotSpot Java 21 aislado…");
                     showText("Lanzando HotSpot Java 21 dentro del proceso aislado…");
                     String output = worker.launchApp(home, archive, app.mobileClass(),
                             app.sha256(), activity.getApplicationInfo().nativeLibraryDir);
@@ -287,7 +302,7 @@ public final class NcappUiController {
 
         /** El proceso remoto puede cerrarse por un fallo nativo sin devolver excepción Java. */
         void error(String message) {
-            String report = "NeuroCenter Android 1.6.4"
+            String report = "NeuroCenter Android 1.6.5"
                     + "\nPaquete: " + app.id()
                     + "\nProceso aislado PID: " + (isolatedPid > 0 ? isolatedPid : "no conectado")
                     + "\nFase: " + phase
