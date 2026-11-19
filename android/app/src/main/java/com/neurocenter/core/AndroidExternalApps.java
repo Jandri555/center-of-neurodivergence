@@ -235,6 +235,17 @@ public final class AndroidExternalApps {
         return name != null && name.matches("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+");
     }
 
+    /** Returns the SHA-256 digest(s) of the installed APK signer certificate(s). */
+    public static String signingDigest(Context context, String packageName) {
+        Objects.requireNonNull(context, "context");
+        if (packageName == null || packageName.trim().isEmpty()) return null;
+        try {
+            return signingDigest(getPackageInfo(context.getPackageManager(), packageName));
+        } catch (PackageManager.NameNotFoundException ex) {
+            return null;
+        }
+    }
+
     private static String signingDigest(PackageInfo info) {
         Signature[] signers = null;
         if (Build.VERSION.SDK_INT >= 28 && info.signingInfo != null) {
