@@ -98,7 +98,8 @@ public final class NcappUiController {
             };
             try {
                 bound = activity.bindIsolatedService(intent, Context.BIND_AUTO_CREATE,
-                        "ncapp-" + UUID.randomUUID(), activity.getMainExecutor(), connection);
+                        "ncapp_" + UUID.randomUUID().toString().replace("-", ""),
+                        activity.getMainExecutor(), connection);
                 if (!bound) error("No se pudo crear un proceso Android aislado.");
             } catch (RuntimeException ex) {
                 error("Error creando el sandbox: " + ex.getMessage());

@@ -409,7 +409,8 @@ public final class MainActivity extends Activity {
         };
         try {
             boolean started = bindIsolatedService(serviceIntent, Context.BIND_AUTO_CREATE,
-                    "ncapp-" + app.id(), getMainExecutor(), connection);
+                    "ncapp_" + java.util.UUID.randomUUID().toString().replace("-", ""),
+                    getMainExecutor(), connection);
             if (!started) {
                 Toast.makeText(this, "No se pudo iniciar el servicio aislado.", Toast.LENGTH_LONG).show();
             }
