@@ -1,4 +1,4 @@
-name: Android Agenda CI
+name: Android NeuroCenter CI
 
 on:
   push:
@@ -32,7 +32,7 @@ permissions:
 
 jobs:
   build-android:
-    name: Build Android Agenda
+    name: Build Android NeuroCenter
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -63,7 +63,7 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: agenda-android-debug
+          name: neurocenter-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14

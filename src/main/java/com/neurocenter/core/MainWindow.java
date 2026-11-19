@@ -989,7 +989,7 @@ public final class MainWindow extends JFrame {
 
         if (choice == 0) {
             javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
-            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Apps Java (*.jar)", "jar"));
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Apps NeuroCenter (*.ncapp)", "ncapp"));
             if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
                 java.nio.file.Path source = chooser.getSelectedFile().toPath();
                 java.nio.file.Path target = AppPaths.appsDir().resolve(source.getFileName());

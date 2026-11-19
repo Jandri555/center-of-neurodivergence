@@ -39,8 +39,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import com.neurocenter.core.AndroidExternalApps;
-import com.neurocenter.core.NeuroCenterCapabilityStore;
+import com.neurocenter.core.NcappManager;
+import com.neurocenter.core.NcappPermissionStore;
+import com.neurocenter.core.NcappWorkerService;
+import com.neurocenter.api.INcappWorker;
+import android.content.ComponentName;
+import android.content.ServiceConnection;
+import android.os.IBinder;
 import com.neurocenter.api.NeuroCenterCapabilities;
 
 import java.io.UncheckedIOException;
@@ -69,7 +74,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_ENABLE_BT = 7102;
     private static final int REQUEST_DISCOVERABLE = 7103;
     private static final int REQUEST_NOTIFICATION_PERMISSION = 7105;
-    private static final int REQUEST_EXTERNAL_APP_APK = 7310;
+    private static final int REQUEST_NCAPP = 7310;
     private static final int DISCOVERABLE_SECONDS = 300;
     private static final String ACTION_USB_PERMISSION =
             "com.neurocenter.action.USB_ACCESSORY_PERMISSION";
@@ -99,7 +104,7 @@ public final class MainActivity extends Activity {
     private volatile boolean usbSyncActive;
     private boolean usbReceiverRegistered;
     private boolean usbPermissionPending;
-    private Uri pendingExternalInstallUri;
+    private final ExecutorService ncappExecutor = Executors.newSingleThreadExecutor();
 
     private final BroadcastReceiver usbPermissionReceiver = new BroadcastReceiver() {
         @Override
@@ -230,100 +235,167 @@ public final class MainActivity extends Activity {
         setContentView(root);
     }
 
-    private void showExternalApps() {
-        List<AndroidExternalApps.InstalledApp> installed = AndroidExternalApps.discover(this);
-        AlertDialog.Builder dialog = new AlertDialog.Builder(this)
-                .setTitle("Aplicaciones de NeuroCenter")
-                .setPositiveButton("Instalar APK", (d, w) -> selectExternalAppPackage())
-                .setNegativeButton("Cerrar", null);
 
+    /** Instala un archivo Java .ncapp dentro de NeuroCenter, nunca como APK Android. */
+    private void showExternalApps() {
+        final List<NcappManager.InstalledApp> installed;
+        try {
+            installed = NcappManager.list(this);
+        } catch (IOException ex) {
+            Toast.makeText(this, "No se pudieron listar las apps: " + ex.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this)
+                .setTitle("Aplicaciones de NeuroCenter (.ncapp)")
+                .setPositiveButton("Instalar .ncapp", (d, w) -> selectExternalAppPackage())
+                .setNegativeButton("Cerrar", null);
         if (installed.isEmpty()) {
-            dialog.setMessage("No hay aplicaciones externas compatibles instaladas. "
-                    + "Puedes instalar un APK y volver aquí; cada aplicación conservará "
-                    + "su propio proceso y sus propios permisos Android.");
+            dialog.setMessage("Aún no hay aplicaciones .ncapp instaladas. "
+                    + "El runtime Java 21 para ejecutarlas en Android sigue pendiente de integración.");
         } else {
             String[] labels = new String[installed.size()];
             for (int i = 0; i < installed.size(); i++) {
-                AndroidExternalApps.InstalledApp app = installed.get(i);
-                labels[i] = app.name() + (app.versionName().isEmpty() ? "" : "  ·  " + app.versionName());
+                NcappManager.InstalledApp app = installed.get(i);
+                labels[i] = app.name() + "  ·  " + app.version();
             }
             dialog.setItems(labels, (d, which) -> {
-                try {
-                    AndroidExternalApps.launch(this, installed.get(which));
-                } catch (RuntimeException ex) {
-                    Toast.makeText(this, "No se pudo abrir la aplicación: " + ex.getMessage(),
-                            Toast.LENGTH_LONG).show();
-                }
+                NcappManager.InstalledApp app = installed.get(which);
+                new AlertDialog.Builder(this)
+                        .setTitle(app.name())
+                        .setMessage("Archivo Java 21: " + app.id() + ".ncapp\n\n"
+                                + "Se puede verificar en un proceso aislado, pero todavía NO ejecutar: "
+                                + "falta incorporar y validar el OpenJDK 21 para Android.")
+                        .setPositiveButton("Comprobar aislamiento", (a, b) -> verifyNcappInSandbox(app))
+                        .setNeutralButton("Desinstalar", (a, b) -> uninstallNcapp(app))
+                        .setNegativeButton("Cerrar", null)
+                        .show();
             });
         }
         dialog.show();
     }
 
-    private void showExternalAppPermissions() {
-        List<AndroidExternalApps.InstalledApp> installed = AndroidExternalApps.discover(this);
-        if (installed.isEmpty()) {
-            new AlertDialog.Builder(this)
-                    .setTitle("Permisos de aplicaciones")
-                    .setMessage("No hay aplicaciones externas compatibles instaladas.")
-                    .setPositiveButton("Aceptar", null)
-                    .show();
-            return;
-        }
-
-        String[] labels = new String[installed.size()];
-        for (int i = 0; i < installed.size(); i++) {
-            AndroidExternalApps.InstalledApp app = installed.get(i);
-            labels[i] = app.name() + " (" + app.packageName() + ")";
-        }
+    private void uninstallNcapp(NcappManager.InstalledApp app) {
         new AlertDialog.Builder(this)
-                .setTitle("Elige una aplicación")
-                .setItems(labels, (dialog, which) -> editExternalAppPermissions(installed.get(which)))
-                .setNegativeButton("Cancelar", null)
-                .show();
+                .setTitle("Desinstalar " + app.name())
+                .setMessage("Se eliminará el paquete .ncapp y se revocarán todos sus permisos.")
+                .setPositiveButton("Desinstalar", (d, w) -> {
+                    try {
+                        NcappManager.uninstall(this, app);
+                        NcappPermissionStore.revoke(this, app);
+                        Toast.makeText(this, "Aplicación desinstalada", Toast.LENGTH_SHORT).show();
+                    } catch (IOException ex) {
+                        Toast.makeText(this, "No se pudo desinstalar: " + ex.getMessage(),
+                                Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("Cancelar", null).show();
     }
 
-    private void editExternalAppPermissions(AndroidExternalApps.InstalledApp app) {
-        final java.util.Set<String> current;
-        try (NeuroCenterCapabilityStore store = new NeuroCenterCapabilityStore(this)) {
-            current = new java.util.HashSet<>(store.grantedCapabilities(app.packageName(), app.signingDigest()));
-        } catch (IOException | RuntimeException ex) {
-            Toast.makeText(this, "No se pudieron leer los permisos: " + ex.getMessage(),
+    private void verifyNcappInSandbox(NcappManager.InstalledApp app) {
+        Intent serviceIntent = new Intent(this, NcappWorkerService.class);
+        ServiceConnection connection = new ServiceConnection() {
+            @Override
+            public void onServiceConnected(ComponentName name, IBinder binder) {
+                ncappExecutor.execute(() -> {
+                    String outcome;
+                    try (ParcelFileDescriptor archive = ParcelFileDescriptor.open(
+                            app.archive(), ParcelFileDescriptor.MODE_READ_ONLY)) {
+                        INcappWorker worker = INcappWorker.Stub.asInterface(binder);
+                        if (!worker.isIsolated()) {
+                            throw new SecurityException("El proceso NO está aislado.");
+                        }
+                        String digest = worker.sha256(archive);
+                        if (!app.sha256().equals(digest)) {
+                            throw new SecurityException("La huella del archivo no coincide.");
+                        }
+                        outcome = "Comprobado: el proceso aislado puede leer el archivo "
+                                + "recibido por Binder. No se ha ejecutado código de la app.";
+                    } catch (Exception ex) {
+                        outcome = "Error en la comprobación del aislamiento: " + ex.getMessage();
+                    }
+                    final String message = outcome;
+                    runOnUiThread(() -> {
+                        try { unbindService(this); } catch (IllegalArgumentException ignored) {}
+                        Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
+                    });
+                });
+            }
+            @Override
+            public void onServiceDisconnected(ComponentName name) {
+                Toast.makeText(MainActivity.this, "El proceso aislado se ha cerrado.", Toast.LENGTH_SHORT).show();
+            }
+        };
+        try {
+            boolean started = bindIsolatedService(serviceIntent, Context.BIND_AUTO_CREATE,
+                    "ncapp-" + app.id(), getMainExecutor(), connection);
+            if (!started) {
+                Toast.makeText(this, "No se pudo iniciar el servicio aislado.", Toast.LENGTH_LONG).show();
+            }
+        } catch (RuntimeException ex) {
+            Toast.makeText(this, "No se pudo crear el proceso aislado: " + ex.getMessage(),
                     Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void showExternalAppPermissions() {
+        final List<NcappManager.InstalledApp> installed;
+        try {
+            installed = NcappManager.list(this);
+        } catch (IOException ex) {
+            Toast.makeText(this, "Error al consultar las apps: " + ex.getMessage(), Toast.LENGTH_LONG).show();
             return;
         }
+        if (installed.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("Permisos de aplicaciones")
+                    .setMessage("No hay aplicaciones .ncapp instaladas.")
+                    .setPositiveButton("Aceptar", null).show();
+            return;
+        }
+        String[] labels = new String[installed.size()];
+        for (int i = 0; i < installed.size(); i++) {
+            labels[i] = installed.get(i).name() + " (" + installed.get(i).id() + ")";
+        }
+        new AlertDialog.Builder(this).setTitle("Elige una aplicación")
+                .setItems(labels, (dialog, which) -> editExternalAppPermissions(installed.get(which)))
+                .setNegativeButton("Cancelar", null).show();
+    }
 
+    private void editExternalAppPermissions(NcappManager.InstalledApp app) {
+        final java.util.Set<String> current = NcappPermissionStore.granted(this, app);
         LinearLayout options = new LinearLayout(this);
         options.setOrientation(LinearLayout.VERTICAL);
         options.setPadding(dp(18), dp(8), dp(18), dp(8));
         java.util.Map<String, CheckBox> controls = new java.util.LinkedHashMap<>();
         addCapabilityOption(options, controls, NeuroCenterCapabilities.AGENDA_READ,
-                "Leer la Agenda", "Consultar tareas y eventos guardados en NeuroCenter.", current);
+                "Leer la Agenda", "Consultar tareas y eventos de NeuroCenter.", current);
         addCapabilityOption(options, controls, NeuroCenterCapabilities.AGENDA_WRITE,
-                "Modificar la Agenda", "Crear, completar y eliminar entradas de la Agenda.", current);
+                "Modificar la Agenda", "Crear o eliminar tareas y eventos.", current);
         addCapabilityOption(options, controls, NeuroCenterCapabilities.CREDENTIALS_ACCESS,
-                "Almacén de credenciales", "Guardar y recuperar secretos propios cifrados con Android Keystore.", current);
-
+                "Credenciales", "Acceder únicamente a las credenciales propias de la app.", current);
+        addCapabilityOption(options, controls, NeuroCenterCapabilities.NETWORK_CONNECT,
+                "Conexiones de red", "Solicitar conexiones a través de NeuroCenter.", current);
+        addCapabilityOption(options, controls, NeuroCenterCapabilities.FILES_READ_DOCUMENTS,
+                "Leer documentos", "Solicitar lectura de documentos seleccionados.", current);
+        addCapabilityOption(options, controls, NeuroCenterCapabilities.FILES_WRITE_DOCUMENTS,
+                "Modificar documentos", "Solicitar escritura de documentos seleccionados.", current);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(options);
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Permisos de NeuroCenter · " + app.name())
-                .setView(scroll)
-                .setNegativeButton("Cancelar", null)
-                .setPositiveButton("Guardar", null)
-                .create();
+                .setTitle("Permisos · " + app.name()).setView(scroll)
+                .setNegativeButton("Cancelar", null).setPositiveButton("Guardar", null).create();
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
                 .setOnClickListener(v -> {
                     java.util.Set<String> updated = new java.util.HashSet<>();
-                    controls.forEach((id, control) -> {
-                        if (control.isChecked()) updated.add(id);
-                    });
-                    try (NeuroCenterCapabilityStore store = new NeuroCenterCapabilityStore(this)) {
-                        store.setGrantedCapabilities(app.packageName(), app.signingDigest(), updated);
+                    controls.forEach((id, control) -> { if (control.isChecked()) updated.add(id); });
+                    try {
+                        NcappPermissionStore.setGranted(this, app, updated);
                         dialog.dismiss();
-                        Toast.makeText(this, "Permisos guardados para " + app.name(),
-                                Toast.LENGTH_SHORT).show();
-                    } catch (IOException | RuntimeException ex) {
-                        Toast.makeText(this, "No se pudieron guardar los permisos: " + ex.getMessage(),
+                        Toast.makeText(this, "Preferencias de permisos guardadas. "
+                                + "No se aplicarán hasta completar el motor Java 21.",
+                                Toast.LENGTH_LONG).show();
+                    } catch (RuntimeException ex) {
+                        Toast.makeText(this, "No se guardaron los permisos: " + ex.getMessage(),
                                 Toast.LENGTH_LONG).show();
                     }
                 }));
@@ -346,34 +418,29 @@ public final class MainActivity extends Activity {
     private void selectExternalAppPackage() {
         Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         picker.addCategory(Intent.CATEGORY_OPENABLE);
-        picker.setType("application/vnd.android.package-archive");
-        picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        picker.setType("*/*");
+        picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         try {
-            startActivityForResult(picker, REQUEST_EXTERNAL_APP_APK);
+            startActivityForResult(picker, REQUEST_NCAPP);
         } catch (RuntimeException ex) {
-            Toast.makeText(this, "No se pudo abrir el selector de APK: " + ex.getMessage(),
+            Toast.makeText(this, "No se pudo elegir el .ncapp: " + ex.getMessage(),
                     Toast.LENGTH_LONG).show();
         }
     }
 
-    private void startPendingExternalInstall() {
-        Uri apk = pendingExternalInstallUri;
-        if (apk == null) return;
-        try {
-            if (!AndroidExternalApps.canRequestPackageInstalls(this)) {
-                AndroidExternalApps.requestInstall(this, apk);
-                Toast.makeText(this,
-                        "Autoriza a NeuroCenter como fuente de instalación y vuelve a esta pantalla.",
-                        Toast.LENGTH_LONG).show();
-                return;
+    private void installNcapp(Uri source) {
+        ncappExecutor.execute(() -> {
+            String result;
+            try {
+                NcappManager.InstalledApp app = NcappManager.install(this, source);
+                result = "Instalada " + app.name() + " (" + app.id() + "). "
+                        + "La ejecución estará disponible cuando incorporemos OpenJDK 21.";
+            } catch (Exception ex) {
+                result = "No se pudo instalar el .ncapp: " + ex.getMessage();
             }
-            AndroidExternalApps.requestInstall(this, apk);
-            pendingExternalInstallUri = null;
-        } catch (RuntimeException ex) {
-            Toast.makeText(this, "No se pudo iniciar la instalación: " + ex.getMessage(),
-                    Toast.LENGTH_LONG).show();
-            pendingExternalInstallUri = null;
-        }
+            String message = result;
+            runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show());
+        });
     }
 
     private void refresh() {
@@ -697,9 +764,6 @@ public final class MainActivity extends Activity {
         refresh();
         updateBluetoothControls(BluetoothSyncService.isRunning());
         inspectUsbAccessory();
-        if (pendingExternalInstallUri != null && AndroidExternalApps.canRequestPackageInstalls(this)) {
-            startPendingExternalInstall();
-        }
     }
 
     @Override
@@ -956,17 +1020,9 @@ public final class MainActivity extends Activity {
             else Toast.makeText(this, "No se ha permitido que el móvil sea visible.", Toast.LENGTH_LONG).show();
             return;
         }
-        if (requestCode == REQUEST_EXTERNAL_APP_APK && resultCode == RESULT_OK
+        if (requestCode == REQUEST_NCAPP && resultCode == RESULT_OK
                 && data != null && data.getData() != null) {
-            pendingExternalInstallUri = data.getData();
-            try {
-                int grantFlags = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
-                if (grantFlags != 0) getContentResolver().takePersistableUriPermission(
-                        pendingExternalInstallUri, grantFlags);
-            } catch (SecurityException ignored) {
-                // El URI aún puede estar disponible mediante la concesión temporal del selector.
-            }
-            startPendingExternalInstall();
+            installNcapp(data.getData());
         }
     }
 
@@ -1051,6 +1107,7 @@ public final class MainActivity extends Activity {
             usbReceiverRegistered = false;
         }
         syncExecutor.shutdownNow();
+        ncappExecutor.shutdownNow();
         super.onDestroy();
     }
 

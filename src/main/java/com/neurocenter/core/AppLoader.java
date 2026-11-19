@@ -56,7 +56,7 @@ public final class AppLoader {
         try (Stream<Path> files = Files.list(appsDir)) {
             jars = files
                     .filter(path -> securityProfiles.containsKey(path.getFileName().toString()))
-                    .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar"))
+                    .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".ncapp"))
                     .sorted()
                     .toList();
         } catch (Exception error) {
@@ -131,8 +131,8 @@ public final class AppLoader {
     }
 
     private static String fallbackId(String filename) {
-        String raw = filename.toLowerCase(Locale.ROOT).endsWith(".jar")
-                ? filename.substring(0, filename.length() - 4) : filename;
+        String raw = filename.toLowerCase(Locale.ROOT).endsWith(".ncapp")
+                ? filename.substring(0, filename.length() - 6) : filename;
         String safe = raw.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]", "-");
         return safe.isBlank() ? "external-app" : safe;
     }
