@@ -1,5 +1,7 @@
 package com.neurocenter.api;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -13,11 +15,11 @@ public final class NeuroCenterCapabilities {
     public static final String AGENDA_WRITE = "agenda.write";
     public static final String CREDENTIALS_ACCESS = "credentials.access";
 
-    private static final List<String> SUPPORTED = List.of(
+    private static final List<String> SUPPORTED = Collections.unmodifiableList(Arrays.asList(
             AGENDA_READ,
             AGENDA_WRITE,
             CREDENTIALS_ACCESS
-    );
+    ));
 
     private NeuroCenterCapabilities() {}
 
