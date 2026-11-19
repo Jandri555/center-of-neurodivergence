@@ -73,7 +73,9 @@ jobs:
           assert b"%/libnm.so" in jvm
           assert b"%s%slibnm.so" in jvm
           assert b"%/lib/modules" not in jvm
-          print("JIMAGE is in APK's JNI extraction layout; HotSpot path patch verified")
+          assert b"/jre/lib\x00" not in jvm
+          assert b"/.\x00" in jvm
+          print("JIMAGE is in APK; Linux altjvm java.home patch verified")
           PY
 
       - name: Verify build-type diagnostic isolation

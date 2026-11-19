@@ -155,6 +155,13 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
     snprintf(appOption, sizeof appOption, "-Djava.class.path=%s", archive);
     setenv("JAVA_HOME", home, 1);
     setenv("LD_LIBRARY_PATH", libs, 1);
+#ifdef NEUROCENTER_DEBUG_DIAGNOSTICS
+    char modules_path[PATH_MAX];
+    snprintf(modules_path, sizeof modules_path, "%s/libnm.so", home);
+    ncapp_note(ANDROID_LOG_INFO,
+               "JVM path: JAVA_HOME=nativeLibraryDir, libnm.so legible=%s",
+               access(modules_path, R_OK) == 0 ? "sí" : "no");
+#endif
     ncapp_note(ANDROID_LOG_INFO, "JVM stage 2: cargando libjvm.so");
     void *handle = dlopen(libjvm, RTLD_NOW | RTLD_GLOBAL);
     (*android_env)->ReleaseStringUTFChars(android_env, jhome, home);
@@ -168,6 +175,10 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
 
     JavaVMOption options[] = {
         {.optionString = homeOption},
+        // Explicitly tell OpenJDK's Linux launcher to honor JAVA_HOME when
+        // constructing the boot-image path. The pinned libjvm.so also has
+        // a verified, length-preserving '/jre/lib' -> '/.' string patch.
+        {.optionString = "-Dsun.java.launcher.is_altjvm=true"},
         {.optionString = libraryOption},
         {.optionString = appOption},
         {.optionString = "-Djava.awt.headless=true"},
