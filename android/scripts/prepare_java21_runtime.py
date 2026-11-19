@@ -144,9 +144,9 @@ def patch_hotspot_module_paths(content):
     for before, after in replacements:
         occurrences = content.count(before)
         if occurrences != 1:
-            if before == b"/jre/lib\\x00":
+            if before == b"/jre/lib\x00":
                 print("OpenJDK 21 ARM64 path diagnostics (printable snippets):", flush=True)
-                for marker in (b"/jre/lib", b"jre/lib", b"/lib\\x00",
+                for marker in (b"/jre/lib", b"jre/lib", b"/lib\x00",
                                b"/lib/", b"hotspot/libjvm.so", b"libjvm.so"):
                     positions = []
                     cursor = 0
