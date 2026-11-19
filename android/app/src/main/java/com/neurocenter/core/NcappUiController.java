@@ -160,16 +160,24 @@ public final class NcappUiController {
                     return;
                 }
                 showText("OpenJDK 21 integrado en el APK, sin extracción privada…");
+                // Separate open() calls create separate kernel file
+                // descriptions. Never reuse a consumed SHA-256 stream for
+                // execution: dup() would share the read offset across Binder.
+                showText("Verificación 1/4: envío y SHA-256 de .ncapp…");
+                String jarCheck;
+                try (ParcelFileDescriptor diagnosticArchive = ParcelFileDescriptor.open(
+                        app.archive(), ParcelFileDescriptor.MODE_READ_ONLY)) {
+                    Log.i(LOG_TAG, "DIAG 1: enviando FD exclusivo de verificación, PID="
+                            + isolatedPid);
+                    jarCheck = worker.checkArchive(diagnosticArchive, app.sha256());
+                }
+                Log.i(LOG_TAG, "DIAG 1: " + jarCheck);
+                if (!jarCheck.startsWith("OK:")) {
+                    error("Error en verificación de .ncapp: " + jarCheck);
+                    return;
+                }
                 try (ParcelFileDescriptor archive = ParcelFileDescriptor.open(
                              app.archive(), ParcelFileDescriptor.MODE_READ_ONLY)) {
-                    showText("Verificación 1/4: envío y SHA-256 de .ncapp…");
-                    Log.i(LOG_TAG, "DIAG 1: enviando un FD de archivo, PID=" + isolatedPid);
-                    String jarCheck = worker.checkArchive(archive, app.sha256());
-                    Log.i(LOG_TAG, "DIAG 1: " + jarCheck);
-                    if (!jarCheck.startsWith("OK:")) {
-                        error("Error en verificación de .ncapp: " + jarCheck);
-                        return;
-                    }
                     showText("Verificación 2/4: JIMAGE alojada en el APK…");
                     Log.i(LOG_TAG, "DIAG 2: comprobando datos JIMAGE del paquete");
                     String moduleCheck = worker.checkModules();
@@ -300,7 +308,7 @@ public final class NcappUiController {
 
         /** El proceso remoto puede cerrarse por un fallo nativo sin devolver excepción Java. */
         void error(String message) {
-            String report = "NeuroCenter Android 1.6.6"
+            String report = "NeuroCenter Android 1.6.7"
                     + "\nPaquete: " + app.id()
                     + "\nProceso aislado PID: " + (isolatedPid > 0 ? isolatedPid : "no conectado")
                     + "\nFase: " + phase

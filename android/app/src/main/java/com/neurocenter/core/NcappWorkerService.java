@@ -5,6 +5,8 @@ import android.content.Intent;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
+import android.system.Os;
+import android.system.OsConstants;
 import android.util.Log;
 import java.io.File;
 
@@ -150,11 +152,20 @@ public final class NcappWorkerService extends Service {
             try {
                 Log.i("NeuroCenter-Sandbox", "LAUNCH: preparando FD de Java 21 y la .ncapp");
                 appDescriptor = archive.dup();
+                // Binder dup() and ParcelFileDescriptor.dup() share the open-file
+                // description and therefore its offset with the caller. The
+                // earlier preflight SHA-256 may have left that offset at EOF.
+                // Seek explicitly before AND after verification to make the
+                // launch independent of previous reads.
+                long start = Os.lseek(appDescriptor.getFileDescriptor(), 0, OsConstants.SEEK_SET);
+                Log.i("NeuroCenter-Sandbox", "LAUNCH: archivo reposicionado en " + start);
                 String actual = sha256(appDescriptor.dup());
+                Os.lseek(appDescriptor.getFileDescriptor(), 0, OsConstants.SEEK_SET);
                 if (!expectedSha256.equals(actual)) {
-                    throw new SecurityException("El .ncapp instalado ha cambiado.");
+                    throw new SecurityException("SHA-256 no coincide al iniciar: "
+                            + "posible descriptor en EOF o archivo alterado.");
                 }
-                Log.i("NeuroCenter-Sandbox", "LAUNCH: entrando en puente JNI de HotSpot 21");
+                Log.i("NeuroCenter-Sandbox", "LAUNCH: SHA-256 correcto; entrando en HotSpot 21");
                 // java.home == Android's read-only nativeLibraryDir.
                 // The vendored HotSpot binary has two audited, fixed-width
                 // JIMAGE path substitutions made at build time.
@@ -172,7 +183,18 @@ public final class NcappWorkerService extends Service {
             } catch (Exception failure) {
                 activeDigest = null;
                 closeFiles();
-                throw new IllegalStateException("No se pudo iniciar HotSpot aislado.", failure);
+                Log.e("NeuroCenter-Sandbox",
+                        "LAUNCH: error antes o durante el arranque de HotSpot", failure);
+                // AIDL/Binder does not reliably transport Java cause chains.
+                // Preserve a useful diagnostic in the *top-level* message.
+                Throwable root = failure;
+                while (root.getCause() != null && root.getCause() != root) {
+                    root = root.getCause();
+                }
+                String detail = root.getClass().getSimpleName() + ": "
+                        + (root.getMessage() == null ? "(sin mensaje)" : root.getMessage());
+                throw new IllegalStateException(
+                        "No se pudo iniciar HotSpot aislado: " + detail, failure);
             }
         }
 
