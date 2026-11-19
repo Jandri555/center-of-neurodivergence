@@ -5,6 +5,7 @@ import android.content.Context;
 import android.os.ParcelFileDescriptor;
 import android.widget.LinearLayout;
 
+import java.io.IOException;
 import java.util.function.Supplier;
 
 /**
@@ -15,7 +16,7 @@ public final class NcappCrashDiagnostics implements AutoCloseable {
     private NcappCrashDiagnostics() {}
 
     public static boolean enabled() { return false; }
-    public static NcappCrashDiagnostics open(Runnable listener) { return null; }
+    public static NcappCrashDiagnostics open(Runnable listener) throws IOException { return null; }
     public ParcelFileDescriptor sink() { return null; }
     public void closeSender() {}
     public static String report(Context context, String summary, int pid,

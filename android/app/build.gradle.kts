@@ -40,6 +40,11 @@ android {
             versionNameSuffix = "-debug"
             resValue("string", "neurocenter_variant_label",
                      "Center of Neurodivergence (Debug)")
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DNEUROCENTER_ENABLE_DIAGNOSTICS=ON"
+                }
+            }
         }
         getByName("release") {
             // TEST release only: same stable debug certificate to allow updating
@@ -48,6 +53,11 @@ android {
             signingConfig = signingConfigs.getByName("stableDebug")
             resValue("string", "neurocenter_variant_label",
                      "Center of Neurodivergence")
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DNEUROCENTER_ENABLE_DIAGNOSTICS=OFF"
+                }
+            }
         }
     }
 
