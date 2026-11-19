@@ -191,9 +191,7 @@ public final class NeuroCenterBridgeService extends Service {
             if (info.uid != uid || !info.enabled) {
                 throw new SecurityException("La identidad del paquete no coincide con el UID llamante.");
             }
-            boolean registered = AndroidExternalApps.discover(this).stream()
-                    .anyMatch(app -> packageName.equals(app.packageName()));
-            if (!registered) {
+            if (!AndroidExternalApps.isCompatiblePackage(this, packageName)) {
                 throw new SecurityException("El paquete no declara el contrato de aplicaciones de NeuroCenter.");
             }
 
