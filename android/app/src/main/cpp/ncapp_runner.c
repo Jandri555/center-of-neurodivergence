@@ -166,3 +166,52 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_callJava2
     if (attached) (*g_vm)->DetachCurrentThread(g_vm);
     return result;
 }
+
+
+/* La app recibe el resultado de una solicitud al host exclusivamente como JSON. */
+JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_callJava21HostResponse(
+    JNIEnv *android_env, jclass ignored, jstring capability, jstring responseJson) {
+    (void)ignored;
+    if (!g_vm || !g_app || !capability || !responseJson) {
+        return err(android_env, "host", "No hay una aplicación Java preparada");
+    }
+    JNIEnv *jre = NULL;
+    int attached = 0;
+    jint status = (*g_vm)->GetEnv(g_vm, (void**)&jre, JNI_VERSION_1_6);
+    if (status == JNI_EDETACHED) {
+        if ((*g_vm)->AttachCurrentThread(g_vm, (void**)&jre, NULL) != JNI_OK) {
+            return err(android_env, "host", "No se pudo adjuntar el hilo");
+        }
+        attached = 1;
+    } else if (status != JNI_OK || !jre) {
+        return err(android_env, "host", "Entorno Java 21 no disponible");
+    }
+
+    jclass clazz = (*jre)->GetObjectClass(jre, g_app);
+    jmethodID method = (*jre)->GetMethodID(jre, clazz, "onHostResponse",
+                            "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+    if (!method) {
+        jstring answer = java_error(android_env, jre, "onHostResponse");
+        if (attached) (*g_vm)->DetachCurrentThread(g_vm);
+        return answer;
+    }
+    const char *cap = (*android_env)->GetStringUTFChars(android_env, capability, NULL);
+    if (!cap) {
+        if (attached) (*g_vm)->DetachCurrentThread(g_vm);
+        return NULL;
+    }
+    const char *json = (*android_env)->GetStringUTFChars(android_env, responseJson, NULL);
+    if (!json) {
+        (*android_env)->ReleaseStringUTFChars(android_env, capability, cap);
+        if (attached) (*g_vm)->DetachCurrentThread(g_vm);
+        return NULL;
+    }
+    jstring jcap = (*jre)->NewStringUTF(jre, cap);
+    jstring jresponse = (*jre)->NewStringUTF(jre, json);
+    (*android_env)->ReleaseStringUTFChars(android_env, capability, cap);
+    (*android_env)->ReleaseStringUTFChars(android_env, responseJson, json);
+    jobject screen = (*jre)->CallObjectMethod(jre, g_app, method, jcap, jresponse);
+    jstring result = json_result(android_env, jre, screen);
+    if (attached) (*g_vm)->DetachCurrentThread(g_vm);
+    return result;
+}
