@@ -20,6 +20,9 @@ import com.neurocenter.core.AndroidExternalApps;
 import com.neurocenter.core.NeuroCenterCapabilityStore;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Arrays;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
@@ -120,9 +123,11 @@ public final class NeuroCenterBridgeService extends Service {
             Caller caller = requireCapability(NeuroCenterCapabilities.CREDENTIALS_ACCESS);
             try {
                 AndroidCredentialVault.save(NeuroCenterBridgeService.this,
-                        caller.packageName, key, secret);
+                        caller.credentialOwner, key, secret);
             } catch (IOException ex) {
                 throw new IllegalStateException("No se pudo guardar la credencial.", ex);
+            } finally {
+                if (secret != null) Arrays.fill(secret, '\\0');
             }
         }
 
@@ -131,7 +136,7 @@ public final class NeuroCenterBridgeService extends Service {
             Caller caller = requireCapability(NeuroCenterCapabilities.CREDENTIALS_ACCESS);
             try {
                 return AndroidCredentialVault.load(NeuroCenterBridgeService.this,
-                        caller.packageName, key);
+                        caller.credentialOwner, key);
             } catch (IOException ex) {
                 throw new IllegalStateException("No se pudo recuperar la credencial.", ex);
             }
@@ -142,7 +147,7 @@ public final class NeuroCenterBridgeService extends Service {
             Caller caller = requireCapability(NeuroCenterCapabilities.CREDENTIALS_ACCESS);
             try {
                 AndroidCredentialVault.delete(NeuroCenterBridgeService.this,
-                        caller.packageName, key);
+                        caller.credentialOwner, key);
             } catch (IOException ex) {
                 throw new IllegalStateException("No se pudo eliminar la credencial.", ex);
             }
@@ -202,7 +207,11 @@ public final class NeuroCenterBridgeService extends Service {
             if (!appId.matches("[A-Za-z0-9._-]{1,128}")) {
                 throw new SecurityException("El identificador de la aplicación no es válido.");
             }
-            return new Caller(uid, packageName, appId, AndroidExternalApps.signingDigest(this, packageName));
+            String signer = AndroidExternalApps.signingDigest(this, packageName);
+            if (signer == null || !signer.matches("[a-f0-9]{64}(,[a-f0-9]{64})*")) {
+                throw new SecurityException("No se pudo verificar la firma del paquete.");
+            }
+            return new Caller(uid, packageName, appId, signer, credentialOwner(packageName, signer));
         } catch (PackageManager.NameNotFoundException ex) {
             throw new SecurityException("El paquete llamante ya no está instalado.", ex);
         }
@@ -216,6 +225,23 @@ public final class NeuroCenterBridgeService extends Service {
         }
         //noinspection deprecation
         return getPackageManager().getApplicationInfo(packageName, PackageManager.GET_META_DATA);
+    }
+
+    private static String credentialOwner(String packageName, String signingDigest) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256")
+                    .digest((packageName + ":" + signingDigest).getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte value : hash) {
+                int unsigned = value & 0xff;
+                hex.append(Character.forDigit((unsigned >>> 4) & 0xf, 16));
+                hex.append(Character.forDigit(unsigned & 0xf, 16));
+            }
+            Arrays.fill(hash, (byte) 0);
+            return hex.toString();
+        } catch (Exception ex) {
+            throw new SecurityException("No se pudo derivar la identidad criptográfica de la app.", ex);
+        }
     }
 
     private static String requireText(String value, String label, int maxLength) {
@@ -250,12 +276,15 @@ public final class NeuroCenterBridgeService extends Service {
         final String packageName;
         final String appId;
         final String signingDigest;
+        final String credentialOwner;
 
-        Caller(int uid, String packageName, String appId, String signingDigest) {
+        Caller(int uid, String packageName, String appId, String signingDigest,
+               String credentialOwner) {
             this.uid = uid;
             this.packageName = packageName;
             this.appId = appId;
             this.signingDigest = signingDigest;
+            this.credentialOwner = credentialOwner;
         }
     }
 }
