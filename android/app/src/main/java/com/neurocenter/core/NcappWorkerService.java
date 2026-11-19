@@ -27,7 +27,6 @@ import java.util.Locale;
 public final class NcappWorkerService extends Service {
     static { System.loadLibrary("neurojvm"); }
 
-    private ParcelFileDescriptor homeDescriptor;
     private ParcelFileDescriptor appDescriptor;
     private String activeDigest;
 
@@ -71,27 +70,29 @@ public final class NcappWorkerService extends Service {
             }
         }
 
-        @Override public String checkModules(ParcelFileDescriptor home) {
+        @Override public String checkModules() {
             if (!Process.isIsolated()) return "DIAG_ERROR: UID no aislado";
-            if (home == null) return "DIAG_ERROR: falta descriptor JRE";
-            Log.i("NeuroCenter-Sandbox", "DIAG 2: comprobando exclusivamente lib/modules");
-            FileDescriptor fd = null;
-            try {
-                fd = Os.open("/proc/self/fd/" + home.getFd() + "/lib/modules",
-                        OsConstants.O_RDONLY | OsConstants.O_CLOEXEC, 0);
-                return Os.fstat(fd).st_size > 1024
-                        ? "OK: imagen de módulos Java 21 accesible"
-                        : "DIAG_ERROR: lib/modules está vacío";
-            } catch (Exception ex) {
-                Log.e("NeuroCenter-Sandbox", "DIAG 2: módulos inaccesibles", ex);
-                return "DIAG_ERROR: " + ex.getClass().getSimpleName() + ": " + ex.getMessage();
-            } finally {
-                if (fd != null) {
-                    try { Os.close(fd); } catch (ErrnoException ex) {
-                        Log.w("NeuroCenter-Sandbox", "Error cerrando FD de módulos", ex);
-                    }
+            // Android owns this extracted APK file and its SELinux label.
+            // No directory FD or path under /data/data is sent over Binder.
+            File image = new File(getApplicationInfo().nativeLibraryDir, "libnm.so");
+            Log.i("NeuroCenter-Sandbox", "DIAG 2: comprobando JIMAGE en "
+                    + image.getAbsolutePath());
+            try (FileInputStream stream = new FileInputStream(image)) {
+                byte[] magic = new byte[4];
+                if (stream.read(magic) != 4 || (magic[0] & 0xff) != 0xda
+                        || (magic[1] & 0xff) != 0xda
+                        || (magic[2] & 0xff) != 0xfe
+                        || (magic[3] & 0xff) != 0xca) {
+                    return "DIAG_ERROR: el archivo libnm.so no contiene una JIMAGE";
                 }
-                try { home.close(); } catch (IOException ignored) {}
+                if (image.length() < 1048576L) {
+                    return "DIAG_ERROR: el JRE empaquetado está truncado";
+                }
+                return "OK: JIMAGE de Java 21 accesible desde nativeLibraryDir ("
+                        + image.length() + " bytes)";
+            } catch (Exception ex) {
+                Log.e("NeuroCenter-Sandbox", "DIAG 2: JIMAGE inaccesible", ex);
+                return "DIAG_ERROR: " + ex.getClass().getSimpleName() + ": " + ex.getMessage();
             }
         }
 
@@ -224,11 +225,11 @@ public final class NcappWorkerService extends Service {
             }
         }
 
-        @Override public synchronized String launchApp(ParcelFileDescriptor home,
-                ParcelFileDescriptor archive, String mobileClass, String expectedSha256,
+        @Override public synchronized String launchApp(ParcelFileDescriptor archive,
+                String mobileClass, String expectedSha256,
                 String libraryDir) {
             if (!Process.isIsolated()) throw new SecurityException("No es un UID aislado.");
-            if (home == null || archive == null || mobileClass == null
+            if (archive == null || mobileClass == null
                     || expectedSha256 == null || libraryDir == null || activeDigest != null) {
                 throw new SecurityException("Inicio inválido o repetido.");
             }
@@ -241,14 +242,16 @@ public final class NcappWorkerService extends Service {
             }
             try {
                 Log.i("NeuroCenter-Sandbox", "LAUNCH: preparando FD de Java 21 y la .ncapp");
-                homeDescriptor = home.dup();
                 appDescriptor = archive.dup();
                 String actual = sha256(appDescriptor.dup());
                 if (!expectedSha256.equals(actual)) {
                     throw new SecurityException("El .ncapp instalado ha cambiado.");
                 }
                 Log.i("NeuroCenter-Sandbox", "LAUNCH: entrando en puente JNI de HotSpot 21");
-                String output = launchJava21("/proc/self/fd/" + homeDescriptor.getFd(),
+                // java.home == Android's read-only nativeLibraryDir.
+                // The vendored HotSpot binary has two audited, fixed-width
+                // JIMAGE path substitutions made at build time.
+                String output = launchJava21(libraryDir,
                         "/proc/self/fd/" + appDescriptor.getFd(),
                         mobileClass, libraryDir);
                 Log.i("NeuroCenter-Sandbox", "LAUNCH: puente JNI devolvió resultado");
@@ -286,9 +289,7 @@ public final class NcappWorkerService extends Service {
     };
 
     private synchronized void closeFiles() {
-        try { if (homeDescriptor != null) homeDescriptor.close(); } catch (IOException ignored) {}
         try { if (appDescriptor != null) appDescriptor.close(); } catch (IOException ignored) {}
-        homeDescriptor = null;
         appDescriptor = null;
     }
 

@@ -25,8 +25,8 @@ android {
         targetSdk = 36
         // El JRE de OpenJDK 21 incluido actualmente es para ARM64.
         ndk.abiFilters += "arm64-v8a"
-        versionCode = 12
-        versionName = "1.6.5"
+        versionCode = 13
+        versionName = "1.6.6"
     }
 
     buildTypes {
@@ -51,6 +51,9 @@ android {
             keepDebugSymbols += "**/libjvm.so"
             keepDebugSymbols += "**/libjava.so"
             keepDebugSymbols += "**/libjli.so"
+            // libnm.so has JIMAGE magic, NOT an ELF header. Never try
+            // stripDebugSymbols/llvm-strip on it.
+            keepDebugSymbols += "**/libnm.so"
         }
     }
 

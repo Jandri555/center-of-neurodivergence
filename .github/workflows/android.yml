@@ -61,10 +61,20 @@ jobs:
 
       - name: Verify JRE 21 actually bundled into APK
         run: |
-          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/neurojre21/lib/modules'
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libnm.so'
           unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libjvm.so'
           unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libneurojvm.so'
-          test -s android/app/build/generated/java21/assets/neurojre21/lib/modules
+          test -s android/app/build/generated/java21/jniLibs/arm64-v8a/libnm.so
+          python3 - <<'PY'
+          from pathlib import Path
+          data = Path("android/app/build/generated/java21/jniLibs/arm64-v8a/libnm.so").read_bytes()[:4]
+          assert data == bytes.fromhex("dadafeca"), data
+          jvm = Path("android/app/build/generated/java21/jniLibs/arm64-v8a/libjvm.so").read_bytes()
+          assert b"%/libnm.so" in jvm
+          assert b"%s%slibnm.so" in jvm
+          assert b"%/lib/modules" not in jvm
+          print("JIMAGE is in APK's JNI extraction layout; HotSpot path patch verified")
+          PY
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

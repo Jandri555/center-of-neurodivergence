@@ -5,7 +5,8 @@ Downloads the selected Amethyst JRE 21 archive, verifies the published SHA-256,
 and splits its *Android native ELF libraries* from the Java runtime image.
 Output:
   build/generated/java21/jniLibs/arm64-v8a/lib*.so
-  build/generated/java21/assets/neurojre21/lib/modules, conf, legal, ...
+  build/generated/java21/jniLibs/arm64-v8a/libnm.so (opaque JIMAGE data)
+  build/generated/java21/assets/neurojre21/conf, legal, ...
 No external Java code is executed while processing the archive.
 """
 import hashlib
@@ -112,6 +113,27 @@ def file_bytes(tar, mapping, name, seen=None):
         raise ValueError("Unreadable archive file: " + name)
     return stream
 
+def patch_hotspot_module_paths(content):
+    """Experimental, length-preserving patch of only OpenJDK's two boot-image
+    format strings. Never alter the ELF layout or substitute untrusted paths.
+
+    The APK package installer extracts libnm.so as an opaque regular file
+    alongside the real ELF libraries; HotSpot then expects that image at
+    <nativeLibraryDir>/libnm.so, instead of <java.home>/lib/modules.
+    We fail the build if the vendor binary's layout changes.
+    """
+    replacements = (
+        (b"%/lib/modules\x00", b"%/libnm.so\x00"),
+        (b"%s%slib%smodules\x00", b"%s%slibnm.so\x00"),
+    )
+    for before, after in replacements:
+        occurrences = content.count(before)
+        if occurrences != 1:
+            raise ValueError("Unsupported libjvm.so layout: expected exactly "
+                             "one %r, found %d" % (before, occurrences))
+        content = content.replace(before, after + b"\x00" * (len(before) - len(after)))
+    return content
+
 def prepare(archive, output):
     assets = output / "assets" / "neurojre21"
     libs = output / "jniLibs" / "arm64-v8a"
@@ -151,6 +173,23 @@ def prepare(archive, output):
             # data directory (W^X policy for apps targeting Android 10+).
             if relative.startswith(("bin/", "include/", "man/")):
                 continue
+            # Install the signed JIMAGE as a non-executable, opaque data file
+            # in nativeLibraryDir, NOT in private filesDir. Android will unpack
+            # lib*.so entries itself when legacy JNI packaging is enabled.
+            if relative == "lib/modules":
+                destination = libs / "libnm.so"
+                with file_bytes(tar, mapping, name) as source, open(destination, "wb") as out:
+                    header = source.read(4)
+                    if header != b"\xDA\xDA\xFE\xCA":
+                        raise ValueError("Invalid JIMAGE magic in lib/modules")
+                    out.write(header)
+                    total += len(header)
+                    while block := source.read(1024 * 1024):
+                        total += len(block)
+                        if total > LIMIT_UNPACKED:
+                            raise ValueError("JIMAGE exceeds unpack size limit")
+                        out.write(block)
+                continue
             if relative.endswith(".so"):
                 basename = posixpath.basename(relative)
                 if not (basename.startswith("lib") and basename.endswith(".so")):
@@ -160,6 +199,8 @@ def prepare(archive, output):
                     content = source.read(LIMIT_UNPACKED + 1)
                 if len(content) > LIMIT_UNPACKED or not content.startswith(b"\x7fELF"):
                     raise ValueError("Native library is not ELF: " + relative)
+                if basename == "libjvm.so":
+                    content = patch_hotspot_module_paths(content)
                 native_digest = hashlib.sha256(content).hexdigest()
                 if basename in copied_libs:
                     if copied_libs[basename] != native_digest:
@@ -180,13 +221,13 @@ def prepare(archive, output):
                         raise ValueError("Expanded JRE exceeds size limit")
                     dest.write(block)
 
-    if not (assets / "lib" / "modules").is_file():
-        raise ValueError("No lib/modules in prepared JRE21")
+    if not (libs / "libnm.so").is_file():
+        raise ValueError("No libnm.so JIMAGE data in prepared native libraries")
     for required in ("libjvm.so", "libjava.so", "libjli.so"):
         if required not in copied_libs:
             raise ValueError("Missing critical native library: " + required)
     (assets / "source.sha256").write_text(EXPECTED_SHA256 + "\n", encoding="ascii")
-    print("Prepared JRE 21: %d native libraries, %.1f MiB unpacked"
+    print("Prepared JRE 21: %d native libraries + APK-hosted JIMAGE, %.1f MiB unpacked"
           % (len(copied_libs), total / 1048576), flush=True)
 
 if __name__ == "__main__":

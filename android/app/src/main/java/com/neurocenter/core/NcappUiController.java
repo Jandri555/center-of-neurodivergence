@@ -159,10 +159,8 @@ public final class NcappUiController {
                     error("No se pudo completar la conexión Binder: " + ping);
                     return;
                 }
-                showText("Preparando la imagen de OpenJDK 21… "
-                        + "En la primera ejecución puede necesitar descomprimir sus módulos.");
-                try (ParcelFileDescriptor home = Java21Runtime.openSandboxHome(activity);
-                     ParcelFileDescriptor archive = ParcelFileDescriptor.open(
+                showText("OpenJDK 21 integrado en el APK, sin extracción privada…");
+                try (ParcelFileDescriptor archive = ParcelFileDescriptor.open(
                              app.archive(), ParcelFileDescriptor.MODE_READ_ONLY)) {
                     showText("Verificación 1/4: envío y SHA-256 de .ncapp…");
                     Log.i(LOG_TAG, "DIAG 1: enviando un FD de archivo, PID=" + isolatedPid);
@@ -172,9 +170,9 @@ public final class NcappUiController {
                         error("Error en verificación de .ncapp: " + jarCheck);
                         return;
                     }
-                    showText("Verificación 2/4: acceso a módulos Java 21…");
-                    Log.i(LOG_TAG, "DIAG 2: enviando un FD de JRE, PID=" + isolatedPid);
-                    String moduleCheck = worker.checkModules(home);
+                    showText("Verificación 2/4: JIMAGE alojada en el APK…");
+                    Log.i(LOG_TAG, "DIAG 2: comprobando datos JIMAGE del paquete");
+                    String moduleCheck = worker.checkModules();
                     Log.i(LOG_TAG, "DIAG 2: " + moduleCheck);
                     if (!moduleCheck.startsWith("OK:")) {
                         error("Error en verificación de módulos: " + moduleCheck);
@@ -190,7 +188,7 @@ public final class NcappUiController {
                     }
                     showText("Verificación 4/4: iniciando HotSpot Java 21 aislado…");
                     showText("Lanzando HotSpot Java 21 dentro del proceso aislado…");
-                    String output = worker.launchApp(home, archive, app.mobileClass(),
+                    String output = worker.launchApp(archive, app.mobileClass(),
                             app.sha256(), activity.getApplicationInfo().nativeLibraryDir);
                     disarmTimeout();
                     present(output);
@@ -302,7 +300,7 @@ public final class NcappUiController {
 
         /** El proceso remoto puede cerrarse por un fallo nativo sin devolver excepción Java. */
         void error(String message) {
-            String report = "NeuroCenter Android 1.6.5"
+            String report = "NeuroCenter Android 1.6.6"
                     + "\nPaquete: " + app.id()
                     + "\nProceso aislado PID: " + (isolatedPid > 0 ? isolatedPid : "no conectado")
                     + "\nFase: " + phase

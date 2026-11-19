@@ -38,8 +38,14 @@ public final class Java21Runtime {
         if (!"arm64-v8a".equals(Build.SUPPORTED_ABIS[0])) {
             throw new IOException("Esta versión incluye OpenJDK 21 solo para ARM64.");
         }
-        File home = prepareDataImage(context);
-        return probeNative(home.getAbsolutePath(), context.getApplicationInfo().nativeLibraryDir);
+        // Do not extract to app-private files. HotSpot's known boot-image
+        // path strings have been patched to locate libnm.so in this directory.
+        File home = new File(context.getApplicationInfo().nativeLibraryDir);
+        File modules = new File(home, "libnm.so");
+        if (!modules.isFile() || modules.length() < 1048576L) {
+            throw new IOException("Falta la JIMAGE nativa del APK: libnm.so");
+        }
+        return probeNative(home.getAbsolutePath(), home.getAbsolutePath());
     }
 
     /**
