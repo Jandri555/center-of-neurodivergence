@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <unistd.h>
+#include <errno.h>
 
 /*
  * OpenJDK 21 launcher inside a real isolatedProcess. The Android host only
@@ -22,11 +24,37 @@ static jobject g_app = NULL;
 static jmethodID g_action = NULL;
 
 /*
- * JNI Invocation API's vfprintf hook. Some fatal HotSpot initialization
- * errors are written to stderr immediately before exit(1), so Java cannot
- * catch or report them through Binder. Mirror these messages to logcat.
- * No exit()/abort() hooks: never alter JVM shutdown or its sandbox.
+ * DEBUG ONLY: process stdout/stderr and HotSpot's vfprintf hook are piped
+ * to the host over a one-way Binder-delivered FD. A native exit() cannot
+ * erase bytes already written into the kernel pipe.
+ * No sandbox privilege changes, logcat permission or exit interception.
  */
+#ifdef NEUROCENTER_DEBUG_DIAGNOSTICS
+static int g_debug_pipe = -1;
+static void pipe_message(const char *line) {
+    if (g_debug_pipe < 0 || line == NULL) return;
+    size_t len = strnlen(line, 2048);
+    if (len) (void)write(g_debug_pipe, line, len);
+    (void)write(g_debug_pipe, "\n", 1);
+}
+#endif
+
+static void ncapp_note(int priority, const char *format, ...) {
+    char message[2048];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
+#ifdef NEUROCENTER_DEBUG_DIAGNOSTICS
+    __android_log_write(priority, TAG, message);
+    pipe_message(message);
+#else
+    // Release logs only errors, without native diagnostic infrastructure.
+    if (priority >= ANDROID_LOG_ERROR) __android_log_write(priority, TAG, message);
+#endif
+}
+
+#ifdef NEUROCENTER_DEBUG_DIAGNOSTICS
 static int hotspot_vfprintf(FILE *stream, const char *format, va_list args) {
     char message[2048];
     va_list copy;
@@ -34,17 +62,31 @@ static int hotspot_vfprintf(FILE *stream, const char *format, va_list args) {
     int count = vsnprintf(message, sizeof(message), format, copy);
     va_end(copy);
     if (count >= 0 && message[0] != '\0') {
-        __android_log_print(stream == stderr ? ANDROID_LOG_ERROR : ANDROID_LOG_INFO,
-                            TAG, "HotSpot output: %s", message);
+        ncapp_note(stream == stderr ? ANDROID_LOG_ERROR : ANDROID_LOG_INFO,
+                   "HotSpot output: %s", message);
     }
     return count;
 }
+
+static void enable_debug_pipe(int received_fd) {
+    if (received_fd < 0) return;
+    g_debug_pipe = dup(received_fd);
+    if (g_debug_pipe < 0) return;
+    // Capture output not handled by the JVM's JNI vfprintf hook as well.
+    // This affects only this separate Android isolated process.
+    if (dup2(received_fd, STDERR_FILENO) < 0
+            || dup2(received_fd, STDOUT_FILENO) < 0) {
+        ncapp_note(ANDROID_LOG_ERROR, "No se pudo redirigir stdout/stderr: %d", errno);
+    }
+    ncapp_note(ANDROID_LOG_INFO, "DIAGNÓSTICO: tubería nativa conectada");
+}
+#endif
 
 static jstring err(JNIEnv *android_env, const char *name, const char *details) {
     char buffer[1024];
     snprintf(buffer, sizeof buffer, "NCAPP_ERROR:%s: %s", name,
              details == NULL ? "desconocido" : details);
-    __android_log_print(ANDROID_LOG_ERROR, TAG, "%s", buffer);
+    ncapp_note(ANDROID_LOG_ERROR, "%s", buffer);
     return (*android_env)->NewStringUTF(android_env, buffer);
 }
 
@@ -71,9 +113,14 @@ static jstring json_result(JNIEnv *android_env, JNIEnv *jre, jobject value) {
 
 JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJava21(
     JNIEnv *android_env, jclass ignored, jstring jhome,
-    jstring jarchive, jstring jentry, jstring jlibs) {
+    jstring jarchive, jstring jentry, jstring jlibs, jint debug_fd) {
     (void)ignored;
-    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 1: entró al lanzador JNI");
+#ifdef NEUROCENTER_DEBUG_DIAGNOSTICS
+    enable_debug_pipe(debug_fd);
+#else
+    (void)debug_fd;
+#endif
+    ncapp_note(ANDROID_LOG_INFO, "JVM stage 1: entró al lanzador JNI");
     if (g_vm != NULL) return err(android_env, "estado", "La JVM ya está iniciada");
     if (!jhome || !jarchive || !jentry || !jlibs) {
         return err(android_env, "argumentos", "Faltan parámetros");
@@ -108,14 +155,14 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
     snprintf(appOption, sizeof appOption, "-Djava.class.path=%s", archive);
     setenv("JAVA_HOME", home, 1);
     setenv("LD_LIBRARY_PATH", libs, 1);
-    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 2: cargando libjvm.so");
+    ncapp_note(ANDROID_LOG_INFO, "JVM stage 2: cargando libjvm.so");
     void *handle = dlopen(libjvm, RTLD_NOW | RTLD_GLOBAL);
     (*android_env)->ReleaseStringUTFChars(android_env, jhome, home);
     (*android_env)->ReleaseStringUTFChars(android_env, jarchive, archive);
     (*android_env)->ReleaseStringUTFChars(android_env, jentry, entry);
     (*android_env)->ReleaseStringUTFChars(android_env, jlibs, libs);
     if (!handle) return err(android_env, "libjvm", dlerror());
-    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 3: dlopen completado");
+    ncapp_note(ANDROID_LOG_INFO, "JVM stage 3: dlopen completado");
     create_java_vm_t create = (create_java_vm_t)dlsym(handle, "JNI_CreateJavaVM");
     if (!create) return err(android_env, "símbolo", "JNI_CreateJavaVM no disponible");
 
@@ -126,8 +173,10 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
         {.optionString = "-Djava.awt.headless=true"},
         {.optionString = "-Djava.security.manager=allow"},
         {.optionString = "-Djdk.lang.Process.launchMechanism=FORK"},
-        {.optionString = "-Xmx128m"},
-        {.optionString = "vfprintf", .extraInfo = (void *)hotspot_vfprintf}
+        {.optionString = "-Xmx128m"}
+#ifdef NEUROCENTER_DEBUG_DIAGNOSTICS
+        ,{.optionString = "vfprintf", .extraInfo = (void *)hotspot_vfprintf}
+#endif
     };
     JavaVMInitArgs args = {
         .version = JNI_VERSION_1_6,
@@ -136,10 +185,9 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
         .ignoreUnrecognized = JNI_FALSE
     };
     JNIEnv *jre = NULL;
-    __android_log_print(ANDROID_LOG_INFO, TAG,
-                        "JVM stage 4: entrando en JNI_CreateJavaVM (vfprintf -> logcat)");
+    ncapp_note(ANDROID_LOG_INFO, "JVM stage 4: entrando en JNI_CreateJavaVM");
     jint status = create(&g_vm, (void**)&jre, &args);
-    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 5: JNI_CreateJavaVM retornó %d", status);
+    ncapp_note(ANDROID_LOG_INFO, "JVM stage 5: JNI_CreateJavaVM retornó %d", status);
     if (status != JNI_OK || !g_vm || !jre) {
         char code[64];
         g_vm = NULL;
@@ -147,7 +195,7 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
         return err(android_env, "arranque", code);
     }
 
-    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 6: cargando clase móvil");
+    ncapp_note(ANDROID_LOG_INFO, "JVM stage 6: cargando clase móvil");
     jclass clazz = (*jre)->FindClass(jre, className);
     if (!clazz) return java_error(android_env, jre, "clase móvil");
     jmethodID ctor = (*jre)->GetMethodID(jre, clazz, "<init>", "()V");
@@ -161,7 +209,7 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
     if (!g_action) return java_error(android_env, jre, "onAction");
     g_app = (*jre)->NewGlobalRef(jre, instance);
     if (!g_app) return err(android_env, "memoria", "No se pudo retener la aplicación");
-    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 7: invocando renderJson");
+    ncapp_note(ANDROID_LOG_INFO, "JVM stage 7: invocando renderJson");
     jobject value = (*jre)->CallObjectMethod(jre, g_app, render);
     return json_result(android_env, jre, value);
 }

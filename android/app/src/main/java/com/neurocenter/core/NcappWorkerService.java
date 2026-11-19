@@ -8,6 +8,7 @@ import android.os.Process;
 import android.system.Os;
 import android.system.OsConstants;
 import android.util.Log;
+import com.neurocenter.BuildConfig;
 import java.io.File;
 
 import com.neurocenter.api.INcappWorker;
@@ -29,7 +30,8 @@ public final class NcappWorkerService extends Service {
     private String activeDigest;
 
     private static native String launchJava21(String homeFd, String appFd,
-                                              String mobileClass, String nativeLibDir);
+                                              String mobileClass, String nativeLibDir,
+                                              int diagnosticFd);
     private static native String callJava21Action(String actionId);
     private static native String callJava21HostResponse(String capability, String responseJson);
 
@@ -136,7 +138,7 @@ public final class NcappWorkerService extends Service {
 
         @Override public synchronized String launchApp(ParcelFileDescriptor archive,
                 String mobileClass, String expectedSha256,
-                String libraryDir) {
+                String libraryDir, ParcelFileDescriptor diagnosticSink) {
             if (!Process.isIsolated()) throw new SecurityException("No es un UID aislado.");
             if (archive == null || mobileClass == null
                     || expectedSha256 == null || libraryDir == null || activeDigest != null) {
@@ -171,7 +173,9 @@ public final class NcappWorkerService extends Service {
                 // JIMAGE path substitutions made at build time.
                 String output = launchJava21(libraryDir,
                         "/proc/self/fd/" + appDescriptor.getFd(),
-                        mobileClass, libraryDir);
+                        mobileClass, libraryDir,
+                        BuildConfig.DEBUG && diagnosticSink != null
+                                ? diagnosticSink.getFd() : -1);
                 Log.i("NeuroCenter-Sandbox", "LAUNCH: puente JNI devolvió resultado");
                 if (output == null || output.startsWith("NCAPP_ERROR:")) {
                     closeFiles();
@@ -195,6 +199,10 @@ public final class NcappWorkerService extends Service {
                         + (root.getMessage() == null ? "(sin mensaje)" : root.getMessage());
                 throw new IllegalStateException(
                         "No se pudo iniciar HotSpot aislado: " + detail, failure);
+            } finally {
+                if (diagnosticSink != null) {
+                    try { diagnosticSink.close(); } catch (IOException ignored) {}
+                }
             }
         }
 

@@ -17,7 +17,7 @@
     <application
         android:name="com.neurocenter.apps.agenda.AgendaApplication"
         android:allowBackup="true"
-        android:label="Center of Neurodivergence"
+        android:label="@string/neurocenter_variant_label"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <service

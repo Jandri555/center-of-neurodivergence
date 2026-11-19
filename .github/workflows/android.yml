@@ -56,8 +56,8 @@ jobs:
         with:
           gradle-version: "9.6.0"
 
-      - name: Build debug APK with bundled OpenJDK 21 ARM64
-        run: gradle --no-daemon -p android :app:assembleDebug
+      - name: Build both APK variants with bundled OpenJDK 21 ARM64
+        run: gradle --no-daemon -p android :app:assembleDebug :app:assembleRelease
 
       - name: Verify JRE 21 actually bundled into APK
         run: |
@@ -76,10 +76,39 @@ jobs:
           print("JIMAGE is in APK's JNI extraction layout; HotSpot path patch verified")
           PY
 
-      - name: Upload debug APK
+      - name: Verify build-type diagnostic isolation
+        run: |
+          test -s android/app/build/outputs/apk/debug/app-debug.apk
+          test -s android/app/build/outputs/apk/release/app-release.apk
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          from pathlib import Path
+          debug = Path("android/app/build/outputs/apk/debug/app-debug.apk")
+          release = Path("android/app/build/outputs/apk/release/app-release.apk")
+          for candidate in (debug, release):
+              with ZipFile(candidate) as apk:
+                  assert "lib/arm64-v8a/libnm.so" in apk.namelist()
+                  assert "lib/arm64-v8a/libjvm.so" in apk.namelist()
+                  bridge = apk.read("lib/arm64-v8a/libneurojvm.so")
+                  if candidate == debug:
+                      assert b"DIAGN" in bridge or b"HotSpot output" in bridge
+                  else:
+                      assert b"HotSpot output" not in bridge
+          print("Debug/release native diagnostics separated")
+          PY
+
+      - name: Upload DEBUG APK (diagnostics included)
         uses: actions/upload-artifact@v4
         with:
           name: neurocenter-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload RELEASE TEST APK (no diagnostics, test signature)
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocenter-android-release-test
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14

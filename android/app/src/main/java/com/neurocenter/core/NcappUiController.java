@@ -2,12 +2,7 @@ package com.neurocenter.core;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.ActivityManager;
-import android.app.ApplicationExitInfo;
-import android.os.Build;
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.ComponentName;
+  import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
@@ -79,6 +74,9 @@ public final class NcappUiController {
         private volatile String phase = "Solicitando proceso aislado";
         private final long createdAt = System.currentTimeMillis();
         private int remainingHostRequests = 8;
+        private NcappCrashDiagnostics crashCapture;
+        private String failureSummary;
+        private TextView failureView;
 
         Session(Activity activity, NcappManager.InstalledApp app) {
             this.activity = activity;
@@ -196,8 +194,22 @@ public final class NcappUiController {
                     }
                     showText("Verificación 4/4: iniciando HotSpot Java 21 aislado…");
                     showText("Lanzando HotSpot Java 21 dentro del proceso aislado…");
-                    String output = worker.launchApp(archive, app.mobileClass(),
-                            app.sha256(), activity.getApplicationInfo().nativeLibraryDir);
+                    if (NcappCrashDiagnostics.enabled()) {
+                        try {
+                            crashCapture = NcappCrashDiagnostics.open(
+                                    () -> mainHandler.post(this::refreshFailure));
+                        } catch (IOException unavailable) {
+                            Log.w(LOG_TAG, "Canal debug nativo no disponible", unavailable);
+                        }
+                    }
+                    String output;
+                    try {
+                        output = worker.launchApp(archive, app.mobileClass(),
+                                app.sha256(), activity.getApplicationInfo().nativeLibraryDir,
+                                crashCapture == null ? null : crashCapture.sink());
+                    } finally {
+                        if (crashCapture != null) crashCapture.closeSender();
+                    }
                     disarmTimeout();
                     present(output);
                 }
@@ -306,103 +318,52 @@ public final class NcappUiController {
             });
         }
 
-        /** El proceso remoto puede cerrarse por un fallo nativo sin devolver excepción Java. */
+        /** Even when HotSpot calls exit(), kernel pipe bytes survive. */
         void error(String message) {
-            String report = "NeuroCenter Android 1.6.8"
+            String report = "NeuroCenter Android " + com.neurocenter.BuildConfig.VERSION_NAME
                     + "\nPaquete: " + app.id()
-                    + "\nProceso aislado PID: " + (isolatedPid > 0 ? isolatedPid : "no conectado")
+                    + "\nProceso aislado PID: "
+                    + (isolatedPid > 0 ? isolatedPid : "no conectado")
                     + "\nFase: " + phase
                     + "\nError: " + message;
             Log.e(LOG_TAG, "Fallo .ncapp: " + report);
             activity.runOnUiThread(() -> {
                 if (closed || failed) return;
                 failed = true;
+                failureSummary = report;
                 clearWatchdog();
-                // No desvincular ahora: hacerlo podría causar el motivo
-                // ISOLATED NOT NEEDED y ocultar la causa original del error.
+                // Preserve binding long enough to read original exit info.
                 executor.shutdownNow();
                 panel.removeAllViews();
-                TextView diagnostic = new TextView(activity);
-                diagnostic.setText(message + "\n\nFase: " + phase
-                        + "\nBuscando el motivo de cierre del proceso…");
-                diagnostic.setTextSize(15);
-                panel.addView(diagnostic);
-                final String[] fullReport = {report};
-                Button copy = new Button(activity);
-                copy.setText("Copiar informe de diagnóstico");
-                copy.setAllCaps(false);
-                copy.setOnClickListener(view -> {
-                    ClipboardManager clipboard = (ClipboardManager) activity
-                            .getSystemService(Context.CLIPBOARD_SERVICE);
-                    if (clipboard != null) {
-                        clipboard.setPrimaryClip(ClipData.newPlainText(
-                                "NeuroCenter ncapp crash", fullReport[0]));
-                    }
-                });
-                panel.addView(copy);
-                mainHandler.postDelayed(() -> {
-                    if (closed) return;
-                    String exit = findExitReason();
-                    fullReport[0] = report + "\n" + exit;
-                    diagnostic.setText(message + "\n\nFase: " + phase
-                            + "\n" + exit + "\n\nPuedes copiar este diagnóstico.");
-                }, 1500);
-                // Conservar la conexión durante el diagnóstico evita una
-                // terminación artificial ISOLATED NOT NEEDED en ActivityManager.
+                failureView = new TextView(activity);
+                failureView.setTextSize(14);
+                panel.addView(failureView);
+                if (NcappCrashDiagnostics.enabled()) {
+                    NcappCrashDiagnostics.addActions(
+                            activity, panel, this::completeReport);
+                }
+                refreshFailure();
+                mainHandler.postDelayed(this::refreshFailure, 1500);
                 mainHandler.postDelayed(() -> {
                     if (!closed) releaseConnection();
                 }, 4500);
             });
         }
 
-        private String findExitReason() {
-            if (Build.VERSION.SDK_INT < 30) {
-                return "Android 10 no ofrece historial de terminación al programa. "
-                        + "Para conocer la causa necesitas logcat.";
+        private String completeReport() {
+            return NcappCrashDiagnostics.report(activity, failureSummary,
+                    isolatedPid, createdAt, crashCapture);
+        }
+
+        private void refreshFailure() {
+            if (closed || !failed || failureView == null) return;
+            String report = completeReport();
+            if (NcappCrashDiagnostics.enabled() && report.length() > 16000) {
+                report = report.substring(0, 1200)
+                        + "\n\n[Informe abreviado en pantalla; copia o comparte el completo]\n\n"
+                        + report.substring(report.length() - 13500);
             }
-            if (isolatedPid <= 0) {
-                return "Sin PID del servicio. El proceso puede haber muerto antes "
-                        + "de establecer la conexión.";
-            }
-            try {
-                ActivityManager manager = activity.getSystemService(ActivityManager.class);
-                if (manager == null) return "El servicio de ActivityManager no está disponible.";
-                List<ApplicationExitInfo> exits = manager.getHistoricalProcessExitReasons(
-                        activity.getPackageName(), isolatedPid, 5);
-                for (ApplicationExitInfo info : exits) {
-                    if (info.getPid() != isolatedPid || info.getTimestamp() < createdAt - 5000) {
-                        continue;
-                    }
-                    String classification;
-                    if (info.getReason() == ApplicationExitInfo.REASON_EXIT_SELF) {
-                        classification = "EL PROCESO TERMINÓ POR SÍ MISMO (exit("
-                                + info.getStatus() + ")); revisar HotSpot output en logcat";
-                    } else if (info.getReason() == ApplicationExitInfo.REASON_CRASH_NATIVE) {
-                        classification = "CRASH NATIVO (HotSpot/JNI o librerías)";
-                    } else if (info.getReason() == ApplicationExitInfo.REASON_CRASH) {
-                        classification = "CRASH JAVA DEL PROCESO AISLADO";
-                    } else if (info.getReason() == ApplicationExitInfo.REASON_LOW_MEMORY) {
-                        classification = "ANDROID MATÓ EL PROCESO POR MEMORIA";
-                    } else if (info.getReason() == ApplicationExitInfo.REASON_ANR) {
-                        classification = "PROCESO SIN RESPUESTA (ANR)";
-                    } else {
-                        classification = "Código Android " + info.getReason();
-                    }
-                    if (info.getReason() == ApplicationExitInfo.REASON_OTHER
-                            && info.getDescription() != null
-                            && info.getDescription().contains("isolated not needed")) {
-                        classification = "CERRADO POR EL SISTEMA POR NO TENER SERVICIOS VINCULADOS "
-                                + "(puede ser consecuencia de unbindService, no la causa)";
-                    }
-                    return "Motivo registrado por Android: " + classification
-                            + "\nEstado/señal: " + info.getStatus()
-                            + "\nDetalle: " + info.getDescription();
-                }
-                return "Android aún no tiene información del cierre del PID "
-                        + isolatedPid + ". Consulta el registro logcat.";
-            } catch (Exception e) {
-                return "No se pudo consultar el historial de cierres: " + e.getMessage();
-            }
+            failureView.setText(report);
         }
 
         void armTimeout(long millis, String message) {
@@ -440,6 +401,10 @@ public final class NcappUiController {
             clearWatchdog();
             executor.shutdownNow();
             releaseConnection();
+            if (crashCapture != null) {
+                crashCapture.close();
+                crashCapture = null;
+            }
             synchronized (ACTIVE) {
                 List<Session> sessions = ACTIVE.get(activity);
                 if (sessions != null) {

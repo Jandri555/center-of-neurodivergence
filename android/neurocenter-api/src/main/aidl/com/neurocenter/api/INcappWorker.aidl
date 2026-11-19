@@ -12,8 +12,10 @@ interface INcappWorker {
     String checkModules();
     String checkNativeLibrary(String nativeLibDir);
     String sha256(in ParcelFileDescriptor archive);
+    // DEBUG: optional one-way pipe for native stderr; RELEASE always null.
     String launchApp(in ParcelFileDescriptor archive,
-                     String mobileClass, String expectedSha256, String libraryDir);
+                     String mobileClass, String expectedSha256, String libraryDir,
+                     in ParcelFileDescriptor diagnosticSink);
     String dispatchAction(String actionId);
     String deliverHostResponse(String capability, String responseJson);
 }

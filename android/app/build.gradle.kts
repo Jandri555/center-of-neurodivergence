@@ -25,13 +25,28 @@ android {
         targetSdk = 36
         // El JRE de OpenJDK 21 incluido actualmente es para ARM64.
         ndk.abiFilters += "arm64-v8a"
-        versionCode = 15
-        versionName = "1.6.8"
+        versionCode = 16
+        versionName = "1.6.9"
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
         getByName("debug") {
             signingConfig = signingConfigs.getByName("stableDebug")
+            versionNameSuffix = "-debug"
+            resValue("string", "neurocenter_variant_label",
+                     "Center of Neurodivergence (Debug)")
+        }
+        getByName("release") {
+            // TEST release only: same stable debug certificate to allow updating
+            // an installed debug APK. Replace with a private production key
+            // before publishing; do not distribute as a production-signed app.
+            signingConfig = signingConfigs.getByName("stableDebug")
+            resValue("string", "neurocenter_variant_label",
+                     "Center of Neurodivergence")
         }
     }
 
