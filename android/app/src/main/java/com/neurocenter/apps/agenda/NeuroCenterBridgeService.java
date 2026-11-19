@@ -50,7 +50,7 @@ public final class NeuroCenterBridgeService extends Service {
             if (!NeuroCenterCapabilities.isSupported(capabilityId)) return false;
             try (NeuroCenterCapabilityStore store = new NeuroCenterCapabilityStore(
                     NeuroCenterBridgeService.this)) {
-                return store.isGranted(caller.packageName, capabilityId);
+                return store.isGranted(caller.packageName, caller.signingDigest, capabilityId);
             } catch (IOException | RuntimeException ex) {
                 Log.e(TAG, "No se pudieron consultar las capacidades de " + caller.packageName, ex);
                 return false;
@@ -157,7 +157,7 @@ public final class NeuroCenterBridgeService extends Service {
     private Caller requireCapability(String capabilityId) {
         Caller caller = caller();
         try (NeuroCenterCapabilityStore store = new NeuroCenterCapabilityStore(this)) {
-            if (!store.isGranted(caller.packageName, capabilityId)) {
+            if (!store.isGranted(caller.packageName, caller.signingDigest, capabilityId)) {
                 throw new SecurityException("NeuroCenter no ha concedido «" + capabilityId
                         + "» a " + caller.packageName + ".");
             }
@@ -203,7 +203,7 @@ public final class NeuroCenterBridgeService extends Service {
             if (!appId.matches("[A-Za-z0-9._-]{1,128}")) {
                 throw new SecurityException("El identificador de la aplicación no es válido.");
             }
-            return new Caller(uid, packageName, appId);
+            return new Caller(uid, packageName, appId, AndroidExternalApps.signingDigest(this, packageName));
         } catch (PackageManager.NameNotFoundException ex) {
             throw new SecurityException("El paquete llamante ya no está instalado.", ex);
         }
@@ -250,11 +250,13 @@ public final class NeuroCenterBridgeService extends Service {
         final int uid;
         final String packageName;
         final String appId;
+        final String signingDigest;
 
-        Caller(int uid, String packageName, String appId) {
+        Caller(int uid, String packageName, String appId, String signingDigest) {
             this.uid = uid;
             this.packageName = packageName;
             this.appId = appId;
+            this.signingDigest = signingDigest;
         }
     }
 }
