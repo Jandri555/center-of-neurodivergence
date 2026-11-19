@@ -88,10 +88,7 @@ La biblioteca `neurocenter-api` publica `INeuroCenterBridge` (AIDL) y `NeuroCent
 Ejemplo de binding en una aplicación externa:
 
 ```java
-Intent intent = new Intent("com.neurocenter.action.BIND_BRIDGE");
-intent.setComponent(new ComponentName(
-        "com.neurocenter",
-        "com.neurocenter.apps.agenda.NeuroCenterBridgeService"));
+Intent intent = NeuroCenterAppContract.bridgeIntent();
 
 ServiceConnection connection = new ServiceConnection() {
     @Override
@@ -116,6 +113,27 @@ Capacidades disponibles:
 | `agenda.write` | Crear tareas, cambiar su estado y eliminar entradas |
 | `credentials.access` | Guardar, recuperar y eliminar secretos cifrados con Android Keystore |
 
-El gestor de permisos de NeuroCenter guarda concesiones en `capabilities.db`, vinculadas al nombre de paquete Android. El servicio no acepta identidad del cliente por parámetros: resuelve el UID de Binder con PackageManager y rechaza UIDs ambiguos (por ejemplo, paquetes con `sharedUserId`). Cada método protegido vuelve a comprobar la capacidad antes de acceder al recurso.
+El gestor de permisos de NeuroCenter guarda concesiones en `capabilities.db`, vinculadas al nombre de paquete Android y a la huella SHA-256 de sus certificados de firma actuales. El servicio no acepta identidad del cliente por parámetros: resuelve el UID de Binder con PackageManager, rechaza UIDs ambiguos (por ejemplo, paquetes con `sharedUserId`) y comprueba que el paquete instalado declara el contrato. Cada método protegido vuelve a comprobar la capacidad antes de acceder al recurso. Las concesiones se borran al desinstalar el paquete; las concesiones de una base de datos antigua que no tenga huella de firma se descartan al migrar, en vez de heredarse sin verificación.
 
 Las aplicaciones externas deben incluir `neurocenter-api` como dependencia Android para compilar el contrato AIDL. Para acceder a Android Bluetooth, cámara, notificaciones, red o documentos, deben seguir declarando y solicitando esos permisos/URI por sí mismas; las capacidades Binder no sustituyen permisos del sistema.
+
+
+## Ejemplo mínimo de manifiesto de una app externa
+
+```xml
+<application>
+    <activity
+        android:name=".NeuroCenterEntryActivity"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="com.neurocenter.action.OPEN_APP" />
+            <category android:name="android.intent.category.DEFAULT" />
+        </intent-filter>
+        <meta-data
+            android:name="com.neurocenter.app.id"
+            android:value="mi-aplicacion" />
+    </activity>
+</application>
+```
+
+No copies al manifiesto de la app externa los permisos Bluetooth/cámara/etc. del host. Declara solo los que use esa app. Para sus datos privados, utiliza su almacenamiento interno; para ficheros elegidos por el usuario, usa Storage Access Framework.
