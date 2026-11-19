@@ -9,6 +9,10 @@ interface INcappWorker {
     // Comprueba acceso al JRE, a libjvm.so y el hash de la .ncapp SIN iniciar JVM.
     String preflight(in ParcelFileDescriptor home, in ParcelFileDescriptor archive,
                      String expectedSha256, String libraryDir);
+    // Pasos independientes para identificar qué llamada Binder falla.
+    String preflightStep(int step, in ParcelFileDescriptor home,
+                         in ParcelFileDescriptor archive, String expectedSha256,
+                         String libraryDir);
     String sha256(in ParcelFileDescriptor archive);
     String launchApp(in ParcelFileDescriptor home, in ParcelFileDescriptor archive,
                      String mobileClass, String expectedSha256, String libraryDir);

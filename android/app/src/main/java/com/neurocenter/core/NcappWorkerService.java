@@ -87,6 +87,53 @@ public final class NcappWorkerService extends Service {
             }
         }
 
+        /**
+         * Diagnostic steps, one Binder transaction each:
+         * 1 = SHA256 on duplicated archive FD; 2 = JRE modules; 3 = libjvm.
+         * No Java21 code is started and no extra host permissions are granted.
+         */
+        @Override public String preflightStep(int step, ParcelFileDescriptor home,
+                ParcelFileDescriptor archive, String expectedSha256, String libraryDir) {
+            if (!Process.isIsolated()) return "DIAG_ERROR: UID no aislado";
+            if (home == null || archive == null || expectedSha256 == null
+                    || libraryDir == null || !expectedSha256.matches("[a-f0-9]{64}")
+                    || !libraryDir.equals(getApplicationInfo().nativeLibraryDir)) {
+                return "DIAG_ERROR: Parámetros inválidos";
+            }
+            Log.i("NeuroCenter-Sandbox", "PREFLIGHT etapa " + step + " antes de ejecutar");
+            try {
+                if (step == 1) {
+                    String digest = sha256(archive.dup());
+                    return expectedSha256.equals(digest)
+                            ? "OK: SHA-256 del archivo .ncapp"
+                            : "DIAG_ERROR: SHA-256 no coincide";
+                }
+                if (step == 2) {
+                    String path = "/proc/self/fd/" + home.getFd() + "/lib/modules";
+                    FileDescriptor fd = null;
+                    try {
+                        fd = Os.open(path, OsConstants.O_RDONLY | OsConstants.O_CLOEXEC, 0);
+                        return Os.fstat(fd).st_size > 1024
+                                ? "OK: imagen de módulos OpenJDK 21"
+                                : "DIAG_ERROR: lib/modules está vacío";
+                    } finally {
+                        if (fd != null) Os.close(fd);
+                    }
+                }
+                if (step == 3) {
+                    File jvm = new File(libraryDir, "libjvm.so");
+                    return jvm.isFile() && jvm.canRead()
+                            ? "OK: libjvm.so legible"
+                            : "DIAG_ERROR: no se puede leer libjvm.so";
+                }
+                return "DIAG_ERROR: etapa desconocida " + step;
+            } catch (Exception e) {
+                Log.e("NeuroCenter-Sandbox", "PREFLIGHT " + step + " falló", e);
+                return "DIAG_ERROR: etapa " + step + ": "
+                        + e.getClass().getSimpleName() + ": " + e.getMessage();
+            }
+        }
+
         @Override public String sha256(ParcelFileDescriptor descriptor) {
             if (!Process.isIsolated()) throw new SecurityException("Proceso no aislado.");
             if (descriptor == null) throw new IllegalArgumentException("Falta archivo.");

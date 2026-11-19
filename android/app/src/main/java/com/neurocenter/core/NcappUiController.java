@@ -157,14 +157,22 @@ public final class NcappUiController {
                 try (ParcelFileDescriptor home = Java21Runtime.openSandboxHome(activity);
                      ParcelFileDescriptor archive = ParcelFileDescriptor.open(
                              app.archive(), ParcelFileDescriptor.MODE_READ_ONLY)) {
-                    showText("Verificando el acceso a módulos Java 21 y al archivo .ncapp…");
-                    String preflight = worker.preflight(home, archive,
-                            app.sha256(), activity.getApplicationInfo().nativeLibraryDir);
-                    Log.i(LOG_TAG, "Preflight PID=" + isolatedPid + ": " + preflight);
-                    if (!preflight.startsWith("OK:")) {
-                        error("No se pudo preparar OpenJDK 21 en el proceso aislado. "
-                                + preflight);
-                        return;
+                    String[] phases = {
+                        "Comprobando integridad SHA-256 de la .ncapp…",
+                        "Comprobando acceso a módulos Java 21…",
+                        "Comprobando libjvm.so desde el UID aislado…"
+                    };
+                    for (int step = 1; step <= 3; step++) {
+                        showText("Verificación " + step + "/3: " + phases[step - 1]);
+                        Log.i(LOG_TAG, "Preflight paso " + step
+                                + " antes de Binder, PID=" + isolatedPid);
+                        String result = worker.preflightStep(step, home, archive, app.sha256(),
+                                activity.getApplicationInfo().nativeLibraryDir);
+                        Log.i(LOG_TAG, "Preflight paso " + step + ": " + result);
+                        if (!result.startsWith("OK:")) {
+                            error("Falló la verificación " + step + "/3: " + result);
+                            return;
+                        }
                     }
                     showText("Lanzando HotSpot Java 21 dentro del proceso aislado…");
                     String output = worker.launchApp(home, archive, app.mobileClass(),
@@ -279,7 +287,7 @@ public final class NcappUiController {
 
         /** El proceso remoto puede cerrarse por un fallo nativo sin devolver excepción Java. */
         void error(String message) {
-            String report = "NeuroCenter Android 1.6.3"
+            String report = "NeuroCenter Android 1.6.4"
                     + "\nPaquete: " + app.id()
                     + "\nProceso aislado PID: " + (isolatedPid > 0 ? isolatedPid : "no conectado")
                     + "\nFase: " + phase
@@ -289,7 +297,8 @@ public final class NcappUiController {
                 if (closed || failed) return;
                 failed = true;
                 clearWatchdog();
-                releaseConnection();
+                // No desvincular ahora: hacerlo podría causar el motivo
+                // ISOLATED NOT NEEDED y ocultar la causa original del error.
                 executor.shutdownNow();
                 panel.removeAllViews();
                 TextView diagnostic = new TextView(activity);
@@ -317,6 +326,11 @@ public final class NcappUiController {
                     diagnostic.setText(message + "\n\nFase: " + phase
                             + "\n" + exit + "\n\nPuedes copiar este diagnóstico.");
                 }, 1500);
+                // Conservar la conexión durante el diagnóstico evita una
+                // terminación artificial ISOLATED NOT NEEDED en ActivityManager.
+                mainHandler.postDelayed(() -> {
+                    if (!closed) releaseConnection();
+                }, 4500);
             });
         }
 
@@ -349,6 +363,12 @@ public final class NcappUiController {
                         classification = "PROCESO SIN RESPUESTA (ANR)";
                     } else {
                         classification = "Código Android " + info.getReason();
+                    }
+                    if (info.getReason() == ApplicationExitInfo.REASON_OTHER
+                            && info.getDescription() != null
+                            && info.getDescription().contains("isolated not needed")) {
+                        classification = "CERRADO POR EL SISTEMA POR NO TENER SERVICIOS VINCULADOS "
+                                + "(puede ser consecuencia de unbindService, no la causa)";
                     }
                     return "Motivo registrado por Android: " + classification
                             + "\nEstado/señal: " + info.getStatus()
