@@ -14,6 +14,7 @@ import android.util.Log;
 import com.google.gson.Gson;
 import com.neurocenter.api.INeuroCenterBridge;
 import com.neurocenter.api.NeuroCenterCapabilities;
+import com.neurocenter.api.NeuroCenterAppContract;
 import com.neurocenter.core.AndroidCredentialVault;
 import com.neurocenter.core.AndroidExternalApps;
 import com.neurocenter.core.NeuroCenterCapabilityStore;
@@ -34,7 +35,7 @@ import java.util.List;
  */
 public final class NeuroCenterBridgeService extends Service {
 
-    public static final String ACTION_BIND = "com.neurocenter.action.BIND_BRIDGE";
+    public static final String ACTION_BIND = NeuroCenterAppContract.ACTION_BIND_BRIDGE;
     private static final String TAG = "NeuroCenterBridge";
     private final Gson gson = new Gson();
 
