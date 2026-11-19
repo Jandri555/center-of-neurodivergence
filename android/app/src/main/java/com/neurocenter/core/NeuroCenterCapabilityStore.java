@@ -32,18 +32,19 @@ public final class NeuroCenterCapabilityStore implements Closeable {
         db = SQLiteDatabase.openOrCreateDatabase(file.toString(), null);
         db.execSQL("CREATE TABLE IF NOT EXISTS app_capabilities ("
                 + "package_name TEXT NOT NULL, "
+                + "signing_digest TEXT NOT NULL, "
                 + "capability_id TEXT NOT NULL, "
                 + "granted INTEGER NOT NULL DEFAULT 1 CHECK (granted IN (0, 1)), "
-                + "PRIMARY KEY (package_name, capability_id))");
+                + "PRIMARY KEY (package_name, signing_digest, capability_id))");
     }
 
-    public synchronized Set<String> grantedCapabilities(String packageName) {
-        validatePackageName(packageName);
+    public synchronized Set<String> grantedCapabilities(String packageName, String signingDigest) {
+        validateIdentity(packageName, signingDigest);
         Set<String> result = new LinkedHashSet<>();
         try (Cursor c = db.rawQuery(
                 "SELECT capability_id FROM app_capabilities "
-                        + "WHERE package_name = ? AND granted = 1 ORDER BY capability_id",
-                new String[]{packageName})) {
+                        + "WHERE package_name = ? AND signing_digest = ? AND granted = 1 ORDER BY capability_id",
+                new String[]{packageName, signingDigest})) {
             while (c.moveToNext()) {
                 String id = c.getString(0);
                 if (NeuroCenterCapabilities.isSupported(id)) result.add(id);
@@ -52,20 +53,21 @@ public final class NeuroCenterCapabilityStore implements Closeable {
         return Collections.unmodifiableSet(result);
     }
 
-    public synchronized boolean isGranted(String packageName, String capabilityId) {
-        validatePackageName(packageName);
+    public synchronized boolean isGranted(String packageName, String signingDigest, String capabilityId) {
+        validateIdentity(packageName, signingDigest);
         if (!NeuroCenterCapabilities.isSupported(capabilityId)) return false;
         try (Cursor c = db.rawQuery(
                 "SELECT 1 FROM app_capabilities "
-                        + "WHERE package_name = ? AND capability_id = ? AND granted = 1",
-                new String[]{packageName, capabilityId})) {
+                        + "WHERE package_name = ? AND signing_digest = ? AND capability_id = ? AND granted = 1",
+                new String[]{packageName, signingDigest, capabilityId})) {
             return c.moveToFirst();
         }
     }
 
     /** Replaces one package's grant set atomically. Empty set revokes every capability. */
-    public synchronized void setGrantedCapabilities(String packageName, Set<String> capabilityIds) {
-        validatePackageName(packageName);
+    public synchronized void setGrantedCapabilities(String packageName, String signingDigest,
+                                                     Set<String> capabilityIds) {
+        validateIdentity(packageName, signingDigest);
         Set<String> safe = new LinkedHashSet<>();
         if (capabilityIds != null) {
             for (String id : capabilityIds) {
@@ -78,10 +80,12 @@ public final class NeuroCenterCapabilityStore implements Closeable {
 
         db.beginTransaction();
         try {
-            db.delete("app_capabilities", "package_name = ?", new String[]{packageName});
+            db.delete("app_capabilities", "package_name = ? AND signing_digest = ?",
+                    new String[]{packageName, signingDigest});
             for (String id : safe) {
                 ContentValues values = new ContentValues();
                 values.put("package_name", packageName);
+                values.put("signing_digest", signingDigest);
                 values.put("capability_id", id);
                 values.put("granted", 1);
                 db.insertOrThrow("app_capabilities", null, values);
@@ -96,6 +100,14 @@ public final class NeuroCenterCapabilityStore implements Closeable {
     public synchronized void removePackage(String packageName) {
         validatePackageName(packageName);
         db.delete("app_capabilities", "package_name = ?", new String[]{packageName});
+    }
+
+    private static void validateIdentity(String packageName, String signingDigest) {
+        validatePackageName(packageName);
+        if (signingDigest == null || signingDigest.length() > 512
+                || !signingDigest.matches("[a-f0-9]{64}(,[a-f0-9]{64})*")) {
+            throw new IllegalArgumentException("Huella de firma Android no válida.");
+        }
     }
 
     private static void validatePackageName(String packageName) {
