@@ -17,6 +17,7 @@
     <application
         android:name="com.neurocenter.apps.agenda.AgendaApplication"
         android:allowBackup="true"
+        android:extractNativeLibs="true"
         android:label="Center of Neurodivergence"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
@@ -25,6 +26,12 @@
             android:exported="false"
             android:stopWithTask="false"
             android:foregroundServiceType="connectedDevice" />
+        <!-- Proceso de diagnóstico separado, sin ejecutar apps externas. ÚNICAMENTE
+             comprueba que la JVM OpenJDK 21 empaquetada puede arrancar. -->
+        <service
+            android:name="com.neurocenter.core.Java21ProbeService"
+            android:exported="false"
+            android:process=":java21_probe" />
         <!-- Cada ncapp se comprueba desde un proceso Android aislado, sin permisos host. -->
         <service
             android:name="com.neurocenter.core.NcappWorkerService"

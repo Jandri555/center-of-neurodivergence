@@ -43,6 +43,8 @@ import com.neurocenter.core.NcappManager;
 import com.neurocenter.core.NcappPermissionStore;
 import com.neurocenter.core.NcappWorkerService;
 import com.neurocenter.api.INcappWorker;
+import com.neurocenter.api.IJava21Probe;
+import com.neurocenter.core.Java21ProbeService;
 import android.content.ComponentName;
 import android.content.ServiceConnection;
 import android.os.IBinder;
@@ -150,6 +152,11 @@ public final class MainActivity extends Activity {
         heading.setTypeface(null, android.graphics.Typeface.BOLD);
         root.addView(heading);
 
+        Button javaRuntimeButton = button("Comprobar OpenJDK 21");
+        javaRuntimeButton.setOnClickListener(v -> probeJava21Runtime());
+        root.addView(javaRuntimeButton, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
         Button externalAppsButton = button("Aplicaciones de NeuroCenter");
         externalAppsButton.setOnClickListener(v -> showExternalApps());
         root.addView(externalAppsButton, new LinearLayout.LayoutParams(
@@ -237,6 +244,39 @@ public final class MainActivity extends Activity {
 
 
     /** Instala un archivo Java .ncapp dentro de NeuroCenter, nunca como APK Android. */
+    private void probeJava21Runtime() {
+        Intent intent = new Intent(this, Java21ProbeService.class);
+        ServiceConnection connection = new ServiceConnection() {
+            @Override public void onServiceConnected(ComponentName name, IBinder binder) {
+                ncappExecutor.execute(() -> {
+                    String result;
+                    try {
+                        result = IJava21Probe.Stub.asInterface(binder).probeVersion();
+                    } catch (Exception e) {
+                        result = "Error al iniciar OpenJDK 21: " + e;
+                    }
+                    String message = result;
+                    runOnUiThread(() -> {
+                        try { unbindService(this); } catch (IllegalArgumentException ignored) {}
+                        new AlertDialog.Builder(MainActivity.this)
+                                .setTitle("OpenJDK 21 incorporado")
+                                .setMessage(message + "\n\nEsta prueba ejecuta únicamente clases del JRE. "
+                                        + "Las aplicaciones .ncapp siguen bloqueadas hasta completar "
+                                        + "la ejecución segura en un proceso aislado.")
+                                .setPositiveButton("Aceptar", null).show();
+                    });
+                });
+            }
+            @Override public void onServiceDisconnected(ComponentName name) {
+                Toast.makeText(MainActivity.this, "La JVM de prueba se cerró.", Toast.LENGTH_LONG).show();
+            }
+        };
+        if (!bindService(intent, connection, Context.BIND_AUTO_CREATE)) {
+            Toast.makeText(this, "No se pudo iniciar el servicio de prueba Java 21.",
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void showExternalApps() {
         final List<NcappManager.InstalledApp> installed;
         try {

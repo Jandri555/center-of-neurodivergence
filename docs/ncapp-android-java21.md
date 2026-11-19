@@ -13,7 +13,8 @@
 - ✅ Android: importa `.ncapp` con el selector de documentos, valida el manifiesto, lo instala en almacenamiento privado, permite listar y desinstalar. No instala APK.
 - ✅ Android: comprobación manual de un servicio `android:isolatedProcess=true` creado con `bindIsolatedService`, que recibe el archivo por descriptor Binder y devuelve su SHA-256. No ejecuta el archivo.
 - ✅ Preferencias de capacidades registradas por ID + SHA-256 del paquete. Modificar un paquete invalida sus permisos anteriores.
-- ⛔ **OpenJDK 21 ARM64 todavía NO está incluido ni se inicia en el APK.** No afirmar que puede ejecutar `.ncapp` en Android.
+- ✅ **OpenJDK 21 ARM64 incluido en la compilación del APK**: se descarga un release fijo de Amethyst, se verifica SHA-256 y se empaquetan módulos + bibliotecas nativas. Un servicio de diagnóstico independiente permite comprobar el arranque real de HotSpot 21; no equivale a haber pasado una prueba en dispositivo.
+- ⛔ Ejecutar código `.ncapp` en un proceso aislado sigue pendiente: los procesos `isolatedProcess` no pueden abrir rutas ordinarias del directorio privado de NeuroCenter, y el módulo `lib/modules` necesita acceso por ruta. La sonda no ejecuta aplicaciones de terceros.
 - ⛔ Falta IPC de la API de NeuroCenter, ejecución de código, motor de UI móvil, aislamiento de cada ejecución y pruebas de ataques.
 - ✅ Windows: el instalador jpackage registra .ncapp y entrega el archivo a la instancia ya iniciada.
 - ⛔ Falta registrar la asociación Android y probar en dispositivo real.
@@ -35,7 +36,7 @@ En escritorio sigue siendo obligatorio el proveedor `META-INF/services/com.neuro
 Todavía falta definir la interfaz móvil pública que implementarán las apps.
 
 ## Aislamiento y runtime: condiciones para aceptar el cambio final
-1. Incorporar una distribución verificable y legalmente redistribuible de OpenJDK 21 Android AArch64, con sus bibliotecas nativas empaquetadas conforme a las restricciones W^X de Android 10+, y cumplimiento de licencias.
+1. Empaquetar la distribución Android ARM64 OpenJDK 21 de Amethyst, verificar su SHA-256 y mantener avisos de licencia. Hecho mediante `android/scripts/prepare_java21_runtime.py` y el build Gradle; quedan pruebas reales de compatibilidad.
 2. Lanzar la JVM en el proceso Android **aislado**, nunca en el proceso principal privilegiado.
 3. Confirmar en un dispositivo que `Process.isIsolated() == true`, que una app no tiene permiso de red, almacenamiento privado del host ni código nativo compartido.
 4. Entregar exclusivamente descriptores de archivo y datos expresamente autorizados; jamás un directorio privado completo ni una interfaz de host sin controles.

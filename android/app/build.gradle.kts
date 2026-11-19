@@ -23,6 +23,8 @@ android {
         applicationId = "com.neurocenter"
         minSdk = 29
         targetSdk = 36
+        // El JRE de OpenJDK 21 incluido actualmente es para ARM64.
+        ndk.abiFilters += "arm64-v8a"
         versionCode = 6
         versionName = "1.5"
     }
@@ -30,6 +32,25 @@ android {
     buildTypes {
         getByName("debug") {
             signingConfig = signingConfigs.getByName("stableDebug")
+        }
+    }
+
+    // La aplicación anfitriona sigue compilando sus pantallas Android con Java 17.
+    // El JRE ARM64 separado ejecuta bytecode Java 21 dentro de una JVM HotSpot.
+    ndkVersion = "27.2.12479018"
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
+    }
+    packaging {
+        jniLibs {
+            // OpenJDK usa bibliotecas reales en nativeLibraryDir, no ejecutables
+            // extraídos a una carpeta de datos editable (Android 10 W^X).
+            useLegacyPackaging = true
+            keepDebugSymbols += "**/libjvm.so"
+            keepDebugSymbols += "**/libjava.so"
+            keepDebugSymbols += "**/libjli.so"
         }
     }
 
@@ -43,9 +64,27 @@ android {
     sourceSets {
         getByName("main") {
             java.directories.add("../../src/main/java/com/neurocenter/apps/agenda")
+            assets.srcDir(layout.buildDirectory.dir("generated/java21/assets"))
+            jniLibs.srcDir(layout.buildDirectory.dir("generated/java21/jniLibs"))
         }
     }
 }
+
+// El build SIEMPRE descarga y verifica un release JRE21 fijo. Nada de runtimes
+// instalados por separado en el teléfono: las bibliotecas y el módulo Java se
+// empaquetan en el propio APK ARM64.
+// En Windows aceptamos el lanzador Python estándar `py -3`; en Linux python3.
+val prepareJava21Runtime by tasks.registering(Exec::class) {
+    val script = rootProject.file("scripts/prepare_java21_runtime.py")
+    val python = if (System.getProperty("os.name").lowercase().contains("win")) {
+        listOf("py", "-3")
+    } else {
+        listOf("python3")
+    }
+    commandLine(python + listOf(script.absolutePath, layout.buildDirectory.dir("generated/java21").get().asFile.absolutePath))
+    workingDir(rootProject.projectDir)
+}
+tasks.named("preBuild") { dependsOn(prepareJava21Runtime) }
 
 // AGP 9.4 expone AndroidSourceDirectorySet sin PatternFilterable.
 // Excluimos los archivos Swing a nivel de tarea de compilación Java.
