@@ -144,15 +144,18 @@ Las aplicaciones externas deben incluir `neurocenter-api` como dependencia Andro
 
     <application>
         <activity
-        android:name=".NeuroCenterEntryActivity"
-        android:exported="true">
-        <intent-filter>
-            <action android:name="com.neurocenter.action.OPEN_APP" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent-filter>
-        <meta-data
-            android:name="com.neurocenter.app.id"
-            android:value="mi-aplicacion" />
+            android:name=".NeuroCenterEntryActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.neurocenter.action.OPEN_APP" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="com.neurocenter.app.id"
+                android:value="mi-aplicacion" />
+            <meta-data
+                android:name="com.neurocenter.app.description"
+                android:value="Una aplicación compatible con NeuroCenter" />
         </activity>
     </application>
 </manifest>
