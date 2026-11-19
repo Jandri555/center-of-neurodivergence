@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(neurocenter_openjdk21 C)
-add_library(neurojvm SHARED neurojvm.c)
+add_library(neurojvm SHARED neurojvm.c ncapp_runner.c)
 target_compile_features(neurojvm PRIVATE c_std_11)
 target_link_libraries(neurojvm PRIVATE dl log)
