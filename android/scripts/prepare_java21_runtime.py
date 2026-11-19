@@ -144,6 +144,21 @@ def patch_hotspot_module_paths(content):
     for before, after in replacements:
         occurrences = content.count(before)
         if occurrences != 1:
+            if before == b"/jre/lib\\x00":
+                print("OpenJDK 21 ARM64 path diagnostics (printable snippets):", flush=True)
+                for marker in (b"/jre/lib", b"jre/lib", b"/lib\\x00",
+                               b"/lib/", b"hotspot/libjvm.so", b"libjvm.so"):
+                    positions = []
+                    cursor = 0
+                    while len(positions) < 6:
+                        pos = content.find(marker, cursor)
+                        if pos < 0:
+                            break
+                        positions.append(pos)
+                        cursor = pos + 1
+                    print("  %r: %r" % (marker, [
+                        (pos, content[max(0, pos - 15):pos + len(marker) + 24])
+                        for pos in positions]), flush=True)
             raise ValueError("Unsupported libjvm.so layout: expected exactly "
                              "one %r, found %d" % (before, occurrences))
         content = content.replace(before, after + b"\x00" * (len(before) - len(after)))
