@@ -9,4 +9,5 @@ interface INcappWorker {
     String launchApp(in ParcelFileDescriptor home, in ParcelFileDescriptor archive,
                      String mobileClass, String expectedSha256, String libraryDir);
     String dispatchAction(String actionId);
+    String deliverHostResponse(String capability, String responseJson);
 }

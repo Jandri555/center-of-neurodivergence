@@ -27,6 +27,7 @@ public final class NcappWorkerService extends Service {
     private static native String launchJava21(String homeFd, String appFd,
                                               String mobileClass, String nativeLibDir);
     private static native String callJava21Action(String actionId);
+    private static native String callJava21HostResponse(String capability, String responseJson);
 
     private final INcappWorker.Stub binder = new INcappWorker.Stub() {
         @Override public boolean isIsolated() {
@@ -98,6 +99,16 @@ public final class NcappWorkerService extends Service {
                 throw new SecurityException("Acción no válida o app sin arrancar.");
             }
             return callJava21Action(actionId);
+        }
+
+        @Override public synchronized String deliverHostResponse(String capability,
+                                                                  String responseJson) {
+            if (!Process.isIsolated() || activeDigest == null
+                    || !("agenda.read".equals(capability) || "agenda.write".equals(capability))
+                    || responseJson == null || responseJson.length() > 60000) {
+                throw new SecurityException("Respuesta de servicio no válida.");
+            }
+            return callJava21HostResponse(capability, responseJson);
         }
     };
 
