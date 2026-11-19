@@ -41,6 +41,7 @@ Java_com_neurocenter_core_Java21Runtime_probeNative(
     snprintf(opt_home, sizeof(opt_home), "-Djava.home=%s", home);
     snprintf(opt_lib, sizeof(opt_lib), "-Djava.library.path=%s", libs);
     setenv("JAVA_HOME", home, 1);
+    setenv("NEUROCENTER_JRE_HOME", home, 1);
     setenv("LD_LIBRARY_PATH", libs, 1);
 
     void *handle = dlopen(jvm_path, RTLD_NOW | RTLD_GLOBAL);

@@ -154,6 +154,9 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
     snprintf(libraryOption, sizeof libraryOption, "-Djava.library.path=%s", libs);
     snprintf(appOption, sizeof appOption, "-Djava.class.path=%s", archive);
     setenv("JAVA_HOME", home, 1);
+    // Read only by a NeuroCenter-patched HotSpot build; it may not be used
+    // to grant access to any host-private files from an isolated UID.
+    setenv("NEUROCENTER_JRE_HOME", home, 1);
     setenv("LD_LIBRARY_PATH", libs, 1);
     ncapp_note(ANDROID_LOG_INFO, "JVM stage 2: cargando libjvm.so");
     void *handle = dlopen(libjvm, RTLD_NOW | RTLD_GLOBAL);

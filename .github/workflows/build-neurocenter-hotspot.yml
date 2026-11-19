@@ -2,6 +2,11 @@ name: Build patched OpenJDK 21 ARM64 (experimental)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ "feature/android10-java21-ncapp" ]
+    paths:
+      - "android/openjdk21/**"
+      - ".github/workflows/build-neurocenter-hotspot.yml"
 
 permissions:
   contents: read
@@ -48,7 +53,7 @@ jobs:
       - name: Verify built binary contains NeuroCenter home hook
         run: |
           shopt -s nullglob
-          files=(vendor/jre21-android-aarch64-*.tar.xz)
+          files=(vendor/jre21-android-arm64-*.tar.xz)
           test ${#files[@]} -eq 1
           mkdir -p extracted
           tar -xJf "${files[0]}" -C extracted
@@ -59,6 +64,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: neurocenter-openjdk21-arm64-experimental
-          path: vendor/jre21-android-aarch64-*.tar.xz
+          path: vendor/jre21-android-arm64-*.tar.xz
           if-no-files-found: error
           retention-days: 14

@@ -57,6 +57,6 @@ binario original y superaban el CI. El parche fuente resuelve el cálculo de
 - **No fusionar esta función en dev** sin demostrar ejecución y aislamiento
   en el teléfono.
 
-`build-neurocenter-hotspot.yml` proporciona una ruta manual para construir
+`build-neurocenter-hotspot.yml` compila en CI la rama experimental y también permite una ejecución manual para construir
 la JVM del proveedor con este parche. Su resultado requiere validación y
 huella SHA-256 fijada antes de integrarlo en el empaquetado Android.
