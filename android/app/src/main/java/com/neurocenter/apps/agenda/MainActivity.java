@@ -38,6 +38,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.neurocenter.core.AndroidExternalApps;
+
 import java.io.UncheckedIOException;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -64,6 +66,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_ENABLE_BT = 7102;
     private static final int REQUEST_DISCOVERABLE = 7103;
     private static final int REQUEST_NOTIFICATION_PERMISSION = 7105;
+    private static final int REQUEST_EXTERNAL_APP_APK = 7310;
     private static final int DISCOVERABLE_SECONDS = 300;
     private static final String ACTION_USB_PERMISSION =
             "com.neurocenter.action.USB_ACCESSORY_PERMISSION";
@@ -93,6 +96,7 @@ public final class MainActivity extends Activity {
     private volatile boolean usbSyncActive;
     private boolean usbReceiverRegistered;
     private boolean usbPermissionPending;
+    private Uri pendingExternalInstallUri;
 
     private final BroadcastReceiver usbPermissionReceiver = new BroadcastReceiver() {
         @Override
@@ -137,6 +141,11 @@ public final class MainActivity extends Activity {
         heading.setTextSize(26);
         heading.setTypeface(null, android.graphics.Typeface.BOLD);
         root.addView(heading);
+
+        Button externalAppsButton = button("Aplicaciones de NeuroCenter");
+        externalAppsButton.setOnClickListener(v -> showExternalApps());
+        root.addView(externalAppsButton, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         pageTitle = new TextView(this);
         pageTitle.setTextSize(14);
@@ -211,6 +220,68 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         setContentView(root);
+    }
+
+    private void showExternalApps() {
+        List<AndroidExternalApps.InstalledApp> installed = AndroidExternalApps.discover(this);
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this)
+                .setTitle("Aplicaciones de NeuroCenter")
+                .setPositiveButton("Instalar APK", (d, w) -> selectExternalAppPackage())
+                .setNegativeButton("Cerrar", null);
+
+        if (installed.isEmpty()) {
+            dialog.setMessage("No hay aplicaciones externas compatibles instaladas. "
+                    + "Puedes instalar un APK y volver aquí; cada aplicación conservará "
+                    + "su propio proceso y sus propios permisos Android.");
+        } else {
+            String[] labels = new String[installed.size()];
+            for (int i = 0; i < installed.size(); i++) {
+                AndroidExternalApps.InstalledApp app = installed.get(i);
+                labels[i] = app.name() + (app.versionName().isEmpty() ? "" : "  ·  " + app.versionName());
+            }
+            dialog.setItems(labels, (d, which) -> {
+                try {
+                    AndroidExternalApps.launch(this, installed.get(which));
+                } catch (RuntimeException ex) {
+                    Toast.makeText(this, "No se pudo abrir la aplicación: " + ex.getMessage(),
+                            Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+        dialog.show();
+    }
+
+    private void selectExternalAppPackage() {
+        Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        picker.addCategory(Intent.CATEGORY_OPENABLE);
+        picker.setType("application/vnd.android.package-archive");
+        picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try {
+            startActivityForResult(picker, REQUEST_EXTERNAL_APP_APK);
+        } catch (RuntimeException ex) {
+            Toast.makeText(this, "No se pudo abrir el selector de APK: " + ex.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void startPendingExternalInstall() {
+        Uri apk = pendingExternalInstallUri;
+        if (apk == null) return;
+        try {
+            if (!AndroidExternalApps.canRequestPackageInstalls(this)) {
+                AndroidExternalApps.requestInstall(this, apk);
+                Toast.makeText(this,
+                        "Autoriza a NeuroCenter como fuente de instalación y vuelve a esta pantalla.",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            AndroidExternalApps.requestInstall(this, apk);
+            pendingExternalInstallUri = null;
+        } catch (RuntimeException ex) {
+            Toast.makeText(this, "No se pudo iniciar la instalación: " + ex.getMessage(),
+                    Toast.LENGTH_LONG).show();
+            pendingExternalInstallUri = null;
+        }
     }
 
     private void refresh() {
@@ -534,6 +605,9 @@ public final class MainActivity extends Activity {
         refresh();
         updateBluetoothControls(BluetoothSyncService.isRunning());
         inspectUsbAccessory();
+        if (pendingExternalInstallUri != null && AndroidExternalApps.canRequestPackageInstalls(this)) {
+            startPendingExternalInstall();
+        }
     }
 
     @Override
@@ -788,6 +862,19 @@ public final class MainActivity extends Activity {
         if (requestCode == REQUEST_DISCOVERABLE) {
             if (resultCode > 0) startBluetoothServer();
             else Toast.makeText(this, "No se ha permitido que el móvil sea visible.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (requestCode == REQUEST_EXTERNAL_APP_APK && resultCode == RESULT_OK
+                && data != null && data.getData() != null) {
+            pendingExternalInstallUri = data.getData();
+            try {
+                int grantFlags = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+                if (grantFlags != 0) getContentResolver().takePersistableUriPermission(
+                        pendingExternalInstallUri, grantFlags);
+            } catch (SecurityException ignored) {
+                // El URI aún puede estar disponible mediante la concesión temporal del selector.
+            }
+            startPendingExternalInstall();
         }
     }
 
