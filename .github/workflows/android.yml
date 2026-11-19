@@ -10,7 +10,6 @@ on:
       - "src/main/java/com/neurocenter/apps/agenda/AgendaSyncJournal.java"
       - "src/main/java/com/neurocenter/apps/agenda/AgendaStore.java"
       - "src/main/java/com/neurocenter/apps/agenda/AgendaSyncProtocol.java"
-      - "src/main/java/com/neurocenter/apps/agenda/AgendaPanel.java"
       - "src/main/java/com/neurocenter/api/NeuroPlatform.java"
       - "src/main/java/com/neurocenter/api/NeuroAppContext.java"
       - ".github/workflows/android.yml"
@@ -57,35 +56,14 @@ jobs:
         with:
           gradle-version: "9.6.0"
 
-      - name: Build debug APK
+      - name: Build debug APK with bundled OpenJDK 21 ARM64
         run: gradle --no-daemon -p android :app:assembleDebug
 
       - name: Verify JRE 21 actually bundled into APK
         run: |
-          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E 'assets/neurojre21/lib/modules
-        uses: actions/upload-artifact@v4
-        with:
-          name: neurocenter-android-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
-
-          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E 'lib/arm64-v8a/libjvm.so
-        uses: actions/upload-artifact@v4
-        with:
-          name: neurocenter-android-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
-
-          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E 'lib/arm64-v8a/libneurojvm.so
-        uses: actions/upload-artifact@v4
-        with:
-          name: neurocenter-android-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
-
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/neurojre21/lib/modules'
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libjvm.so'
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libneurojvm.so'
           test -s android/app/build/generated/java21/assets/neurojre21/lib/modules
 
       - name: Upload debug APK
