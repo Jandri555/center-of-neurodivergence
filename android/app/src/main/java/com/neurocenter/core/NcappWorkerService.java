@@ -6,6 +6,12 @@ import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.util.Log;
+import android.system.Os;
+import android.system.OsConstants;
+import android.system.ErrnoException;
+
+import java.io.File;
+import java.io.FileDescriptor;
 
 import com.neurocenter.api.INcappWorker;
 
@@ -33,6 +39,52 @@ public final class NcappWorkerService extends Service {
     private final INcappWorker.Stub binder = new INcappWorker.Stub() {
         @Override public boolean isIsolated() {
             return Process.isIsolated();
+        }
+
+        @Override public int processPid() {
+            return Process.myPid();
+        }
+
+        /** Preflight: verifica FD y librerías sin crear una segunda JVM. */
+        @Override public String preflight(ParcelFileDescriptor home,
+                ParcelFileDescriptor archive, String expectedSha256, String libraryDir) {
+            if (!Process.isIsolated()) return "DIAG_ERROR: El servicio no tiene UID aislado.";
+            if (home == null || archive == null || expectedSha256 == null
+                    || libraryDir == null || !expectedSha256.matches("[a-f0-9]{64}")) {
+                return "DIAG_ERROR: Parámetros del sandbox inválidos.";
+            }
+            if (!libraryDir.equals(getApplicationInfo().nativeLibraryDir)) {
+                return "DIAG_ERROR: La ruta de bibliotecas no pertenece al APK.";
+            }
+            try {
+                Log.i("NeuroCenter-Sandbox", "PRECHECK 1/4: worker PID=" + Process.myPid());
+                String actual = sha256(archive.dup());
+                if (!expectedSha256.equals(actual)) {
+                    return "DIAG_ERROR: La huella SHA-256 de la .ncapp no coincide.";
+                }
+                Log.i("NeuroCenter-Sandbox", "PRECHECK 2/4: jar recibido por Binder y SHA-256 correcto");
+                String modulePath = "/proc/self/fd/" + home.getFd() + "/lib/modules";
+                FileDescriptor modules = null;
+                try {
+                    modules = Os.open(modulePath, OsConstants.O_RDONLY | OsConstants.O_CLOEXEC, 0);
+                    if (Os.fstat(modules).st_size < 1024) {
+                        return "DIAG_ERROR: Los módulos OpenJDK 21 están vacíos.";
+                    }
+                } finally {
+                    if (modules != null) Os.close(modules);
+                }
+                Log.i("NeuroCenter-Sandbox", "PRECHECK 3/4: lib/modules accesible desde el UID aislado");
+                File jvm = new File(libraryDir, "libjvm.so");
+                if (!jvm.isFile() || !jvm.canRead()) {
+                    return "DIAG_ERROR: El proceso aislado no puede leer libjvm.so.";
+                }
+                Log.i("NeuroCenter-Sandbox", "PRECHECK 4/4: libjvm.so accesible");
+                return "OK: acceso a paquete, módulos y libjvm.so verificado.";
+            } catch (Exception ex) {
+                Log.e("NeuroCenter-Sandbox", "Fallo de preflight de la JVM aislada", ex);
+                return "DIAG_ERROR: " + ex.getClass().getSimpleName()
+                        + ": " + (ex.getMessage() == null ? "sin detalle" : ex.getMessage());
+            }
         }
 
         @Override public String sha256(ParcelFileDescriptor descriptor) {
@@ -77,15 +129,18 @@ public final class NcappWorkerService extends Service {
                 throw new SecurityException("La ruta de bibliotecas no coincide con la del APK.");
             }
             try {
+                Log.i("NeuroCenter-Sandbox", "LAUNCH: preparando FD de Java 21 y la .ncapp");
                 homeDescriptor = home.dup();
                 appDescriptor = archive.dup();
                 String actual = sha256(appDescriptor.dup());
                 if (!expectedSha256.equals(actual)) {
                     throw new SecurityException("El .ncapp instalado ha cambiado.");
                 }
+                Log.i("NeuroCenter-Sandbox", "LAUNCH: entrando en puente JNI de HotSpot 21");
                 String output = launchJava21("/proc/self/fd/" + homeDescriptor.getFd(),
                         "/proc/self/fd/" + appDescriptor.getFd(),
                         mobileClass, libraryDir);
+                Log.i("NeuroCenter-Sandbox", "LAUNCH: puente JNI devolvió resultado");
                 if (output == null || output.startsWith("NCAPP_ERROR:")) {
                     closeFiles();
                     activeDigest = null;

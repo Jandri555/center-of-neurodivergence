@@ -53,6 +53,7 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
     JNIEnv *android_env, jclass ignored, jstring jhome,
     jstring jarchive, jstring jentry, jstring jlibs) {
     (void)ignored;
+    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 1: entró al lanzador JNI");
     if (g_vm != NULL) return err(android_env, "estado", "La JVM ya está iniciada");
     if (!jhome || !jarchive || !jentry || !jlibs) {
         return err(android_env, "argumentos", "Faltan parámetros");
@@ -87,12 +88,14 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
     snprintf(appOption, sizeof appOption, "-Djava.class.path=%s", archive);
     setenv("JAVA_HOME", home, 1);
     setenv("LD_LIBRARY_PATH", libs, 1);
+    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 2: cargando libjvm.so");
     void *handle = dlopen(libjvm, RTLD_NOW | RTLD_GLOBAL);
     (*android_env)->ReleaseStringUTFChars(android_env, jhome, home);
     (*android_env)->ReleaseStringUTFChars(android_env, jarchive, archive);
     (*android_env)->ReleaseStringUTFChars(android_env, jentry, entry);
     (*android_env)->ReleaseStringUTFChars(android_env, jlibs, libs);
     if (!handle) return err(android_env, "libjvm", dlerror());
+    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 3: dlopen completado");
     create_java_vm_t create = (create_java_vm_t)dlsym(handle, "JNI_CreateJavaVM");
     if (!create) return err(android_env, "símbolo", "JNI_CreateJavaVM no disponible");
 
@@ -112,7 +115,9 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
         .ignoreUnrecognized = JNI_FALSE
     };
     JNIEnv *jre = NULL;
+    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 4: entrando en JNI_CreateJavaVM");
     jint status = create(&g_vm, (void**)&jre, &args);
+    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 5: JNI_CreateJavaVM retornó %d", status);
     if (status != JNI_OK || !g_vm || !jre) {
         char code[64];
         g_vm = NULL;
@@ -120,6 +125,7 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
         return err(android_env, "arranque", code);
     }
 
+    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 6: cargando clase móvil");
     jclass clazz = (*jre)->FindClass(jre, className);
     if (!clazz) return java_error(android_env, jre, "clase móvil");
     jmethodID ctor = (*jre)->GetMethodID(jre, clazz, "<init>", "()V");
@@ -133,6 +139,7 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
     if (!g_action) return java_error(android_env, jre, "onAction");
     g_app = (*jre)->NewGlobalRef(jre, instance);
     if (!g_app) return err(android_env, "memoria", "No se pudo retener la aplicación");
+    __android_log_print(ANDROID_LOG_INFO, TAG, "JVM stage 7: invocando renderJson");
     jobject value = (*jre)->CallObjectMethod(jre, g_app, render);
     return json_result(android_env, jre, value);
 }
