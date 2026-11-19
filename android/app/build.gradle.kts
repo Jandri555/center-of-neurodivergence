@@ -64,8 +64,8 @@ android {
     sourceSets {
         getByName("main") {
             java.directories.add("../../src/main/java/com/neurocenter/apps/agenda")
-            assets.srcDir(layout.buildDirectory.dir("generated/java21/assets"))
-            jniLibs.srcDir(layout.buildDirectory.dir("generated/java21/jniLibs"))
+            assets.srcDir(layout.buildDirectory.dir("generated/java21/assets").get().asFile)
+            jniLibs.srcDir(layout.buildDirectory.dir("generated/java21/jniLibs").get().asFile)
         }
     }
 }
