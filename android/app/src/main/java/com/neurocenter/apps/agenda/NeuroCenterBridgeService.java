@@ -127,7 +127,7 @@ public final class NeuroCenterBridgeService extends Service {
             } catch (IOException ex) {
                 throw new IllegalStateException("No se pudo guardar la credencial.", ex);
             } finally {
-                if (secret != null) Arrays.fill(secret, '\\0');
+                if (secret != null) Arrays.fill(secret, Character.MIN_VALUE);
             }
         }
 
