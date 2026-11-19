@@ -235,6 +235,31 @@ public final class AndroidExternalApps {
         return name != null && name.matches("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+");
     }
 
+    /** Checks one package without materializing the complete external-app list. */
+    public static boolean isCompatiblePackage(Context context, String packageName) {
+        Objects.requireNonNull(context, "context");
+        if (packageName == null || packageName.trim().isEmpty()
+                || context.getPackageName().equals(packageName)) return false;
+
+        Intent query = new Intent(ACTION_OPEN);
+        query.addCategory(Intent.CATEGORY_DEFAULT);
+        PackageManager manager = context.getPackageManager();
+        int flags = PackageManager.MATCH_DEFAULT_ONLY;
+        List<ResolveInfo> matches;
+        if (Build.VERSION.SDK_INT >= 33) {
+            matches = manager.queryIntentActivities(query, PackageManager.ResolveInfoFlags.of(flags));
+        } else {
+            //noinspection deprecation
+            matches = manager.queryIntentActivities(query, flags);
+        }
+        for (ResolveInfo match : matches) {
+            ActivityInfo activity = match.activityInfo;
+            if (isValidEntryPoint(activity, context.getPackageName())
+                    && packageName.equals(activity.packageName)) return true;
+        }
+        return false;
+    }
+
     /** Returns the SHA-256 digest(s) of the installed APK signer certificate(s). */
     public static String signingDigest(Context context, String packageName) {
         Objects.requireNonNull(context, "context");
