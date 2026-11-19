@@ -1,0 +1,229 @@
+package com.neurocenter.core;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.os.IBinder;
+import android.os.ParcelFileDescriptor;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+import com.neurocenter.api.INcappWorker;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.WeakHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+/**
+ * Convierte JSON declarado por una .ncapp en controles Android normales,
+ * sin permitir que la clase Java acceda a Views ni al proceso principal.
+ */
+public final class NcappUiController {
+    private static final Map<Activity, List<Session>> ACTIVE = new WeakHashMap<>();
+
+    private NcappUiController() {}
+
+    public static void open(Activity activity, NcappManager.InstalledApp app) {
+        Session session = new Session(activity, app);
+        synchronized (ACTIVE) {
+            ACTIVE.computeIfAbsent(activity, ignored -> new ArrayList<>()).add(session);
+        }
+        session.start();
+    }
+
+    public static void closeAll(Activity activity) {
+        List<Session> sessions;
+        synchronized (ACTIVE) {
+            sessions = ACTIVE.remove(activity);
+        }
+        if (sessions != null) for (Session session : sessions) session.close();
+    }
+
+    private static final class Session {
+        private final Activity activity;
+        private final NcappManager.InstalledApp app;
+        private final ExecutorService executor = Executors.newSingleThreadExecutor();
+        private final LinearLayout panel;
+        private final AlertDialog dialog;
+        private ServiceConnection connection;
+        private INcappWorker worker;
+        private boolean bound;
+        private volatile boolean closed;
+
+        Session(Activity activity, NcappManager.InstalledApp app) {
+            this.activity = activity;
+            this.app = app;
+            panel = new LinearLayout(activity);
+            panel.setOrientation(LinearLayout.VERTICAL);
+            panel.setPadding(dp(16), dp(12), dp(16), dp(12));
+            ScrollView scroll = new ScrollView(activity);
+            scroll.addView(panel);
+            dialog = new AlertDialog.Builder(activity)
+                    .setTitle(app.name())
+                    .setView(scroll)
+                    .setPositiveButton("Cerrar", (d, w) -> close())
+                    .create();
+            dialog.setOnDismissListener(ignored -> close());
+        }
+
+        void start() {
+            showText("Preparando OpenJDK 21 y el proceso aislado…");
+            dialog.show();
+            Intent intent = new Intent(activity, NcappWorkerService.class);
+            connection = new ServiceConnection() {
+                @Override public void onServiceConnected(ComponentName name, IBinder binder) {
+                    worker = INcappWorker.Stub.asInterface(binder);
+                    executor.execute(Session.this::launch);
+                }
+
+                @Override public void onServiceDisconnected(ComponentName name) {
+                    worker = null;
+                    error("La aplicación Java 21 ha terminado inesperadamente.");
+                }
+            };
+            try {
+                bound = activity.bindIsolatedService(intent, Context.BIND_AUTO_CREATE,
+                        "ncapp-" + UUID.randomUUID(), activity.getMainExecutor(), connection);
+                if (!bound) error("No se pudo crear un proceso Android aislado.");
+            } catch (RuntimeException ex) {
+                error("Error creando el sandbox: " + ex.getMessage());
+            }
+        }
+
+        void launch() {
+            try {
+                NcappManager.InstalledApp current = NcappManager.inspect(app.archive());
+                if (!current.id().equals(app.id())
+                        || !current.mobileClass().equals(app.mobileClass())
+                        || !current.sha256().equals(app.sha256())) {
+                    throw new SecurityException("El archivo instalado cambió desde que se eligió.");
+                }
+                if (worker == null || !worker.isIsolated()) {
+                    throw new SecurityException("El proceso Java no tiene un UID aislado.");
+                }
+                try (ParcelFileDescriptor home = Java21Runtime.openSandboxHome(activity);
+                     ParcelFileDescriptor archive = ParcelFileDescriptor.open(
+                             app.archive(), ParcelFileDescriptor.MODE_READ_ONLY)) {
+                    String output = worker.launchApp(home, archive, app.mobileClass(),
+                            app.sha256(), activity.getApplicationInfo().nativeLibraryDir);
+                    present(output);
+                }
+            } catch (Exception ex) {
+                error("No se pudo arrancar el .ncapp con Java 21: " + ex);
+            }
+        }
+
+        void action(String id) {
+            if (closed || worker == null) return;
+            showText("Ejecutando «" + id + "»…");
+            executor.execute(() -> {
+                try {
+                    present(worker.dispatchAction(id));
+                } catch (Exception ex) {
+                    error("La aplicación produjo un error: " + ex);
+                }
+            });
+        }
+
+        void present(String json) {
+            if (json == null || json.startsWith("NCAPP_ERROR:")) {
+                error(json == null ? "La JVM no devolvió una interfaz." : json);
+                return;
+            }
+            try {
+                if (json.length() > 32768) throw new IllegalArgumentException("JSON demasiado grande.");
+                JSONObject screen = new JSONObject(json);
+                String title = screen.optString("title", app.name());
+                String message = screen.optString("text", "");
+                if (title.length() > 180 || message.length() > 10000) {
+                    throw new IllegalArgumentException("Texto de interfaz demasiado largo.");
+                }
+                JSONArray actions = screen.optJSONArray("actions");
+                if (actions != null && actions.length() > 12) {
+                    throw new IllegalArgumentException("Demasiados botones (máximo 12).");
+                }
+                List<String[]> buttons = new ArrayList<>();
+                if (actions != null) {
+                    for (int i = 0; i < actions.length(); i++) {
+                        JSONObject item = actions.getJSONObject(i);
+                        String id = item.getString("id");
+                        String label = item.getString("label");
+                        if (!id.matches("[A-Za-z0-9._-]{1,64}") || label.isBlank()
+                                || label.length() > 100) {
+                            throw new IllegalArgumentException("Botón no válido.");
+                        }
+                        buttons.add(new String[]{id, label});
+                    }
+                }
+                activity.runOnUiThread(() -> {
+                    if (closed) return;
+                    dialog.setTitle(title);
+                    panel.removeAllViews();
+                    TextView copy = new TextView(activity);
+                    copy.setText(message);
+                    copy.setTextSize(16);
+                    panel.addView(copy);
+                    for (String[] item : buttons) {
+                        Button button = new Button(activity);
+                        button.setText(item[1]);
+                        button.setAllCaps(false);
+                        button.setOnClickListener(v -> action(item[0]));
+                        panel.addView(button);
+                    }
+                });
+            } catch (Exception ex) {
+                error("La app devolvió una interfaz inválida: " + ex.getMessage());
+            }
+        }
+
+        void showText(String message) {
+            activity.runOnUiThread(() -> {
+                if (closed) return;
+                panel.removeAllViews();
+                TextView copy = new TextView(activity);
+                copy.setText(message);
+                copy.setTextSize(16);
+                panel.addView(copy);
+            });
+        }
+
+        void error(String message) {
+            showText(message);
+        }
+
+        void close() {
+            if (closed) return;
+            closed = true;
+            executor.shutdownNow();
+            if (bound && connection != null) {
+                bound = false;
+                try { activity.unbindService(connection); }
+                catch (IllegalArgumentException ignored) { }
+            }
+            synchronized (ACTIVE) {
+                List<Session> sessions = ACTIVE.get(activity);
+                if (sessions != null) {
+                    sessions.remove(this);
+                    if (sessions.isEmpty()) ACTIVE.remove(activity);
+                }
+            }
+        }
+
+        private int dp(int value) {
+            return Math.round(value * activity.getResources().getDisplayMetrics().density);
+        }
+    }
+}
