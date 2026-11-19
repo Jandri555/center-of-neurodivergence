@@ -8,6 +8,7 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.content.pm.Signature;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -20,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.security.MessageDigest;
 
 /**
  * Descubre y abre aplicaciones Android externas instaladas como paquetes independientes.
@@ -49,16 +51,19 @@ public final class AndroidExternalApps {
         private final String description;
         private final String versionName;
         private final long versionCode;
+        private final String signingDigest;
         private final ComponentName entryPoint;
 
         private InstalledApp(String id, String packageName, String name, String description,
-                             String versionName, long versionCode, ComponentName entryPoint) {
+                             String versionName, long versionCode, String signingDigest,
+                             ComponentName entryPoint) {
             this.id = id;
             this.packageName = packageName;
             this.name = name;
             this.description = description;
             this.versionName = versionName;
             this.versionCode = versionCode;
+            this.signingDigest = signingDigest;
             this.entryPoint = entryPoint;
         }
 
@@ -68,6 +73,7 @@ public final class AndroidExternalApps {
         public String description() { return description; }
         public String versionName() { return versionName; }
         public long versionCode() { return versionCode; }
+        public String signingDigest() { return signingDigest; }
         public ComponentName entryPoint() { return entryPoint; }
     }
 
@@ -113,6 +119,8 @@ public final class AndroidExternalApps {
                 } else {
                     versionCode = info.versionCode;
                 }
+                String signer = signingDigest(info);
+                if (signer == null) continue;
             } catch (PackageManager.NameNotFoundException ignored) {
                 // El paquete puede desinstalarse mientras se actualiza el listado.
                 continue;
@@ -120,7 +128,7 @@ public final class AndroidExternalApps {
 
             ComponentName component = new ComponentName(packageName, activity.name);
             byId.put(id, new InstalledApp(id, packageName, name, description,
-                    versionName, versionCode, component));
+                    versionName, versionCode, signer, component));
         }
 
         List<InstalledApp> result = new ArrayList<>(byId.values());
@@ -227,12 +235,44 @@ public final class AndroidExternalApps {
         return name != null && name.matches("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+");
     }
 
+    private static String signingDigest(PackageInfo info) {
+        Signature[] signers = null;
+        if (Build.VERSION.SDK_INT >= 28 && info.signingInfo != null) {
+            signers = info.signingInfo.getApkContentsSigners();
+        } else if (info.signatures != null) {
+            signers = info.signatures;
+        }
+        if (signers == null || signers.length == 0) return null;
+
+        try {
+            List<String> hashes = new ArrayList<>();
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            for (Signature signer : signers) {
+                byte[] bytes = digest.digest(signer.toByteArray());
+                StringBuilder hex = new StringBuilder(bytes.length * 2);
+                for (byte value : bytes) {
+                    int unsigned = value & 0xff;
+                    hex.append(Character.forDigit((unsigned >>> 4) & 0xf, 16));
+                    hex.append(Character.forDigit(unsigned & 0xf, 16));
+                }
+                hashes.add(hex.toString());
+            }
+            Collections.sort(hashes);
+            return String.join(",", hashes);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
     @SuppressWarnings("deprecation")
     private static PackageInfo getPackageInfo(PackageManager manager, String packageName)
             throws PackageManager.NameNotFoundException {
+        int flags = Build.VERSION.SDK_INT >= 28
+                ? PackageManager.GET_SIGNING_CERTIFICATES
+                : PackageManager.GET_SIGNATURES;
         if (Build.VERSION.SDK_INT >= 33) {
-            return manager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0));
+            return manager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(flags));
         }
-        return manager.getPackageInfo(packageName, 0);
+        return manager.getPackageInfo(packageName, flags);
     }
 }
