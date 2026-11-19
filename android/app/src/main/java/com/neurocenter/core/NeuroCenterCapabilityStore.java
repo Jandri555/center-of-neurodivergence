@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
+import java.util.Collections;
 import java.util.Set;
 
 /**
@@ -48,7 +49,7 @@ public final class NeuroCenterCapabilityStore implements Closeable {
                 if (NeuroCenterCapabilities.isSupported(id)) result.add(id);
             }
         }
-        return Set.copyOf(result);
+        return Collections.unmodifiableSet(result);
     }
 
     public synchronized boolean isGranted(String packageName, String capabilityId) {
