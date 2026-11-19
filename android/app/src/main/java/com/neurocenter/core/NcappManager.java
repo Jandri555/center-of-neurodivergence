@@ -4,6 +4,8 @@ import android.content.Context;
 import android.net.Uri;
 
 import java.io.File;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -112,8 +114,24 @@ public final class NcappManager {
             throw new IOException("El paquete está vacío o supera 128 MiB.");
         }
         try (JarFile jar = new JarFile(file, true)) {
-            Manifest manifest = jar.getManifest();
-            if (manifest == null) throw new IOException("Falta META-INF/MANIFEST.MF.");
+            JarEntry manifestEntry = jar.getJarEntry("META-INF/MANIFEST.MF");
+            if (manifestEntry == null || manifestEntry.getSize() < 0
+                    || manifestEntry.getSize() > 65536) {
+                throw new IOException("El manifiesto falta o supera 64 KiB.");
+            }
+            Manifest manifest;
+            try (InputStream input = jar.getInputStream(manifestEntry);
+                 ByteArrayOutputStream bounded = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[8192];
+                int n;
+                while ((n = input.read(buffer)) != -1) {
+                    if (bounded.size() + n > 65536) {
+                        throw new IOException("El manifiesto supera 64 KiB.");
+                    }
+                    bounded.write(buffer, 0, n);
+                }
+                manifest = new Manifest(new ByteArrayInputStream(bounded.toByteArray()));
+            }
             Attributes meta = manifest.getMainAttributes();
             String id = required(meta, "NeuroCenter-App-Id");
             if (!id.matches("[A-Za-z][A-Za-z0-9._-]{0,63}") || id.contains("..")) {
@@ -139,6 +157,9 @@ public final class NcappManager {
                 if (entryName.startsWith("/") || entryName.contains("..")
                         || entryName.contains("\\") || !names.add(entryName)) {
                     throw new IOException("El paquete incluye rutas peligrosas o duplicadas.");
+                }
+                if (entry.getSize() < 0 || entry.getSize() > MAX_BYTES) {
+                    throw new IOException("Hay una entrada con tamaño inválido.");
                 }
                 if (entryName.endsWith(".class")) containsClass = true;
             }

@@ -184,7 +184,14 @@ public final class SingleInstance implements AutoCloseable {
                                 writer.flush();
                                 continue;
                             }
-                            dispatchNcappOpen(Path.of(file));
+                            try {
+                                dispatchNcappOpen(Path.of(file));
+                            } catch (java.nio.file.InvalidPathException ex) {
+                                writer.write("DENIED");
+                                writer.newLine();
+                                writer.flush();
+                                continue;
+                            }
                         } else if ("ACTIVATE".equals(command)) {
                             dispatchActivation();
                         } else {
@@ -253,8 +260,8 @@ public final class SingleInstance implements AutoCloseable {
                     writer.newLine();
                     if (ncappToOpen != null) {
                         String requested = ncappToOpen.toAbsolutePath().normalize().toString();
-                        if (requested.length() > 4096 || requested.contains("\\n")
-                                || requested.contains("\\r")) return false;
+                        if (requested.length() > 4096 || requested.contains("\n")
+                                || requested.contains("\r")) return false;
                         writer.write("IMPORT_NCAPP");
                         writer.newLine();
                         writer.write(requested);

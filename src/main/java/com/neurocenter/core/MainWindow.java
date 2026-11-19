@@ -1040,7 +1040,7 @@ public final class MainWindow extends JFrame {
                 throw ex;
             }
             JOptionPane.showMessageDialog(this,
-                    "App instalada. Estará disponible al reiniciar.\\n"
+                    "App instalada. Estará disponible al reiniciar.\n"
                             + "El inicio automático se puede configurar desde este mismo gestor.");
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, "No se pudo instalar la app: " + ex.getMessage(),
