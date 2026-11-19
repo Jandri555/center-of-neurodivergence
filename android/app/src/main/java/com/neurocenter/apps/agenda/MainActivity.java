@@ -40,6 +40,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.neurocenter.core.AndroidExternalApps;
+import com.neurocenter.core.NeuroCenterCapabilityStore;
+import com.neurocenter.api.NeuroCenterCapabilities;
 
 import java.io.UncheckedIOException;
 import java.time.LocalDate;
@@ -148,6 +150,11 @@ public final class MainActivity extends Activity {
         root.addView(externalAppsButton, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
+        Button externalPermissionsButton = button("Permisos de aplicaciones");
+        externalPermissionsButton.setOnClickListener(v -> showExternalAppPermissions());
+        root.addView(externalPermissionsButton, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
         pageTitle = new TextView(this);
         pageTitle.setTextSize(14);
         pageTitle.setPadding(0, dp(2), 0, dp(12));
@@ -250,6 +257,90 @@ public final class MainActivity extends Activity {
             });
         }
         dialog.show();
+    }
+
+    private void showExternalAppPermissions() {
+        List<AndroidExternalApps.InstalledApp> installed = AndroidExternalApps.discover(this);
+        if (installed.isEmpty()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Permisos de aplicaciones")
+                    .setMessage("No hay aplicaciones externas compatibles instaladas.")
+                    .setPositiveButton("Aceptar", null)
+                    .show();
+            return;
+        }
+
+        String[] labels = new String[installed.size()];
+        for (int i = 0; i < installed.size(); i++) {
+            AndroidExternalApps.InstalledApp app = installed.get(i);
+            labels[i] = app.name() + " (" + app.packageName() + ")";
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Elige una aplicación")
+                .setItems(labels, (dialog, which) -> editExternalAppPermissions(installed.get(which)))
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void editExternalAppPermissions(AndroidExternalApps.InstalledApp app) {
+        final java.util.Set<String> current;
+        try (NeuroCenterCapabilityStore store = new NeuroCenterCapabilityStore(this)) {
+            current = new java.util.HashSet<>(store.grantedCapabilities(app.packageName()));
+        } catch (IOException | RuntimeException ex) {
+            Toast.makeText(this, "No se pudieron leer los permisos: " + ex.getMessage(),
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        LinearLayout options = new LinearLayout(this);
+        options.setOrientation(LinearLayout.VERTICAL);
+        options.setPadding(dp(18), dp(8), dp(18), dp(8));
+        java.util.Map<String, CheckBox> controls = new java.util.LinkedHashMap<>();
+        addCapabilityOption(options, controls, NeuroCenterCapabilities.AGENDA_READ,
+                "Leer la Agenda", "Consultar tareas y eventos guardados en NeuroCenter.", current);
+        addCapabilityOption(options, controls, NeuroCenterCapabilities.AGENDA_WRITE,
+                "Modificar la Agenda", "Crear, completar y eliminar entradas de la Agenda.", current);
+        addCapabilityOption(options, controls, NeuroCenterCapabilities.CREDENTIALS_ACCESS,
+                "Almacén de credenciales", "Guardar y recuperar secretos propios cifrados con Android Keystore.", current);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(options);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Permisos de NeuroCenter · " + app.name())
+                .setView(scroll)
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Guardar", null)
+                .create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    java.util.Set<String> updated = new java.util.HashSet<>();
+                    controls.forEach((id, control) -> {
+                        if (control.isChecked()) updated.add(id);
+                    });
+                    try (NeuroCenterCapabilityStore store = new NeuroCenterCapabilityStore(this)) {
+                        store.setGrantedCapabilities(app.packageName(), updated);
+                        dialog.dismiss();
+                        Toast.makeText(this, "Permisos guardados para " + app.name(),
+                                Toast.LENGTH_SHORT).show();
+                    } catch (IOException | RuntimeException ex) {
+                        Toast.makeText(this, "No se pudieron guardar los permisos: " + ex.getMessage(),
+                                Toast.LENGTH_LONG).show();
+                    }
+                }));
+        dialog.show();
+    }
+
+    private void addCapabilityOption(LinearLayout parent, java.util.Map<String, CheckBox> controls,
+                                     String id, String label, String description,
+                                     java.util.Set<String> current) {
+        CheckBox checkBox = new CheckBox(this);
+        checkBox.setText(label);
+        checkBox.setChecked(current.contains(id));
+        controls.put(id, checkBox);
+        TextView detail = text(description, 12, false);
+        detail.setPadding(dp(34), 0, 0, dp(10));
+        parent.addView(checkBox);
+        parent.addView(detail);
     }
 
     private void selectExternalAppPackage() {
