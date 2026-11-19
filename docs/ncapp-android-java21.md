@@ -16,7 +16,8 @@
 - ✅ **OpenJDK 21 ARM64 incluido en la compilación del APK**: se descarga un release fijo de Amethyst, se verifica SHA-256 y se empaquetan módulos + bibliotecas nativas. Un servicio de diagnóstico independiente permite comprobar el arranque real de HotSpot 21; no equivale a haber pasado una prueba en dispositivo.
 - 🧪 Prototipo de ejecución `.ncapp` en un UID aislado: el host pasa la carpeta JRE y el JAR mediante descriptores de solo lectura y utiliza HotSpot 21 para ejecutar la clase indicada por `NeuroCenter-Mobile-Class`. Requiere pruebas en dispositivo (JNI, ART/HotSpot y SELinux).
 - ✅ IPC de arranque y motor de interfaz móvil JSON (`title`, `text`, `actions`) implementados; se utiliza una instancia aislada distinta para cada ejecución.
-- ⛔ Falta el puente de servicios privilegiados con validación de capacidades y pruebas de ataques; no se conceden operaciones de host al Java externo.
+- ✅ Puente móvil inicial con comprobación de permisos y SHA-256 para `agenda.read/list` y `agenda.write/addTask` mediante solicitudes JSON; el proceso aislado no accede a los datos directamente.
+- ⛔ Faltan puentes para credenciales, archivos, red y demás capacidades, además de pruebas de ataques.
 - ✅ Windows: el instalador jpackage registra .ncapp y entrega el archivo a la instancia ya iniciada.
 - ⛔ Falta registrar la asociación Android y probar en dispositivo real.
 
@@ -46,7 +47,7 @@ Todavía falta definir la interfaz móvil pública que implementarán las apps.
 7. Pruebas de permisos denegados, API de agenda, almacenamiento, red, Bluetooth y archivo corrupto; pruebas de actualización/revocación.
 8. Lanzar la UI de forma declarativa a través del host; no permitir referencias directas a Views del proceso host.
 
-**Estado de seguridad:** el lanzamiento aislado Java 21 está implementado a nivel de código, pero no validado en un móvil físico. Guardar una preferencia de permiso no equivale a hacerla cumplir; la API de host continúa cerrada para las `.ncapp`. Nunca ejecutar el JAR en el proceso principal como alternativa.
+**Estado de seguridad:** el lanzamiento aislado Java 21 está implementado a nivel de código, pero no validado en un móvil físico. Las operaciones de Agenda se comprueban en el host en cada solicitud; guardar otras concesiones de permisos todavía no habilita sus servicios. Nunca ejecutar el JAR en el proceso principal como alternativa.
 
 Fuentes técnicas:
 - https://developer.android.com/reference/android/content/Context#bindIsolatedService(android.content.Intent,int,java.lang.String,java.util.concurrent.Executor,android.content.ServiceConnection)

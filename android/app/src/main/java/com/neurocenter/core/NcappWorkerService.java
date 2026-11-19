@@ -72,8 +72,8 @@ public final class NcappWorkerService extends Service {
                     || !mobileClass.matches("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*){1,15}")) {
                 throw new SecurityException("Identificador o huella inválidos.");
             }
-            if (!libraryDir.startsWith("/data/app/") || libraryDir.contains("..")) {
-                throw new SecurityException("No se permite una carpeta de bibliotecas arbitraria.");
+            if (!libraryDir.equals(NcappWorkerService.this.getApplicationInfo().nativeLibraryDir)) {
+                throw new SecurityException("La ruta de bibliotecas no coincide con la del APK.");
             }
             try {
                 homeDescriptor = home.dup();
@@ -82,10 +82,16 @@ public final class NcappWorkerService extends Service {
                 if (!expectedSha256.equals(actual)) {
                     throw new SecurityException("El .ncapp instalado ha cambiado.");
                 }
-                activeDigest = expectedSha256;
-                return launchJava21("/proc/self/fd/" + homeDescriptor.getFd(),
+                String output = launchJava21("/proc/self/fd/" + homeDescriptor.getFd(),
                         "/proc/self/fd/" + appDescriptor.getFd(),
                         mobileClass, libraryDir);
+                if (output == null || output.startsWith("NCAPP_ERROR:")) {
+                    closeFiles();
+                    activeDigest = null;
+                } else {
+                    activeDigest = expectedSha256;
+                }
+                return output;
             } catch (Exception failure) {
                 activeDigest = null;
                 closeFiles();

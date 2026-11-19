@@ -39,6 +39,7 @@
             android:process=":ncapp_worker" />
         <activity
             android:name="com.neurocenter.apps.agenda.MainActivity"
+            android:launchMode="singleTask"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
