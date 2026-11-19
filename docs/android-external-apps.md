@@ -137,8 +137,13 @@ Las aplicaciones externas deben incluir `neurocenter-api` como dependencia Andro
 ## Ejemplo mínimo de manifiesto de una app externa
 
 ```xml
-<application>
-    <activity
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <package android:name="com.neurocenter" />
+    </queries>
+
+    <application>
+        <activity
         android:name=".NeuroCenterEntryActivity"
         android:exported="true">
         <intent-filter>
@@ -148,8 +153,9 @@ Las aplicaciones externas deben incluir `neurocenter-api` como dependencia Andro
         <meta-data
             android:name="com.neurocenter.app.id"
             android:value="mi-aplicacion" />
-    </activity>
-</application>
+        </activity>
+    </application>
+</manifest>
 ```
 
 No copies al manifiesto de la app externa los permisos Bluetooth/cámara/etc. del host. Declara solo los que use esa app. Para sus datos privados, utiliza su almacenamiento interno; para ficheros elegidos por el usuario, usa Storage Access Framework.
