@@ -10,8 +10,9 @@ import com.neurocenter.api.IJava21Probe;
 
 /**
  * Diagnóstico OpenJDK en otro proceso: no interpreta aplicaciones externas.
- * Tiene UID de la app porque el sandbox de las .ncapp NO tiene acceso por ruta
- * a la imagen de módulos; esa separación aún está por resolver.
+ * Tiene UID de la app pero no carga clases externas. El JRE de prueba reside
+ * en nativeLibraryDir instalado desde el propio APK; las .ncapp se ejecutan
+ * exclusivamente en un UID Android aislado.
  */
 public final class Java21ProbeService extends Service {
     private static final String TAG = "NeuroCenter-JRE21";
