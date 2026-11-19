@@ -25,8 +25,8 @@ android {
         targetSdk = 36
         // El JRE de OpenJDK 21 incluido actualmente es para ARM64.
         ndk.abiFilters += "arm64-v8a"
-        versionCode = 18
-        versionName = "1.6.11"
+        versionCode = 19
+        versionName = "1.6.12"
     }
 
     buildFeatures {
@@ -114,6 +114,31 @@ val prepareJava21Runtime by tasks.registering(Exec::class) {
     workingDir(rootProject.projectDir)
 }
 tasks.named("preBuild") { dependsOn(prepareJava21Runtime) }
+
+// The embedded HotSpot classloader is compiled for Java 17 compatibility, but
+// runs inside the separately bundled Java 21 VM, not Android ART. Build the
+// signed, immutable C header from source rather than checking in bytecode.
+val prepareJava21ClasspathLoader by tasks.registering(Exec::class) {
+    val source = rootProject.file(
+        "jvm-loader-src/com/neurocenter/sandbox/StreamingJarClassLoader.java")
+    val script = rootProject.file("scripts/compile_jar_loader.py")
+    val output = layout.buildDirectory.dir("generated/ncapp-loader").get().asFile
+    val python = if (System.getProperty("os.name").lowercase().contains("win")) {
+        listOf("py", "-3")
+    } else {
+        listOf("python3")
+    }
+    commandLine(python + listOf(script.absolutePath, source.absolutePath, output.absolutePath))
+    workingDir(rootProject.projectDir)
+}
+tasks.named("preBuild") { dependsOn(prepareJava21ClasspathLoader) }
+tasks.configureEach {
+    if (name.startsWith("configureCMake") || name.startsWith("buildCMake")
+            || name.startsWith("externalNativeBuild")) {
+        dependsOn(prepareJava21ClasspathLoader)
+    }
+}
+
 
 // AGP 9.4 expone AndroidSourceDirectorySet sin PatternFilterable.
 // Excluimos los archivos Swing a nivel de tarea de compilación Java.
