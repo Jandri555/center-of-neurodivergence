@@ -47,7 +47,7 @@ public final class Java21Runtime {
         File marker = new File(base, "source.sha256");
         File modules = new File(base, "lib/modules");
         if (marker.isFile() && modules.isFile()
-                && RELEASE_SHA256.equals(Files.readString(marker.toPath()).trim())) {
+                && RELEASE_SHA256.equals(new String(Files.readAllBytes(marker.toPath()), java.nio.charset.StandardCharsets.US_ASCII).trim())) {
             return base;
         }
         File staging = new File(context.getFilesDir(), "jre21-staging");
@@ -58,7 +58,7 @@ public final class Java21Runtime {
             if (!new File(staging, "lib/modules").isFile()) {
                 throw new IOException("El APK no incluye lib/modules de OpenJDK 21.");
             }
-            String source = Files.readString(new File(staging, "source.sha256").toPath()).trim();
+            String source = new String(Files.readAllBytes(new File(staging, "source.sha256").toPath()), java.nio.charset.StandardCharsets.US_ASCII).trim();
             if (!RELEASE_SHA256.equals(source)) {
                 throw new IOException("La huella del runtime no coincide.");
             }
