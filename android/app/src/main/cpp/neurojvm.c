@@ -60,7 +60,7 @@ Java_com_neurocenter_core_Java21Runtime_probeNative(
         {.optionString = "-Xmx128m"}
     };
     JavaVMInitArgs args = {
-        .version = JNI_VERSION_1_8,
+        .version = JNI_VERSION_1_6,
         .nOptions = (jint)ARRAY_SIZE(opts),
         .options = opts,
         .ignoreUnrecognized = JNI_FALSE
