@@ -9,40 +9,10 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
-#include <sys/syscall.h>
 
-/* Older Android NDK sysroot headers may omit Linux memfd seal constants. */
-#ifndef MFD_CLOEXEC
-#define MFD_CLOEXEC 0x0001U
-#endif
-#ifndef MFD_ALLOW_SEALING
-#define MFD_ALLOW_SEALING 0x0002U
-#endif
-#ifndef F_ADD_SEALS
-#define F_ADD_SEALS 1033
-#endif
-#ifndef F_SEAL_SEAL
-#define F_SEAL_SEAL 0x0001
-#endif
-#ifndef F_SEAL_SHRINK
-#define F_SEAL_SHRINK 0x0002
-#endif
-#ifndef F_SEAL_GROW
-#define F_SEAL_GROW 0x0004
-#endif
-#ifndef F_SEAL_WRITE
-#define F_SEAL_WRITE 0x0008
-#endif
+#include "streaming_jar_loader_class.h"
 
-/*
- * OpenJDK 21 launcher inside a real isolatedProcess. The Android host only
- * provides read-only descriptors to the JRE image and the selected .ncapp.
- * Java code returns JSON; it never receives references to Android host APIs.
- *
- * This path still needs validation on hardware (SELinux and HotSpot/ART).
- */
 #define TAG "NCAPP-JAVA21"
 #define MAX_JSON_UTF16 16000
 typedef jint(JNICALL *create_java_vm_t)(JavaVM **, void **, void *);
@@ -112,102 +82,47 @@ static void enable_debug_pipe(int received_fd) {
 #define MAX_NCAPP_BYTES (128L * 1024L * 1024L)
 
 /*
- * A Binder-received, read-only descriptor is accessible for read()/pread()
- * but OpenJDK's classpath loader needs to open the JAR again by *path*.
- * /proc/self/fd/<binder-fd> can be blocked by Android SELinux because it
- * points to a host-owned app_data_file even when the original FD is readable.
- *
- * Instead, make a *sealed, non-executable in-memory copy* owned by the isolated
- * UID. The host never supplies a directory, path permission or executable.
- * Keep the memfd open until process death because ZipFile may reopen it later.
+ * Java 21's filesystem classpath loader cannot safely reopen a host-owned
+ * .ncapp path from the Android isolated UID. Instead, a tiny signed Java
+ * classloader streams ZIP entries through pread() on the read-only Binder FD.
+ * No private directory, /proc/self/fd reopen, memfd, or code extraction.
  */
-static int g_classpath_fd = -1;
-static int make_isolated_classpath(int source_fd, char *path, size_t path_size) {
-    if (g_classpath_fd >= 0) {
-        errno = EALREADY;
-        return -1;
-    }
-    struct stat sb;
-    if (fstat(source_fd, &sb) != 0 || !S_ISREG(sb.st_mode)
-            || sb.st_size <= 0 || sb.st_size > MAX_NCAPP_BYTES) {
-        errno = EINVAL;
-        return -1;
-    }
+#define MAX_NCAPP_BYTES (128L * 1024L * 1024L)
+static int g_verified_jar_fd = -1;
+static jlong g_verified_jar_size = 0;
+static jobject g_jar_loader = NULL;
 
-#if defined(SYS_memfd_create)
-    /* MFD_NOEXEC_SEAL is Linux 6.3+, so fall back for older Android kernels. */
-    const unsigned int noexec_seal = 0x0008U;
-    int fd = (int)syscall(SYS_memfd_create, "neurocenter-ncapp",
-                          MFD_CLOEXEC | MFD_ALLOW_SEALING | noexec_seal);
-    if (fd < 0 && errno == EINVAL) {
-        fd = (int)syscall(SYS_memfd_create, "neurocenter-ncapp",
-                          MFD_CLOEXEC | MFD_ALLOW_SEALING);
-    }
-#else
-    errno = ENOSYS;
-    int fd = -1;
-#endif
-    if (fd < 0) return -1;
-
-    char buf[32768];
-    off_t at = 0;
-    while (at < sb.st_size) {
-        size_t request = (size_t)(sb.st_size - at);
-        if (request > sizeof(buf)) request = sizeof(buf);
-        ssize_t n = pread(source_fd, buf, request, at);
-        if (n <= 0) {
-            if (n == 0) errno = EIO;
-            close(fd);
-            return -1;
-        }
-        ssize_t offset = 0;
-        while (offset < n) {
-            ssize_t written = write(fd, buf + offset, (size_t)(n - offset));
-            if (written <= 0) {
-                if (written == 0) errno = EIO;
-                close(fd);
-                return -1;
-            }
-            offset += written;
-        }
-        at += n;
-    }
-    /* Always seal writes. If unavailable, DO NOT use an unsealed archive. */
-    if (fcntl(fd, F_ADD_SEALS,
-              F_SEAL_WRITE | F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_SEAL) != 0) {
-        close(fd);
+static jint JNICALL read_archive_for_hotspot(JNIEnv *jre, jclass ignored,
+                                               jbyteArray target, jint offset,
+                                               jint count, jlong position) {
+    (void)ignored;
+    if (g_verified_jar_fd < 0 || target == NULL || offset < 0 || count < 0
+            || position < 0 || position >= g_verified_jar_size
+            || count > (*jre)->GetArrayLength(jre, target) - offset) {
+        jclass ex = (*jre)->FindClass(jre, "java/io/IOException");
+        if (ex) (*jre)->ThrowNew(jre, ex, "JAR descriptor or range is invalid");
         return -1;
     }
-    if (lseek(fd, 0, SEEK_SET) < 0) {
-        close(fd);
+    if (count == 0) return 0;
+    unsigned char buffer[16384];
+    if (count > (jint)sizeof buffer) count = (jint)sizeof buffer;
+    if ((jlong)count > g_verified_jar_size - position) {
+        count = (jint)(g_verified_jar_size - position);
+    }
+    ssize_t n;
+    do {
+        n = pread(g_verified_jar_fd, buffer, (size_t)count, (off_t)position);
+    } while (n < 0 && errno == EINTR);
+    if (n < 0) {
+        jclass ex = (*jre)->FindClass(jre, "java/io/IOException");
+        if (ex) (*jre)->ThrowNew(jre, ex, "Cannot read verified .ncapp FD");
         return -1;
     }
-
-    int count = snprintf(path, path_size, "/proc/self/fd/%d", fd);
-    if (count < 0 || (size_t)count >= path_size) {
-        errno = ENAMETOOLONG;
-        close(fd);
-        return -1;
+    if (n > 0) {
+        (*jre)->SetByteArrayRegion(jre, target, offset, (jsize)n,
+                                  (const jbyte*)buffer);
     }
-    /* Verifies reopening the *isolated* memfd, not the original host file. */
-    int probe = open(path, O_RDONLY | O_CLOEXEC);
-    if (probe < 0) {
-        close(fd);
-        return -1;
-    }
-    unsigned char magic[4];
-    ssize_t read_bytes = pread(probe, magic, sizeof magic, 0);
-    close(probe);
-    if (read_bytes != 4 || magic[0] != 0x50 || magic[1] != 0x4b) {
-        errno = EINVAL;
-        close(fd);
-        return -1;
-    }
-    g_classpath_fd = fd;
-    ncapp_note(ANDROID_LOG_INFO,
-               "JVM classpath: sealed isolated memfd (%lld bytes)",
-               (long long)sb.st_size);
-    return 0;
+    return (jint)n;
 }
 
 static jstring err(JNIEnv *android_env, const char *name, const char *details) {
@@ -280,37 +195,51 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
     snprintf(libjvm, sizeof libjvm, "%s/libjvm.so", libs);
     snprintf(homeOption, sizeof homeOption, "-Djava.home=%s", home);
     snprintf(libraryOption, sizeof libraryOption, "-Djava.library.path=%s", libs);
-    /* A numeric fd is passed by Binder, never a host path with permissions. */
+    /* Reuse the verified read-only Binder FD; no filesystem reopening. */
     const char *prefix = "/proc/self/fd/";
     if (strncmp(archive, prefix, strlen(prefix)) != 0) {
         (*android_env)->ReleaseStringUTFChars(android_env, jhome, home);
         (*android_env)->ReleaseStringUTFChars(android_env, jarchive, archive);
         (*android_env)->ReleaseStringUTFChars(android_env, jentry, entry);
         (*android_env)->ReleaseStringUTFChars(android_env, jlibs, libs);
-        return err(android_env, "jar", "Descriptor inválido");
+        return err(android_env, "jar", "Invalid FD descriptor");
     }
-    char *end = NULL;
+    char *tail = NULL;
     errno = 0;
-    long source_fd = strtol(archive + strlen(prefix), &end, 10);
-    if (errno != 0 || end == archive + strlen(prefix) || *end != '\0'
+    long source_fd = strtol(archive + strlen(prefix), &tail, 10);
+    if (errno != 0 || tail == archive + strlen(prefix) || *tail != '\0'
             || source_fd < 0 || source_fd > INT_MAX) {
         (*android_env)->ReleaseStringUTFChars(android_env, jhome, home);
         (*android_env)->ReleaseStringUTFChars(android_env, jarchive, archive);
         (*android_env)->ReleaseStringUTFChars(android_env, jentry, entry);
         (*android_env)->ReleaseStringUTFChars(android_env, jlibs, libs);
-        return err(android_env, "jar", "FD no válido");
+        return err(android_env, "jar", "Invalid FD number");
     }
-    char isolated_path[64];
-    if (make_isolated_classpath((int)source_fd, isolated_path, sizeof isolated_path) != 0) {
-        char details[128];
-        snprintf(details, sizeof details, "No se pudo crear JAR aislado en memoria: errno=%d", errno);
+    struct stat jar_stat;
+    int access_mode = fcntl((int)source_fd, F_GETFL);
+    if (fstat((int)source_fd, &jar_stat) != 0
+            || !S_ISREG(jar_stat.st_mode)
+            || jar_stat.st_size <= 0 || jar_stat.st_size > MAX_NCAPP_BYTES
+            || access_mode < 0 || (access_mode & O_ACCMODE) != O_RDONLY) {
         (*android_env)->ReleaseStringUTFChars(android_env, jhome, home);
         (*android_env)->ReleaseStringUTFChars(android_env, jarchive, archive);
         (*android_env)->ReleaseStringUTFChars(android_env, jentry, entry);
         (*android_env)->ReleaseStringUTFChars(android_env, jlibs, libs);
-        return err(android_env, "jar", details);
+        return err(android_env, "jar", "Read-only Binder archive FD is invalid");
     }
-    snprintf(appOption, sizeof appOption, "-Djava.class.path=%s", isolated_path);
+    g_verified_jar_fd = dup((int)source_fd);
+    if (g_verified_jar_fd < 0) {
+        (*android_env)->ReleaseStringUTFChars(android_env, jhome, home);
+        (*android_env)->ReleaseStringUTFChars(android_env, jarchive, archive);
+        (*android_env)->ReleaseStringUTFChars(android_env, jentry, entry);
+        (*android_env)->ReleaseStringUTFChars(android_env, jlibs, libs);
+        return err(android_env, "jar", "Could not duplicate verified archive FD");
+    }
+    g_verified_jar_size = (jlong)jar_stat.st_size;
+    snprintf(appOption, sizeof appOption, "-Djava.class.path=");
+    ncapp_note(ANDROID_LOG_INFO,
+               "JVM classpath: streaming %lld-byte archive via isolated Binder FD",
+               (long long)g_verified_jar_size);
     setenv("JAVA_HOME", home, 1);
     // Read only by a NeuroCenter-patched HotSpot build; it may not be used
     // to grant access to any host-private files from an isolated UID.
@@ -356,9 +285,50 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
         return err(android_env, "arranque", code);
     }
 
-    ncapp_note(ANDROID_LOG_INFO, "JVM stage 6: cargando clase móvil");
-    jclass clazz = (*jre)->FindClass(jre, className);
-    if (!clazz) return java_error(android_env, jre, "clase móvil");
+    ncapp_note(ANDROID_LOG_INFO, "JVM stage 6: preparando cargador JAR por Binder FD");
+    jclass loaderClass = (*jre)->DefineClass(jre,
+            "com/neurocenter/sandbox/StreamingJarClassLoader", NULL,
+            (const jbyte*)kStreamingJarLoaderClass,
+            (jsize)sizeof(kStreamingJarLoaderClass));
+    if (!loaderClass || (*jre)->ExceptionCheck(jre)) {
+        return java_error(android_env, jre, "cargador JAR");
+    }
+    jclass nestedInput = (*jre)->DefineClass(jre,
+            "com/neurocenter/sandbox/StreamingJarClassLoader$ArchiveInput", NULL,
+            (const jbyte*)kStreamingJarArchiveInputClass,
+            (jsize)sizeof(kStreamingJarArchiveInputClass));
+    if (!nestedInput || (*jre)->ExceptionCheck(jre)) {
+        return java_error(android_env, jre, "lector JAR");
+    }
+    JNINativeMethod bridge[] = {
+        {"readArchive", "([BIIJ)I", (void*)read_archive_for_hotspot}
+    };
+    if ((*jre)->RegisterNatives(jre, loaderClass, bridge, 1) != JNI_OK) {
+        return java_error(android_env, jre, "registro del lector JAR");
+    }
+    jmethodID loaderCtor = (*jre)->GetMethodID(jre, loaderClass, "<init>", "(J)V");
+    if (!loaderCtor) return java_error(android_env, jre, "constructor del cargador");
+    jobject jarLoader = (*jre)->NewObject(jre, loaderClass, loaderCtor,
+                                          g_verified_jar_size);
+    if (!jarLoader || (*jre)->ExceptionCheck(jre)) {
+        return java_error(android_env, jre, "cargador JAR");
+    }
+    g_jar_loader = (*jre)->NewGlobalRef(jre, jarLoader);
+    if (!g_jar_loader) return err(android_env, "memoria", "Sin memoria para cargador JAR");
+    jclass parentClass = (*jre)->FindClass(jre, "java/lang/ClassLoader");
+    if (!parentClass) return java_error(android_env, jre, "ClassLoader de Java 21");
+    jmethodID loadMethod = (*jre)->GetMethodID(jre, parentClass, "loadClass",
+                                              "(Ljava/lang/String;)Ljava/lang/Class;");
+    if (!loadMethod) return java_error(android_env, jre, "ClassLoader.loadClass");
+    jstring javaName = (*jre)->NewStringUTF(jre, entry);
+    if (!javaName) return java_error(android_env, jre, "nombre de clase");
+    ncapp_note(ANDROID_LOG_INFO, "JVM stage 6a: leyendo clase móvil desde Binder FD");
+    jclass clazz = (jclass)(*jre)->CallObjectMethod(jre, g_jar_loader,
+                                                   loadMethod, javaName);
+    if (!clazz || (*jre)->ExceptionCheck(jre)) {
+        return java_error(android_env, jre, "clase móvil");
+    }
+    ncapp_note(ANDROID_LOG_INFO, "JVM stage 6b: clase móvil cargada");
     jmethodID ctor = (*jre)->GetMethodID(jre, clazz, "<init>", "()V");
     if (!ctor) return java_error(android_env, jre, "constructor");
     jobject instance = (*jre)->NewObject(jre, clazz, ctor);
