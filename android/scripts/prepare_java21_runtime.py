@@ -76,6 +76,10 @@ def members_by_name(tar):
         raise ValueError("Too many JRE archive entries")
     mapping = {}
     for member in members:
+        # tar.xz puede incluir una entrada "directory: ." o "./" para su raíz.
+        # Es normal y segura; no corresponde a ningún archivo del runtime.
+        if member.name in (".", "./") and member.isdir():
+            continue
         path = safe_path(member.name)
         if path in mapping:
             raise ValueError("Duplicate JRE archive entry: " + path)
