@@ -166,7 +166,7 @@ public final class NcappUiController {
                              app.archive(), ParcelFileDescriptor.MODE_READ_ONLY)) {
                     showText("Verificación 1/4: envío y SHA-256 de .ncapp…");
                     Log.i(LOG_TAG, "DIAG 1: enviando un FD de archivo, PID=" + isolatedPid);
-                    String jarCheck = worker.checkArchive(archive.dup(), app.sha256());
+                    String jarCheck = worker.checkArchive(archive, app.sha256());
                     Log.i(LOG_TAG, "DIAG 1: " + jarCheck);
                     if (!jarCheck.startsWith("OK:")) {
                         error("Error en verificación de .ncapp: " + jarCheck);
@@ -174,7 +174,7 @@ public final class NcappUiController {
                     }
                     showText("Verificación 2/4: acceso a módulos Java 21…");
                     Log.i(LOG_TAG, "DIAG 2: enviando un FD de JRE, PID=" + isolatedPid);
-                    String moduleCheck = worker.checkModules(home.dup());
+                    String moduleCheck = worker.checkModules(home);
                     Log.i(LOG_TAG, "DIAG 2: " + moduleCheck);
                     if (!moduleCheck.startsWith("OK:")) {
                         error("Error en verificación de módulos: " + moduleCheck);
