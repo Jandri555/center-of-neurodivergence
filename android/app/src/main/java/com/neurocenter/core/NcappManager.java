@@ -36,7 +36,7 @@ public final class NcappManager {
     private static final String EXTENSION = ".ncapp";
 
     public record InstalledApp(String id, String name, String version, String author,
-                               String sha256, File archive) {}
+                               String sha256, String mobileClass, File archive) {}
 
     private NcappManager() {}
 
@@ -75,6 +75,12 @@ public final class NcappManager {
                         + "». Desinstálala antes de instalar otra versión.");
             }
             Files.move(temp.toPath(), destination.toPath());
+            // Jar legible mediante FD en el UID aislado, pero la carpeta que lo
+            // contiene sigue siendo privada (0700) y fuera de su alcance.
+            if (!destination.setReadable(true, false)) {
+                Files.deleteIfExists(destination.toPath());
+                throw new IOException("No se pudo preparar el .ncapp para su ejecución aislada.");
+            }
             return inspect(destination);
         } finally {
             Files.deleteIfExists(temp.toPath());
@@ -140,6 +146,10 @@ public final class NcappManager {
             if (!"true".equalsIgnoreCase(required(meta, "NeuroCenter-App-Mobile"))) {
                 throw new IOException("Esta aplicación no declara compatibilidad con móvil.");
             }
+            String mobileClass = required(meta, "NeuroCenter-Mobile-Class");
+            if (!mobileClass.matches("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*){1,15}")) {
+                throw new IOException("NeuroCenter-Mobile-Class debe ser una clase Java válida.");
+            }
             String desktop = meta.getValue("NeuroCenter-App-Desktop");
             if (desktop != null && !desktop.equalsIgnoreCase("true")
                     && !desktop.equalsIgnoreCase("false")) {
@@ -164,10 +174,13 @@ public final class NcappManager {
                 if (entryName.endsWith(".class")) containsClass = true;
             }
             if (!containsClass) throw new IOException("No hay clases Java en la aplicación.");
+            if (!names.contains(mobileClass.replace('.', '/') + ".class")) {
+                throw new IOException("La clase móvil declarada no existe dentro del .ncapp.");
+            }
             return new InstalledApp(id, optional(meta, "Implementation-Title", id),
                     optional(meta, "Implementation-Version", "Sin versión"),
                     optional(meta, "Implementation-Vendor", "Desconocido"),
-                    digest(file), file);
+                    digest(file), mobileClass, file);
         } catch (IllegalArgumentException error) {
             throw new IOException("Archivo .ncapp inválido.", error);
         }

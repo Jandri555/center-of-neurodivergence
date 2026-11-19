@@ -6,4 +6,7 @@ import android.os.ParcelFileDescriptor;
 interface INcappWorker {
     boolean isIsolated();
     String sha256(in ParcelFileDescriptor archive);
+    String launchApp(in ParcelFileDescriptor home, in ParcelFileDescriptor archive,
+                     String mobileClass, String expectedSha256, String libraryDir);
+    String dispatchAction(String actionId);
 }

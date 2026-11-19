@@ -42,6 +42,35 @@ public final class Java21Runtime {
         return probeNative(home.getAbsolutePath(), context.getApplicationInfo().nativeLibraryDir);
     }
 
+    /**
+     * Exporta un descriptor que sólo permite recorrer la imagen OpenJDK 21,
+     * nunca filesDir entero. El UID aislado usa /proc/self/fd/N/lib/modules.
+     * La compatibilidad exacta con SELinux requiere prueba en el teléfono.
+     */
+    public static synchronized android.os.ParcelFileDescriptor openSandboxHome(Context context)
+            throws IOException {
+        File runtime = prepareDataImage(context);
+        markRuntimeReadable(runtime);
+        return android.os.ParcelFileDescriptor.open(runtime,
+                android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+    }
+
+    private static void markRuntimeReadable(File directory) throws IOException {
+        File[] children = directory.listFiles();
+        if (children == null) throw new IOException("No se puede inspeccionar el JRE.");
+        for (File child : children) {
+            if (Files.isSymbolicLink(child.toPath())) continue;
+            if (child.isDirectory()) {
+                markRuntimeReadable(child);
+            } else if (!child.setReadable(true, false)) {
+                throw new IOException("No se pudo habilitar lectura de " + child.getName());
+            }
+        }
+        if (!directory.setReadable(true, false) || !directory.setExecutable(true, false)) {
+            throw new IOException("No se pudo habilitar acceso de lectura a la imagen JRE.");
+        }
+    }
+
     private static File prepareDataImage(Context context) throws IOException {
         File base = new File(context.getFilesDir(), "jre21");
         File marker = new File(base, "source.sha256");
@@ -134,6 +163,9 @@ public final class Java21Runtime {
         if (Files.isSymbolicLink(root.toPath())) {
             Files.delete(root.toPath());
             return;
+        }
+        if (!root.setWritable(true, true)) {
+            throw new IOException("No se pudo actualizar la imagen JRE.");
         }
         File[] children = root.listFiles();
         if (children != null) for (File child : children) deleteTree(child);

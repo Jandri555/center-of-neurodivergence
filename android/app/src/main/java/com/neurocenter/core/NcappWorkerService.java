@@ -14,10 +14,20 @@ import java.security.MessageDigest;
 import java.util.Locale;
 
 /**
- * Primer paso del sandbox Android: servicio sin permisos de la app principal.
- * Solo comprueba un descriptor recibido por Binder. NO carga ni ejecuta JAR.
+ * Ejecutor por aplicación Java21. Solo opera con UID Android aislado y
+ * recibe descriptores Binder de solo lectura: ningún acceso al host por ruta.
  */
 public final class NcappWorkerService extends Service {
+    static { System.loadLibrary("neurojvm"); }
+
+    private ParcelFileDescriptor homeDescriptor;
+    private ParcelFileDescriptor appDescriptor;
+    private String activeDigest;
+
+    private static native String launchJava21(String homeFd, String appFd,
+                                              String mobileClass, String nativeLibDir);
+    private static native String callJava21Action(String actionId);
+
     private final INcappWorker.Stub binder = new INcappWorker.Stub() {
         @Override public boolean isIsolated() {
             return Process.isIsolated();
@@ -48,7 +58,60 @@ public final class NcappWorkerService extends Service {
                 throw new IllegalStateException("Fallo al comprobar archivo aislado.", ex);
             }
         }
+
+        @Override public synchronized String launchApp(ParcelFileDescriptor home,
+                ParcelFileDescriptor archive, String mobileClass, String expectedSha256,
+                String libraryDir) {
+            if (!Process.isIsolated()) throw new SecurityException("No es un UID aislado.");
+            if (home == null || archive == null || mobileClass == null
+                    || expectedSha256 == null || libraryDir == null || activeDigest != null) {
+                throw new SecurityException("Inicio inválido o repetido.");
+            }
+            if (!expectedSha256.matches("[a-f0-9]{64}")
+                    || !mobileClass.matches("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*){1,15}")) {
+                throw new SecurityException("Identificador o huella inválidos.");
+            }
+            if (!libraryDir.startsWith("/data/app/") || libraryDir.contains("..")) {
+                throw new SecurityException("No se permite una carpeta de bibliotecas arbitraria.");
+            }
+            try {
+                homeDescriptor = home.dup();
+                appDescriptor = archive.dup();
+                String actual = sha256(appDescriptor.dup());
+                if (!expectedSha256.equals(actual)) {
+                    throw new SecurityException("El .ncapp instalado ha cambiado.");
+                }
+                activeDigest = expectedSha256;
+                return launchJava21("/proc/self/fd/" + homeDescriptor.getFd(),
+                        "/proc/self/fd/" + appDescriptor.getFd(),
+                        mobileClass, libraryDir);
+            } catch (Exception failure) {
+                activeDigest = null;
+                closeFiles();
+                throw new IllegalStateException("No se pudo iniciar HotSpot aislado.", failure);
+            }
+        }
+
+        @Override public synchronized String dispatchAction(String actionId) {
+            if (!Process.isIsolated() || activeDigest == null || actionId == null
+                    || !actionId.matches("[A-Za-z0-9._-]{1,64}")) {
+                throw new SecurityException("Acción no válida o app sin arrancar.");
+            }
+            return callJava21Action(actionId);
+        }
     };
+
+    private synchronized void closeFiles() {
+        try { if (homeDescriptor != null) homeDescriptor.close(); } catch (IOException ignored) {}
+        try { if (appDescriptor != null) appDescriptor.close(); } catch (IOException ignored) {}
+        homeDescriptor = null;
+        appDescriptor = null;
+    }
+
+    @Override public void onDestroy() {
+        closeFiles();
+        super.onDestroy();
+    }
 
     @Override public IBinder onBind(Intent intent) {
         if (!Process.isIsolated()) throw new SecurityException("Sandbox no aislado.");

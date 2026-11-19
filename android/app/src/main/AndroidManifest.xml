@@ -44,6 +44,22 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Apertura desde gestores de archivos. Se comprueba el nombre del
+                 archivo y se pide confirmación al usuario antes de instalarlo. -->
+            <intent-filter android:label="Abrir con NeuroCenter">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" android:mimeType="application/x-neurocenter-app" />
+                <data android:scheme="content" android:mimeType="application/java-archive" />
+                <data android:scheme="content" android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter android:label="Enviar a NeuroCenter">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/x-neurocenter-app" />
+                <data android:mimeType="application/java-archive" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED" />
             </intent-filter>
