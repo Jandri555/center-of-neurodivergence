@@ -85,16 +85,3 @@ gradle -p android :app:assembleDebug :app:assembleRelease
 ```
 
 Artefactos esperados: `android/app/build/outputs/apk/debug/app-debug.apk` y `android/app/build/outputs/apk/release/app-release.apk`.
-
-## Android 1.6.10: `Failed setting boot class path`
-
-La captura Debug 1.6.9 alcanzó `JNI_CreateJavaVM`, pero falló con:
-```
-Error occurred during initialization of VM
-Failed setting boot class path.
-```
-**Causa en el código fuente OpenJDK 21:** `src/hotspot/os/linux/os_linux.cpp` calcula `java.home` subiendo tres niveles desde `libjvm.so` y luego usa `os::set_boot_path` (en `src/hotspot/share/runtime/os.cpp`). En el layout Android la biblioteca está en `.../lib/arm64/libjvm.so`, por lo que ese cálculo no apunta a `nativeLibraryDir` y la imagen `libnm.so` no se encuentra.
-
-**Adaptación experimental de la 1.6.10:** habilita `-Dsun.java.launcher.is_altjvm=true` en los dos lanzadores, mantiene `JAVA_HOME=nativeLibraryDir`, y añade una tercera sustitución de cadenas **de longitud fija** en el OpenJDK ARM64 específico, `"/jre/lib" → "/."`, con verificación estricta de coincidencia. Esta sustitución hace que `os::jvm_path` considere válido el directorio del APK y derive `java.home` del directorio real de las bibliotecas, con `libnm.so` en su interior. No toca instrucciones ELF ni el modelo de aislamiento.
-
-**Pendiente de comprobar en hardware:** si la JVM sobrevive a esta fase pueden aparecer errores posteriores porque faltan recursos de la estructura estándar (por ejemplo, `conf/security`). No modificar la sandbox para resolverlos.

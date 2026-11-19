@@ -53,7 +53,6 @@ Java_com_neurocenter_core_Java21Runtime_probeNative(
 
     JavaVMOption opts[] = {
         {.optionString = opt_home},
-        {.optionString = "-Dsun.java.launcher.is_altjvm=true"},
         {.optionString = opt_lib},
         {.optionString = "-Djava.awt.headless=true"},
         {.optionString = "-Djava.security.manager=allow"},

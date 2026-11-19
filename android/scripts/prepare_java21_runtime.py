@@ -125,48 +125,13 @@ def patch_hotspot_module_paths(content):
     replacements = (
         (b"%/lib/modules\x00", b"%/libnm.so\x00"),
         (b"%s%slib%smodules\x00", b"%s%slibnm.so\x00"),
-        # OpenJDK 21 Linux derives java.home from libjvm.so's real location
-        # (three path components upward). Android's nativeLibraryDir is flat:
-        # .../lib/arm64/libjvm.so, not <home>/lib/server/libjvm.so.
-        #
-        # With -Dsun.java.launcher.is_altjvm=true and JAVA_HOME set to the
-        # read-only APK native library directory, os::jvm_path() checks
-        # JAVA_HOME + "/jre/lib", falling back to "/lib". The first check
-        # must accept the existing HOME directory, without writing a private
-        # symlink or relaxing isolatedProcess restrictions. Replace just its
-        # NUL-terminated directory suffix "/jre/lib" with "/.".
-        #
-        # os::jvm_path() then synthesizes HOME/./hotspot/libjvm.so so Linux
-        # system-property setup derives HOME itself as java.home, and uses
-        # HOME/libnm.so as the boot image (two patches above).
-        (b"/jre/lib\x00", b"/.\x00"),
     )
     for before, after in replacements:
         occurrences = content.count(before)
         if occurrences != 1:
-            if before == b"/jre/lib\x00":
-                print("OpenJDK 21 ARM64 path diagnostics (printable snippets):", flush=True)
-                for marker in (b"/jre/lib", b"jre/lib", b"/lib\x00",
-                               b"/lib/", b"hotspot/libjvm.so", b"libjvm.so"):
-                    positions = []
-                    cursor = 0
-                    while len(positions) < 6:
-                        pos = content.find(marker, cursor)
-                        if pos < 0:
-                            break
-                        positions.append(pos)
-                        cursor = pos + 1
-                    print("  %r: %r" % (marker, [
-                        (pos, content[max(0, pos - 15):pos + len(marker) + 24])
-                        for pos in positions]), flush=True)
             raise ValueError("Unsupported libjvm.so layout: expected exactly "
                              "one %r, found %d" % (before, occurrences))
         content = content.replace(before, after + b"\x00" * (len(before) - len(after)))
-    # Verify the *exact* binary expected by the native launch options.
-    # Vendor changes should cause a build failure rather than silent corruption.
-    for expected in (b"%/libnm.so\x00", b"%s%slibnm.so\x00", b"/.\x00"):
-        if expected not in content:
-            raise ValueError("Patched OpenJDK invariant missing: %r" % expected)
     return content
 
 def prepare(archive, output):
