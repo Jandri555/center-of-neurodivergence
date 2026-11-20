@@ -117,6 +117,11 @@ public final class NcappCrashDiagnostics implements AutoCloseable {
                     report.append("Motivo (código): ").append(match.getReason())
                             .append("\nEstado/señal: ").append(match.getStatus())
                             .append("\nDetalle: ").append(match.getDescription());
+                    if (Build.VERSION.SDK_INT >= 31
+                            && match.getReason() == ApplicationExitInfo.REASON_CRASH_NATIVE) {
+                        report.append("\\n\\n--- Tombstone nativa del proceso aislado ---\\n")
+                                .append(NcappTombstoneSummary.read(match));
+                    }
                 }
             } catch (RuntimeException ex) {
                 report.append("No se pudo consultar el historial: ")
