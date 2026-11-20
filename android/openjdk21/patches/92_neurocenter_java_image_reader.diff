@@ -1,0 +1,26 @@
+diff --git a/src/java.base/share/classes/jdk/internal/jimage/ImageReaderFactory.java b/src/java.base/share/classes/jdk/internal/jimage/ImageReaderFactory.java
+--- a/src/java.base/share/classes/jdk/internal/jimage/ImageReaderFactory.java
++++ b/src/java.base/share/classes/jdk/internal/jimage/ImageReaderFactory.java
+@@ -44,8 +44,21 @@
+     private ImageReaderFactory() {}
+
+     private static final String JAVA_HOME = System.getProperty("java.home");
+-    private static final Path BOOT_MODULES_JIMAGE =
+-        Paths.get(JAVA_HOME, "lib", "modules");
++    private static final Path BOOT_MODULES_JIMAGE = bootModulesImage();
++
++    private static Path bootModulesImage() {
++        // NeuroCenter's verified JIMAGE is installed as an immutable data
++        // file beside the native ELF libraries in Android nativeLibraryDir.
++        // The HotSpot source patch already uses this launcher-controlled
++        // environment variable. Java's ImageReaderFactory must agree;
++        // otherwise CLDR, jrt:/ and system module resources fail to load.
++        // Never fall back to a writable application's private directory.
++        String nativeHome = System.getenv("NEUROCENTER_JRE_HOME");
++        if (nativeHome != null && !nativeHome.isEmpty()) {
++            return Paths.get(nativeHome, "libnm.so");
++        }
++        return Paths.get(JAVA_HOME, "lib", "modules");
++    }
+
+     private static final Map<Path, ImageReader> readers = new ConcurrentHashMap<>();
