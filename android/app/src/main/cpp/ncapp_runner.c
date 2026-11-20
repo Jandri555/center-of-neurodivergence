@@ -142,15 +142,22 @@ static jstring java_error(JNIEnv *android_env, JNIEnv *jre, const char *name) {
 }
 
 static jstring json_result(JNIEnv *android_env, JNIEnv *jre, jobject value) {
+    ncapp_note(ANDROID_LOG_INFO, "JVM bridge: JSON result enter");
     if ((*jre)->ExceptionCheck(jre)) return java_error(android_env, jre, "aplicación");
     if (value == NULL) return err(android_env, "interfaz", "La app devolvió null");
-    if ((*jre)->GetStringLength(jre, (jstring)value) > MAX_JSON_UTF16) {
+    jsize chars = (*jre)->GetStringLength(jre, (jstring)value);
+    ncapp_note(ANDROID_LOG_INFO, "JVM bridge: JSON length=%d", (int)chars);
+    if (chars > MAX_JSON_UTF16) {
         return err(android_env, "interfaz", "JSON demasiado grande");
     }
+    ncapp_note(ANDROID_LOG_INFO, "JVM bridge: copying HotSpot string to Android");
     const char *data = (*jre)->GetStringUTFChars(jre, (jstring)value, NULL);
     if (data == NULL) return err(android_env, "interfaz", "UTF-8 no disponible");
+    ncapp_note(ANDROID_LOG_INFO, "JVM bridge: HotSpot UTF chars acquired");
     jstring result = (*android_env)->NewStringUTF(android_env, data);
+    ncapp_note(ANDROID_LOG_INFO, "JVM bridge: Android string created");
     (*jre)->ReleaseStringUTFChars(jre, (jstring)value, data);
+    ncapp_note(ANDROID_LOG_INFO, "JVM bridge: HotSpot UTF chars released");
     return result;
 }
 
@@ -266,6 +273,7 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
         {.optionString = "-Xmx128m"}
 #ifdef NEUROCENTER_DEBUG_DIAGNOSTICS
         ,{.optionString = "vfprintf", .extraInfo = (void *)hotspot_vfprintf}
+        ,{.optionString = "-Xlog:gc=info"}
 #endif
     };
     JavaVMInitArgs args = {
@@ -390,9 +398,16 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_callJava2
     }
     jstring javaAction = (*jre)->NewStringUTF(jre, action);
     (*android_env)->ReleaseStringUTFChars(android_env, actionId, action);
+    ncapp_note(ANDROID_LOG_INFO, "JVM action: calling onAction");
     jobject value = (*jre)->CallObjectMethod(jre, g_app, g_action, javaAction);
+    ncapp_note(ANDROID_LOG_INFO, "JVM action: onAction returned");
     jstring result = json_result(android_env, jre, value);
-    if (attached) (*g_vm)->DetachCurrentThread(g_vm);
+    ncapp_note(ANDROID_LOG_INFO, "JVM action: response converted for Android");
+    if (attached) {
+        ncapp_note(ANDROID_LOG_INFO, "JVM action: detaching HotSpot thread");
+        (*g_vm)->DetachCurrentThread(g_vm);
+    }
+    ncapp_note(ANDROID_LOG_INFO, "JVM action: JNI method completed");
     return result;
 }
 
@@ -439,8 +454,11 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_callJava2
     jstring jresponse = (*jre)->NewStringUTF(jre, json);
     (*android_env)->ReleaseStringUTFChars(android_env, capability, cap);
     (*android_env)->ReleaseStringUTFChars(android_env, responseJson, json);
+    ncapp_note(ANDROID_LOG_INFO, "JVM host response: calling onHostResponse");
     jobject screen = (*jre)->CallObjectMethod(jre, g_app, method, jcap, jresponse);
+    ncapp_note(ANDROID_LOG_INFO, "JVM host response: onHostResponse returned");
     jstring result = json_result(android_env, jre, screen);
+    ncapp_note(ANDROID_LOG_INFO, "JVM host response: response converted for Android");
     if (attached) (*g_vm)->DetachCurrentThread(g_vm);
     return result;
 }
