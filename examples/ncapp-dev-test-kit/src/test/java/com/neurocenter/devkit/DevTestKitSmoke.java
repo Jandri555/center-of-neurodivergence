@@ -19,6 +19,9 @@ public final class DevTestKitSmoke {
         has(home, "NeuroCenter Dev Test Kit");
         show(home);
 
+        String ping = app.onAction("ping");
+        has(ping, "Respuesta JNI recibida");
+        show(ping);
         String startPage = app.onAction("all");
         has(startPage, "Pruebas guiadas");
         has(startPage, "Paso 1/7");

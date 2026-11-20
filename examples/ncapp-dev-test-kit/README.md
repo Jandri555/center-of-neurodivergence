@@ -1,6 +1,6 @@
 # NeuroCenter Dev Test Kit (.ncapp)
 
-Aplicación **Android, Java 21** (versión **1.1.0**) para diagnosticar el runtime y el sandbox de las `.ncapp`.
+Aplicación **Android, Java 21** (versión **1.2.0**) para diagnosticar el runtime y el sandbox de las `.ncapp`.
 Es independiente de `examples/ncapp-demo`; **no es un APK** y no necesita APIs Android.
 
 ## Qué comprueba
@@ -21,12 +21,13 @@ Es independiente de `examples/ncapp-demo`; **no es un APK** y no necesita APIs A
 2. Descomprime el ZIP de GitHub Actions y selecciona `neurocenter-dev-test-kit.ncapp` en el gestor de aplicaciones de NeuroCenter Android.
 3. Ejecuta «Pruebas guiadas (paso a paso)». Pulsa **Ejecutar** para cada prueba, o **Saltar esta prueba** para continuar sin ejecutarla.
    Nunca se lanzan todas en una única acción: si la JVM aborta, sabremos cuál falló.
-4. Si se produce un aborto, copia el informe de NeuroCenter Android: la última línea `DEVKIT_1.1.0_BEGIN:<prueba>` sin un `END` correspondiente identifica dónde se interrumpió el proceso (no demuestra que esa prueba causara el bug).
-5. Consulta el «Informe» para los resultados obtenidos en esa sesión.
-6. Para probar `agenda.read`, usa el botón «Permisos de Agenda»; repite con el permiso denegado y concedido en el gestor de NeuroCenter.
-7. Para probar `agenda.write`, pulsa «Probar agenda.write» y confirma. Después elimina la tarea `[Dev Test Kit] Tarea de prueba` desde la Agenda.
+4. Antes de las pruebas, pulsa **Probar comunicación JNI**. Esta acción no escribe diagnósticos ni realiza pruebas: permite comprobar la comunicación básica del proceso aislado.
+5. Si se produce un aborto, copia el informe de NeuroCenter Android. En «Fase: Ejecutando ...» figura el nombre de la acción que se estaba ejecutando.
+6. Consulta el «Informe» para los resultados obtenidos en esa sesión.
+7. Para probar `agenda.read`, usa el botón «Permisos de Agenda»; repite con el permiso denegado y concedido en el gestor de NeuroCenter.
+8. Para probar `agenda.write`, pulsa «Probar agenda.write» y confirma. Después elimina la tarea `[Dev Test Kit] Tarea de prueba` desde la Agenda.
 
-Estas modificaciones **no arreglan por sí mismas** un fallo de punteros nativos. Ayudan a aislarlo sin desactivar el etiquetado de punteros del heap.
+En la versión 1.2.0 se eliminó el uso de `System.err.println` y `flush` en las acciones del kit, porque un aborto con «Pointer tag ... was truncated» apareció inmediatamente después de su emisión sin que se ejecutara ninguna prueba. Si el fallo persiste, su origen está en otra operación nativa; no se ha desactivado el etiquetado de punteros de Android.
 
 El kit es **solo móvil** (`NeuroCenter-App-Desktop: false`) para evitar declarar funcionalidades de escritorio que aún no tiene.
 

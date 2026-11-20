@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * isolated HotSpot process. No automatic network calls or host writes.
  */
 public final class DevTestKitMobile {
-    private static final String VERSION = "1.1.0";
+    private static final String VERSION = "1.2.0";
     private static final int MAX_REPORT_CHARS = 7400;
     private static final String SAMPLE = "neurocenter-dev-test-kit/1.0\n";
     private static final String[] SAFE_TESTS = {
@@ -76,6 +76,13 @@ public final class DevTestKitMobile {
         try {
             switch (actionId) {
                 case "home" -> page = "home";
+                case "ping" -> {
+                    // No diagnostic writes, file I/O, threads or probes.
+                    // Tests the ART -> JNI -> HotSpot -> JNI -> ART path.
+                    lastInfo = "Respuesta JNI recibida. onAction(ping) ha terminado. "
+                        + "Si ves este mensaje, la comunicación básica funciona.";
+                    page = "single";
+                }
                 case "report" -> page = "results";
                 case "agenda-menu" -> page = "agenda-menu";
                 case "ask-write" -> page = "write-confirm";
@@ -97,10 +104,9 @@ public final class DevTestKitMobile {
                     // own user-triggered action and visible last-known stage.
                     suiteIndex = 0;
                     lastInfo = "Elige «Ejecutar» para probar una función cada vez. "
-                        + "Si Android aborta, el último DEVKIT_BEGIN del informe nativo "
-                        + "identificará la prueba que estaba activa.";
+                        + "Si Android aborta, el informe de NeuroCenter muestra "
+                        + "la última acción iniciada.";
                     page = "suite";
-                    breadcrumb("SUITE_READY", "guided");
                 }
                 case "suite-next" -> {
                     if (suiteIndex >= 0 && suiteIndex < SAFE_TESTS.length) {
@@ -116,7 +122,6 @@ public final class DevTestKitMobile {
                         results.put(active, new Result("OMITIDO",
                             "Prueba omitida por el usuario (sin ejecutar)."));
                         lastInfo = resultLine(active);
-                        breadcrumb("SKIP", active);
                     }
                     page = suiteIndex >= SAFE_TESTS.length ? "results" : "suite";
                 }
@@ -168,7 +173,8 @@ public final class DevTestKitMobile {
                 + "No cambian la Agenda ni realizan conexiones de red. "
                 + "Las pruebas de red y escritura son manuales.\n\n"
                 + "Completadas: " + results.size() + " | " + shortSummary(),
-            buttons("all", "Pruebas guiadas (paso a paso)", "runtime", "Java y VM",
+            buttons("ping", "Probar comunicación JNI", "all", "Pruebas guiadas (paso a paso)",
+                "runtime", "Java y VM",
                 "classes", "Clases y Java 21", "resources", "Recursos JAR",
                 "threads", "Hilos", "memory", "Memoria", "speed", "Rendimiento",
                 "sandbox", "Aislamiento", "network", "Red local (manual)",
@@ -186,8 +192,8 @@ public final class DevTestKitMobile {
         return screen("Pruebas guiadas — " + progress,
             lastInfo + "\n\n" + last + "\n\nPRÓXIMA: " + progress
                 + "\nPulsa Ejecutar únicamente si deseas iniciar esta prueba."
-                + " Si se cierra la JVM, revisa la última línea DEVKIT_BEGIN "
-                + "de la captura de HotSpot.",
+                + " Si se cierra la JVM, el informe de NeuroCenter muestra "
+                + "el identificador de la acción que se estaba ejecutando.",
             buttons("suite-next", "Ejecutar: " + LABELS.getOrDefault(active, active),
                     "suite-skip", "Saltar esta prueba", "report", "Ver informe",
                     "home", "Inicio"));
@@ -219,18 +225,7 @@ public final class DevTestKitMobile {
         return ok + " OK / " + warnings + " avisos";
     }
 
-    private static void breadcrumb(String stage, String test) {
-        try {
-            // Diagnostic-only marker; no private data or stack traces are printed.
-            System.err.println("DEVKIT_" + VERSION + "_" + stage + ":" + test);
-            System.err.flush();
-        } catch (Throwable ignored) {
-            // Keep the probe operational even if stderr is unavailable.
-        }
-    }
-
     private void runTest(String key) {
-        breadcrumb("BEGIN", key);
         Result result;
         try {
             result = switch (key) {
@@ -249,7 +244,6 @@ public final class DevTestKitMobile {
         }
         results.put(key, result);
         lastInfo = resultLine(key);
-        breadcrumb("END_" + result.state(), key);
     }
 
     private static Result runtime() {
