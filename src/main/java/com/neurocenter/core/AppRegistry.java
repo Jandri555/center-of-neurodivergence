@@ -85,8 +85,11 @@ public final class AppRegistry {
     /** Lee los metadatos del manifiesto y registra un JAR recién instalado. */
     public void registerJar(Path jar) throws IOException, SQLException {
         String filename = jar.getFileName().toString();
-        String fallback = filename.toLowerCase(Locale.ROOT).endsWith(".jar")
-                ? filename.substring(0, filename.length() - 4) : filename;
+        if (!filename.toLowerCase(Locale.ROOT).endsWith(".ncapp")) {
+            throw new IOException("NeuroCenter solo admite aplicaciones .ncapp.");
+        }
+        String fallback = filename.toLowerCase(Locale.ROOT).endsWith(".ncapp")
+                ? filename.substring(0, filename.length() - 6) : filename;
 
         String id = safeId(fallback);
         String name = fallback;

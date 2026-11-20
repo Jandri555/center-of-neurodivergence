@@ -1,0 +1,9 @@
+Manifest-Version: 1.0
+NeuroCenter-App-Id: com.neurocenter.demo
+NeuroCenter-App-Desktop: true
+NeuroCenter-App-Mobile: true
+NeuroCenter-Mobile-Class: com.neurocenter.demo.DemoMobile
+Implementation-Title: Ejemplo Java 21
+Implementation-Version: 1.0
+Implementation-Vendor: NeuroCenter
+

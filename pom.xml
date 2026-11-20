@@ -6,7 +6,7 @@
 
     <groupId>com.neurocenter</groupId>
     <artifactId>center-of-neurodivergence</artifactId>
-    <version>1.0</version>
+    <version>1.1</version>
     <packaging>jar</packaging>
     <name>Center of Neurodivergence</name>
 
@@ -217,6 +217,8 @@
                                             <arg value="${project.build.finalName}.jar"/>
                                             <arg value="--main-class"/>
                                             <arg value="com.neurocenter.Main"/>
+                                            <arg value="--file-associations"/>
+                                            <arg value="${project.basedir}/src/main/jpackage/ncapp.properties"/>
                                             <!-- El runtime incluido se genera con el mismo JDK 21 que compila
                                                  el proyecto; no mezclar módulos de otros JDK. -->
                                             <arg value="--java-options"/>

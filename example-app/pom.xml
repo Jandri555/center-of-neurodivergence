@@ -19,11 +19,12 @@
         <dependency>
             <groupId>com.neurocenter</groupId>
             <artifactId>center-of-neurodivergence</artifactId>
-            <version>1.0</version>
+            <version>1.1</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>
     <build>
+        <finalName>hello-app</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -38,6 +39,24 @@
                         </manifestEntries>
                     </archive>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>package-ncapp</id>
+                        <phase>package</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration>
+                            <target>
+                                <copy file="${project.build.directory}/${project.build.finalName}.jar"
+                                      tofile="${project.build.directory}/${project.build.finalName}.ncapp"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

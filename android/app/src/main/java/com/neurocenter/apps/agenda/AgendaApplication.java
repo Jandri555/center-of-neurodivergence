@@ -2,6 +2,8 @@ package com.neurocenter.apps.agenda;
 
 import android.app.Application;
 import android.os.Build;
+import android.os.Process;
+import android.util.Log;
 
 import com.neurocenter.core.AppPaths;
 
@@ -16,6 +18,14 @@ public final class AgendaApplication extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
+        // Android crea Application también para el proceso de NcappWorkerService.
+        // Su UID aislado no puede acceder a filesDir del anfitrión.
+        // Intentar preparar las carpetas aquí hace fallar el proceso ANTES de onBind().
+        if (Process.isIsolated()) {
+            Log.i("NeuroCenter-Sandbox", "Application iniciada en UID aislado "
+                    + Process.myUid() + "; se omite AppPaths.ensureDirectories.");
+            return;
+        }
         AppPaths.ensureDirectories(this);
     }
 
