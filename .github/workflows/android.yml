@@ -61,14 +61,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: neurocenter-openjdk21-arm64-icholder-experimental
-          run-id: 44728572327
+          run-id: 44737945805
           repository: Jandri555/center-of-neurodivergence
           github-token: ${{ github.token }}
           path: android/.cache
 
       - name: Verify patched JRE 21 archive digest
         run: |
-          echo "6d9ea013b0704f7d81008094331ca0886cda86e2f5b49fb03648ef29a7729b4d  android/.cache/jre21-android-arm64-20261120-release.tar.xz" | sha256sum -c -
+          echo "90ba39d0a204a1a525dc1bb4873d9e163984181668ff09678c84a71eedd9605c  android/.cache/jre21-android-arm64-20261120-release.tar.xz" | sha256sum -c -
 
       - name: Build both APK variants with bundled patched OpenJDK 21 ARM64
         env:
@@ -88,6 +88,20 @@ jobs:
           jvm = Path("android/app/build/generated/java21/jniLibs/arm64-v8a/libjvm.so").read_bytes()
           assert b"NEUROCENTER_JRE_HOME" in jvm
           assert b"NeuroCenter CompiledICHolder mapping" in jvm
+          # The Java-side ImageReaderFactory.class is verified inside the
+          # JIMAGE, not by searching the native HotSpot binary for Java text.
+          import subprocess
+          image = Path("android/app/build/generated/java21/jniLibs/arm64-v8a/libnm.so")
+          output = Path("android/app/build/generated/java21/cldr-image-check")
+          output.mkdir(parents=True, exist_ok=True)
+          subprocess.run(["jimage", "extract", "--dir", str(output),
+              "--include", "glob:**/jdk/internal/jimage/ImageReaderFactory.class",
+              str(image)], check=True)
+          reader = output / "java.base/jdk/internal/jimage/ImageReaderFactory.class"
+          assert reader.is_file(), "ImageReaderFactory class missing from JIMAGE"
+          assert b"NEUROCENTER_JRE_HOME" in reader.read_bytes(), "ImageReaderFactory CLDR patch missing"
+          assert b"libnm.so" in reader.read_bytes(), "Java module image path patch missing"
+          print("CLDR ImageReaderFactory path patch included in APK JIMAGE")
           assert b"%/libnm.so" in jvm
           assert b"%s%slibnm.so" in jvm
           assert b"%/lib/modules" not in jvm

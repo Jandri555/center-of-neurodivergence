@@ -19,9 +19,9 @@ import sys
 import tarfile
 import urllib.request
 
-VERSION = "21-neurocenter-20261120-icholder"
-# Reproducible pinned sha256 of patched HotSpot 21 archive from Actions run 44728572327.
-EXPECTED_SHA256 = "6d9ea013b0704f7d81008094331ca0886cda86e2f5b49fb03648ef29a7729b4d"
+VERSION = "21-neurocenter-20261120-cldr"
+# Reproducible pinned sha256 of patched HotSpot 21 archive from Actions run 44737945805.
+EXPECTED_SHA256 = "90ba39d0a204a1a525dc1bb4873d9e163984181668ff09678c84a71eedd9605c"
 LIMIT_ARCHIVE = 70 * 1024 * 1024
 LIMIT_UNPACKED = 800 * 1024 * 1024
 LIMIT_MEMBERS = 16000
@@ -42,7 +42,7 @@ def fetch(cache):
         raise FileNotFoundError(
             "Falta OpenJDK 21 parcheado. Descarga el artefacto "
             "'neurocenter-openjdk21-arm64-icholder-experimental' de GitHub Actions "
-            "(run 44728572327) y establece NEUROCENTER_JRE21_ARCHIVE "
+            "(run 44737945805) y establece NEUROCENTER_JRE21_ARCHIVE "
             "con la ruta al tar.xz, o guárdalo en: " + str(cache))
     observed = digest_file(archive)
     if observed != EXPECTED_SHA256:
