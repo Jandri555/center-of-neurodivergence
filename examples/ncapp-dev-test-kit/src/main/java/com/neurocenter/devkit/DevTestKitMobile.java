@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * isolated HotSpot process. No automatic network calls or host writes.
  */
 public final class DevTestKitMobile {
-    private static final String VERSION = "1.2.0";
+    private static final String VERSION = "1.3.0";
     private static final int MAX_REPORT_CHARS = 7400;
     private static final String SAMPLE = "neurocenter-dev-test-kit/1.0\n";
     private static final String[] SAFE_TESTS = {
@@ -36,7 +36,7 @@ public final class DevTestKitMobile {
         "resources", "Recursos del JAR", "threads", "Hilos",
         "memory", "Memoria", "speed", "Rendimiento",
         "sandbox", "Aislamiento", "network", "Red local",
-        "agenda", "Agenda (lectura)"
+        "agenda", "Agenda (lectura)", "locale", "Formato y configuración regional"
     );
 
     private record Result(String state, String message) { }
@@ -126,7 +126,7 @@ public final class DevTestKitMobile {
                     page = suiteIndex >= SAFE_TESTS.length ? "results" : "suite";
                 }
                 case "runtime", "classes", "resources", "threads", "memory",
-                     "speed", "sandbox", "network" -> {
+                     "speed", "sandbox", "network", "locale" -> {
                     runTest(actionId);
                     page = "single";
                 }
@@ -203,10 +203,11 @@ public final class DevTestKitMobile {
         StringBuilder text = new StringBuilder("NeuroCenter Dev Test Kit " + VERSION + "\n"
                 + "Informe local (no se envía nada automáticamente).\n\n");
         for (String key : SAFE_TESTS) text.append(resultLine(key)).append("\n\n");
-        text.append(resultLine("network")).append("\n\n")
+        text.append(resultLine("locale")).append("\n\n")
+            .append(resultLine("network")).append("\n\n")
             .append(resultLine("agenda"));
         return screen("Informe de diagnóstico", text.toString(),
-            buttons("all", "Repetir pruebas guiadas", "home", "Inicio"));
+            buttons("all", "Repetir pruebas guiadas", "locale", "Probar formato CLDR", "home", "Inicio"));
     }
 
     private String resultLine(String key) {
@@ -237,6 +238,7 @@ public final class DevTestKitMobile {
                 case "speed" -> speed();
                 case "sandbox" -> sandbox();
                 case "network" -> network();
+                case "locale" -> locale();
                 default -> new Result("ERROR", "Prueba desconocida");
             };
         } catch (Throwable problem) {
@@ -276,7 +278,7 @@ public final class DevTestKitMobile {
     }
 
     private Result resources() throws Exception {
-        try (InputStream in = getClass().getResourceAsStream("/dev-test-kit/probe.txt")) {
+        try (InputStream in = getClass().getClassLoader().getResourceAsStream("dev-test-kit/probe.txt")) {
             if (in == null) return new Result("ERROR", "No se encuentra el recurso empaquetado.");
             byte[] bytes = in.readNBytes(1024);
             String actual = new String(bytes, StandardCharsets.UTF_8);
@@ -319,7 +321,7 @@ public final class DevTestKitMobile {
         long elapsed = System.nanoTime() - start;
         return new Result(elapsed >= 0 && sum > 0 ? "OK" : "ERROR",
             "Operaciones aritméticas: 150.000\nTiempo: "
-                + String.format(java.util.Locale.ROOT, "%.2f ms", elapsed / 1_000_000.0)
+                + fixedHundredths(elapsed) + " ms"
                 + "\nChecksum: " + sum
                 + "\nMedición orientativa, NO un benchmark reproducible.");
     }
@@ -378,14 +380,40 @@ public final class DevTestKitMobile {
     }
 
     private static String mib(long bytes) {
-        return String.format(java.util.Locale.ROOT, "%.1f", bytes / 1048576.0);
+        long tenths = (bytes * 10L + 524288L) / 1048576L;
+        return (tenths / 10) + "." + (tenths % 10);
+    }
+
+    /** Decimal output without Formatter/CLDR, which may be unavailable on Android. */
+    private static String fixedHundredths(long nanoseconds) {
+        long hundredths = (nanoseconds + 5_000L) / 10_000L;
+        long fractional = hundredths % 100;
+        return (hundredths / 100) + "." + (fractional < 10 ? "0" : "") + fractional;
+    }
+
+    /** Deliberately separate CLDR diagnostics from unrelated performance tests. */
+    private static Result locale() {
+        String formatted = String.format(java.util.Locale.ROOT, "%.2f", 1.5);
+        return new Result("1.50".equals(formatted) ? "OK" : "AVISO",
+                "Formatter / CLDR: " + formatted);
     }
 
     private static String safeError(Throwable error) {
-        String message = String.valueOf(error.getMessage());
-        // Never print exception paths or full stack traces in normal UI.
-        if (message.length() > 160) message = message.substring(0, 160) + "…";
-        return error.getClass().getSimpleName() + (message.equals("null") ? "" : ": " + message);
+        // Show a bounded chain of causes for class initialization failures.
+        // Never include full stack traces in the UI.
+        StringBuilder summary = new StringBuilder();
+        for (int depth = 0; error != null && depth < 4; depth++) {
+            if (depth > 0) summary.append(" <- ");
+            summary.append(error.getClass().getSimpleName());
+            String message = error.getMessage();
+            if (message != null && !message.isEmpty()) {
+                if (message.length() > 120) message = message.substring(0, 120) + "…";
+                summary.append(": ").append(message.replace('\n', ' ').replace('\r', ' '));
+            }
+            if (error.getCause() == error) break;
+            error = error.getCause();
+        }
+        return summary.toString();
     }
 
     private static String screen(String title, String content, List<String[]> actions) {
@@ -423,7 +451,12 @@ public final class DevTestKitMobile {
                 case '\r' -> out.append("\\r");
                 case '\t' -> out.append("\\t");
                 default -> {
-                    if (c < 0x20) out.append(String.format("\\u%04x", (int) c));
+                    if (c < 0x20) {
+                        String hex = Integer.toHexString(c);
+                        out.append("\\u");
+                        for (int pad = hex.length(); pad < 4; pad++) out.append('0');
+                        out.append(hex);
+                    }
                     else out.append(c);
                 }
             }
