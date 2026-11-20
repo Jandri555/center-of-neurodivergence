@@ -95,16 +95,18 @@ public final class StreamingJarClassLoader extends ClassLoader {
 
     @Override
     public InputStream getResourceAsStream(String name) {
-        InputStream parentResource = super.getResourceAsStream(name);
-        if (parentResource != null) return parentResource;
         if (name == null || name.isEmpty() || name.startsWith("/") || name.contains("..")) {
             return null;
         }
+        // The parent loader may initialize broken/incomplete JRT URL providers
+        // on mobile JDKs. Search the verified ncapp for its own resources first.
+        // Java class loading still delegates to the parent in loadClass().
         try {
             byte[] data = entryBytes(name, MAX_RESOURCE_BYTES);
-            return data == null ? null : new ByteArrayInputStream(data);
+            if (data != null) return new ByteArrayInputStream(data);
         } catch (IOException ignored) {
             return null;
         }
+        return super.getResourceAsStream(name);
     }
 }
