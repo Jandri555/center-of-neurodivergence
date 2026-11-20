@@ -78,7 +78,11 @@ Una interfaz puede devolver una petición en lugar de una pantalla:
 ~~~
 
 El proceso principal de NeuroCenter verifica el permiso actual de ese
-paquete (identificador y SHA-256) y ejecuta la operación si está concedida.
+paquete (identificador y SHA-256). Para acceder a Agenda exige ADEMÁS que
+un plugin Agenda Bridge de confianza esté instalado y habilitado y haya
+registrado su servicio. La concesión del permiso por sí sola NO da acceso.
+La Agenda integrada funciona directamente, sin permisos adicionales.
+El núcleo nunca lee ni escribe AgendaStore en nombre de las apps externas.
 Después la app Java 21 recibe:
 
 ~~~java
@@ -86,8 +90,17 @@ String onHostResponse(String capability, String responseJson);
 ~~~
 
 La respuesta contiene ok:true y los datos, o bien ok:false y error.
-Se admiten de momento agenda.read/list y agenda.write/addTask
+El contrato del plugin admite agenda.read/list y agenda.write/addTask
 (campos title, date y time ISO opcionales y notes opcional).
 Revocar el permiso en el gestor bloquea las siguientes operaciones.
 Las demás capacidades todavía no tienen puente móvil. El proceso
 aislado no puede acceder a AgendaStore por su cuenta.
+
+## Estado del soporte .ncp en Android
+
+El punto de extensión `AndroidPluginServices.AgendaBridge` existe y por defecto
+no tiene implementación registrada. **El cargador/instalador de plugins .ncp
+para Android todavía no está implementado.** Hasta incorporarlo, los accesos
+externos a la Agenda se deniegan aunque la app tenga el permiso concedido.
+El mismo requisito se comprueba para APK externas que usen el puente Binder.
+Los plugins de escritorio son independientes y no se cargan en Android.

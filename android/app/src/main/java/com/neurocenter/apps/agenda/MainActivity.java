@@ -450,9 +450,9 @@ public final class MainActivity extends Activity {
         options.setPadding(dp(18), dp(8), dp(18), dp(8));
         java.util.Map<String, CheckBox> controls = new java.util.LinkedHashMap<>();
         addCapabilityOption(options, controls, NeuroCenterCapabilities.AGENDA_READ,
-                "Leer la Agenda", "Consultar tareas y eventos de NeuroCenter.", current);
+                "Leer la Agenda", "Requiere el plugin Agenda Bridge instalado y habilitado. El permiso no basta.", current);
         addCapabilityOption(options, controls, NeuroCenterCapabilities.AGENDA_WRITE,
-                "Modificar la Agenda", "Crear o eliminar tareas y eventos.", current);
+                "Modificar la Agenda", "Requiere el plugin Agenda Bridge instalado y habilitado. El permiso no basta.", current);
         addCapabilityOption(options, controls, NeuroCenterCapabilities.CREDENTIALS_ACCESS,
                 "Credenciales", "Acceder únicamente a las credenciales propias de la app.", current);
         addCapabilityOption(options, controls, NeuroCenterCapabilities.NETWORK_CONNECT,
@@ -473,8 +473,8 @@ public final class MainActivity extends Activity {
                     try {
                         NcappPermissionStore.setGranted(this, app, updated);
                         dialog.dismiss();
-                        Toast.makeText(this, "Preferencias guardadas. El proceso Java"
-                                + " sigue aislado; aún no hay puente de servicios privilegiados.",
+                        Toast.makeText(this, "Permisos guardados. El acceso externo a Agenda"
+                                + " también requiere instalar y habilitar Agenda Bridge.",
                                 Toast.LENGTH_LONG).show();
                     } catch (RuntimeException ex) {
                         Toast.makeText(this, "No se guardaron los permisos: " + ex.getMessage(),

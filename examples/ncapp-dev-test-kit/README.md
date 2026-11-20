@@ -10,7 +10,7 @@ Es independiente de `examples/ncapp-demo`; **no es un APK** y no necesita APIs A
 - Creación de hilos, asignación de 256 KiB de memoria y cálculo de rendimiento breve.
 - Indicadores de aislamiento (`/proc/self/status`) e intento de listar **solo** el directorio privado estándar del anfitrión; nunca lee ni imprime archivos.
 - Test de conexión **solo a `127.0.0.1:9`**, manual, sin envío de datos. Un rechazo TCP no demuestra ausencia de permisos de red.
-- API de Agenda: `agenda.read` sin mostrar tareas privadas y `agenda.write` con **confirmación explícita**. La escritura crea una tarea real y exige borrarla manualmente. Ninguna de las dos se ejecuta en «Pruebas seguras».
+- API de Agenda (solo cuando existe el plugin **Agenda Bridge** instalado y habilitado): `agenda.read` sin mostrar tareas privadas y `agenda.write` con **confirmación explícita**. La escritura crea una tarea real y exige borrarla manualmente. Ninguna de las dos se ejecuta en «Pruebas seguras».
 - Prueba independiente de formato regional/CLDR, sin interferir en las medidas de memoria o rendimiento.
 - Informe local con resultados `OK`, `AVISO`, `ERROR` o `ALERTA` y una cadena limitada de causas de errores Java. El resultado no se transmite a ningún servidor.
 
@@ -56,3 +56,7 @@ El workflow dedicado compila, ejecuta pruebas del contrato JSON y sube el `.ncap
 - Los errores muestran hasta cuatro niveles de causas para facilitar diagnóstico sin imprimir trazas completas.
 
 Si la prueba de recursos sigue fallando, copia el mensaje de error completo con causas. La diferencia entre `ExceptionInInitializerError`, `NoClassDefFoundError` y `UnsatisfiedLinkError` determinará la corrección necesaria.
+
+> Desde NeuroCenter Android 1.6.18, un permiso concedido no activa Agenda:
+> el acceso externo requiere también el plugin Agenda Bridge. Hasta desarrollar
+> el cargador de .ncp en Android, estas pruebas se deniegan por diseño.

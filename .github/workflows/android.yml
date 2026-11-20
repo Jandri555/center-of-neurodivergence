@@ -57,6 +57,14 @@ jobs:
         with:
           gradle-version: "9.6.0"
 
+      - name: Test plugin registry fails closed by default
+        run: |
+          mkdir -p android/app/build/plugin-contract-test
+          javac --release 17 -d android/app/build/plugin-contract-test \
+            android/app/src/main/java/com/neurocenter/core/AndroidPluginServices.java \
+            android/tests/AndroidPluginServicesSmoke.java
+          java -cp android/app/build/plugin-contract-test AndroidPluginServicesSmoke
+
       - name: Download pinned patched OpenJDK 21 ARM64 artifact
         uses: actions/download-artifact@v4
         with:

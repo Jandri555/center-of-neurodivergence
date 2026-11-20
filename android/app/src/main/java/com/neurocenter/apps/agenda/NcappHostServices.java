@@ -2,10 +2,10 @@ package com.neurocenter.apps.agenda;
 
 import android.content.Context;
 
-import com.google.gson.Gson;
 import com.neurocenter.api.NeuroCenterCapabilities;
 import com.neurocenter.core.NcappManager;
 import com.neurocenter.core.NcappPermissionStore;
+import com.neurocenter.core.AndroidPluginServices;
 
 import org.json.JSONObject;
 
@@ -17,8 +17,6 @@ import java.time.LocalTime;
  * anfitrión; ningún descriptor de AgendaStore se entrega al UID aislado.
  */
 public final class NcappHostServices {
-    private static final Gson GSON = new Gson();
-
     private NcappHostServices() {}
 
     public static String handle(Context context, NcappManager.InstalledApp app,
@@ -40,10 +38,10 @@ public final class NcappHostServices {
             if (!NcappPermissionStore.has(context, app, capability)) {
                 throw new SecurityException("Permiso «" + capability + "» denegado por NeuroCenter.");
             }
-            AgendaStore store = ((AgendaApplication) context.getApplicationContext()).getAgendaStore();
+            AndroidPluginServices.AgendaBridge agenda = AndroidPluginServices.requireAgendaBridge();
             if (NeuroCenterCapabilities.AGENDA_READ.equals(capability)
                     && "list".equals(operation)) {
-                String entries = GSON.toJson(store.all());
+                String entries = agenda.getAgendaJson();
                 if (entries.length() > 45000) {
                     throw new IllegalStateException("Demasiadas entradas para la API inicial.");
                 }
@@ -60,17 +58,9 @@ public final class NcappHostServices {
                 }
                 if (!date.isEmpty()) LocalDate.parse(date);
                 if (!time.isEmpty()) LocalTime.parse(time);
-                AgendaEntry task = new AgendaEntry();
-                task.type = AgendaEntry.TASK;
-                task.title = title;
-                task.notes = notes;
-                task.date = date.isEmpty() ? null : date;
-                task.time = time.isEmpty() ? null : time;
-                synchronized (store) {
-                    store.add(task);
-                    store.save();
-                }
-                return new JSONObject().put("ok", true).put("id", task.id).toString();
+                String taskId = agenda.addTask(title, date.isEmpty() ? null : date,
+                        time.isEmpty() ? null : time, notes);
+                return new JSONObject().put("ok", true).put("id", taskId).toString();
             }
             throw new UnsupportedOperationException("Operación no implementada: "
                     + capability + "/" + operation);
