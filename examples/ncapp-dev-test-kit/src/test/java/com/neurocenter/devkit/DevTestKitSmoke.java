@@ -40,6 +40,9 @@ public final class DevTestKitSmoke {
         has(safe, "Recursos del JAR: OK");
         has(safe, "Hilos: OK");
         has(safe, "Memoria: OK");
+        has(safe, "Rendimiento: OK");
+        show(app.onAction("locale"));
+        has(app.onAction("report"), "Formato y configuración regional: OK");
         show(safe);
         String skipPage = app.onAction("all");
         has(skipPage, "Paso 1/7");

@@ -4,6 +4,6 @@ NeuroCenter-App-Desktop: false
 NeuroCenter-App-Mobile: true
 NeuroCenter-Mobile-Class: com.neurocenter.devkit.DevTestKitMobile
 Implementation-Title: NeuroCenter Dev Test Kit
-Implementation-Version: 1.2.0
+Implementation-Version: 1.3.0
 Implementation-Vendor: NeuroCenter
 

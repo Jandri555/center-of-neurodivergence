@@ -1,6 +1,6 @@
 # NeuroCenter Dev Test Kit (.ncapp)
 
-Aplicación **Android, Java 21** (versión **1.2.0**) para diagnosticar el runtime y el sandbox de las `.ncapp`.
+Aplicación **Android, Java 21** (versión **1.3.0**) para diagnosticar el runtime y el sandbox de las `.ncapp`.
 Es independiente de `examples/ncapp-demo`; **no es un APK** y no necesita APIs Android.
 
 ## Qué comprueba
@@ -11,7 +11,8 @@ Es independiente de `examples/ncapp-demo`; **no es un APK** y no necesita APIs A
 - Indicadores de aislamiento (`/proc/self/status`) e intento de listar **solo** el directorio privado estándar del anfitrión; nunca lee ni imprime archivos.
 - Test de conexión **solo a `127.0.0.1:9`**, manual, sin envío de datos. Un rechazo TCP no demuestra ausencia de permisos de red.
 - API de Agenda: `agenda.read` sin mostrar tareas privadas y `agenda.write` con **confirmación explícita**. La escritura crea una tarea real y exige borrarla manualmente. Ninguna de las dos se ejecuta en «Pruebas seguras».
-- Informe local con resultados `OK`, `AVISO`, `ERROR` o `ALERTA`. El resultado no se transmite a ningún servidor.
+- Prueba independiente de formato regional/CLDR, sin interferir en las medidas de memoria o rendimiento.
+- Informe local con resultados `OK`, `AVISO`, `ERROR` o `ALERTA` y una cadena limitada de causas de errores Java. El resultado no se transmite a ningún servidor.
 
 **Importante:** Las pruebas son orientativas, no una auditoría de seguridad. En especial, un error por ruta inexistente no demuestra bloqueo SELinux. No sustituye la verificación de UID, Binder ni los ensayos de permisos en Android.
 
@@ -46,3 +47,12 @@ jar --create --file dist/neurocenter-dev-test-kit.ncapp \
 ```
 
 El workflow dedicado compila, ejecuta pruebas del contrato JSON y sube el `.ncapp` como artefacto independiente. Para cambiar el formato de UI o introducir más capacidades deberá actualizarse el anfitrión y el kit de forma coordinada.
+
+## Correcciones de la 1.3.0
+
+- Las pruebas de **memoria** y **rendimiento** ya no dependen de `java.util.Formatter` ni CLDR. Así no informan falsos errores cuando faltan los adaptadores regionales del JRE Android.
+- La prueba **Formato CLDR** está disponible en **Informe**, de forma manual y separada; ese posible defecto del JDK sigue visible.
+- La prueba de **recursos** usa explícitamente el ClassLoader de la .ncapp. NeuroCenter Android 1.6.16 prioriza el recurso empaquetado antes del cargador padre; comprueba de nuevo si se resuelve `ExceptionInInitializerError`.
+- Los errores muestran hasta cuatro niveles de causas para facilitar diagnóstico sin imprimir trazas completas.
+
+Si la prueba de recursos sigue fallando, copia el mensaje de error completo con causas. La diferencia entre `ExceptionInInitializerError`, `NoClassDefFoundError` y `UnsatisfiedLinkError` determinará la corrección necesaria.
