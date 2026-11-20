@@ -273,7 +273,8 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
         {.optionString = "-Xmx128m"}
 #ifdef NEUROCENTER_DEBUG_DIAGNOSTICS
         ,{.optionString = "vfprintf", .extraInfo = (void *)hotspot_vfprintf}
-        ,{.optionString = "-Xlog:gc=info"}
+         ,{.optionString = "-Xlog:gc=info"}
+        ,{.optionString = "-XX:+UseSerialGC"}
 #endif
     };
     JavaVMInitArgs args = {
@@ -283,6 +284,10 @@ JNIEXPORT jstring JNICALL Java_com_neurocenter_core_NcappWorkerService_launchJav
         .ignoreUnrecognized = JNI_FALSE
     };
     JNIEnv *jre = NULL;
+#ifdef NEUROCENTER_DEBUG_DIAGNOSTICS
+    ncapp_note(ANDROID_LOG_INFO,
+               "DIAGNÓSTICO GC: Serial GC activado; G1 desactivado solo en DEBUG (sin modificar etiquetas nativas)");
+#endif
     ncapp_note(ANDROID_LOG_INFO, "JVM stage 4: entrando en JNI_CreateJavaVM");
     jint status = create(&g_vm, (void**)&jre, &args);
     ncapp_note(ANDROID_LOG_INFO, "JVM stage 5: JNI_CreateJavaVM retornó %d", status);
