@@ -40,8 +40,11 @@ jobs:
           git -C vendor checkout 196da32d80fe96d6967ca1c154f102cff0dfc389
           cp android/openjdk21/patches/90_neurocenter_native_jimage_home.diff \
             vendor/patches/jre_21/android/
+          cp android/openjdk21/patches/91_neurocenter_icholder_android_heap_tag.diff \
+            vendor/patches/jre_21/android/
           echo "Patch:"
           sha256sum vendor/patches/jre_21/android/90_neurocenter_native_jimage_home.diff
+          sha256sum vendor/patches/jre_21/android/91_neurocenter_icholder_android_heap_tag.diff
 
       - name: Build JRE 21 ARM64 from patched source
         working-directory: vendor
@@ -57,13 +60,14 @@ jobs:
           test ${#files[@]} -eq 1
           mkdir -p extracted
           tar -xJf "${files[0]}" -C extracted
-          find extracted -name libjvm.so -print -exec sh -c \
-            'strings "$1" | grep -F NEUROCENTER_JRE_HOME' sh {} \;
+          test -s extracted/lib/server/libjvm.so
+          strings extracted/lib/server/libjvm.so | grep -F NEUROCENTER_JRE_HOME
+          strings extracted/lib/server/libjvm.so | grep -F 'NeuroCenter CompiledICHolder mapping'
 
       - name: Upload experimental OpenJDK 21 runtime
         uses: actions/upload-artifact@v4
         with:
-          name: neurocenter-openjdk21-arm64-experimental
+          name: neurocenter-openjdk21-arm64-icholder-experimental
           path: vendor/jre21-android-arm64-*.tar.xz
           if-no-files-found: error
           retention-days: 14
