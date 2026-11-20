@@ -1,0 +1,65 @@
+diff --git a/src/hotspot/share/oops/compiledICHolder.hpp b/src/hotspot/share/oops/compiledICHolder.hpp
+--- a/src/hotspot/share/oops/compiledICHolder.hpp
++++ b/src/hotspot/share/oops/compiledICHolder.hpp
+@@ -56,6 +56,16 @@
+   bool _is_metadata_method;
+ 
+  public:
++#if defined(__ANDROID__) && defined(__aarch64__)
++  // AArch64's compiled inline caches store these holders in patchable
++  // 48-bit immediates. Bionic malloc returns top-byte-tagged pointers;
++  // losing that tag before FreeHeap/free() causes an Android abort.
++  // Allocate just these holders from an anonymous, non-executable mapping.
++  // Do not change global heap pointer tagging or the Android sandbox.
++  void* operator new(size_t size);
++  void operator delete(void* ptr);
++#endif
++
+   // Constructor
+   CompiledICHolder(Metadata* metadata, Klass* klass, bool is_method = true);
+   ~CompiledICHolder() NOT_DEBUG_RETURN;
+diff --git a/src/hotspot/share/oops/compiledICHolder.cpp b/src/hotspot/share/oops/compiledICHolder.cpp
+--- a/src/hotspot/share/oops/compiledICHolder.cpp
++++ b/src/hotspot/share/oops/compiledICHolder.cpp
+@@ -25,6 +25,9 @@
+ #include "precompiled.hpp"
+ #include "oops/compiledICHolder.hpp"
+ #include "runtime/atomic.hpp"
++#if defined(__ANDROID__) && defined(__aarch64__)
++#include <sys/mman.h>
++#endif
+ 
+ #ifdef ASSERT
+ volatile int CompiledICHolder::_live_count;
+@@ -30,6 +33,31 @@
+ volatile int CompiledICHolder::_live_count;
+ volatile int CompiledICHolder::_live_not_claimed_count;
+ #endif
++#if defined(__ANDROID__) && defined(__aarch64__)
++void* CompiledICHolder::operator new(size_t size) {
++  // Scoped Android compatibility: Bionic's top-byte heap tag cannot
++  // round-trip through the existing 48-bit AArch64 inline-cache encoding.
++  // mmap returns an untagged, page-backed pointer without allowing execution.
++  void* ptr = ::mmap(nullptr, size, PROT_READ | PROT_WRITE,
++                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
++  if (ptr == MAP_FAILED) {
++    vm_exit_out_of_memory(size, OOM_MMAP_ERROR,
++                          "NeuroCenter CompiledICHolder mapping");
++  }
++  // Fail explicitly on a future kernel with addresses beyond the
++  // encoding's 48-bit range, rather than silently truncating them.
++  guarantee(((uintptr_t)ptr >> 48) == 0, "CompiledICHolder address >48 bits");
++  return ptr;
++}
++
++void CompiledICHolder::operator delete(void* ptr) {
++  if (ptr != nullptr) {
++    int status = ::munmap(ptr, sizeof(CompiledICHolder));
++    guarantee(status == 0, "CompiledICHolder unmap failed");
++  }
++}
++#endif
++
+ 
+ CompiledICHolder::CompiledICHolder(Metadata* metadata, Klass* klass, bool is_method)
+   : _holder_metadata(metadata), _holder_klass(klass), _is_metadata_method(is_method) {
