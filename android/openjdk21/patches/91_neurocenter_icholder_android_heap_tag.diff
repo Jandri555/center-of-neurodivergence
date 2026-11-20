@@ -21,7 +21,7 @@ diff --git a/src/hotspot/share/oops/compiledICHolder.hpp b/src/hotspot/share/oop
 diff --git a/src/hotspot/share/oops/compiledICHolder.cpp b/src/hotspot/share/oops/compiledICHolder.cpp
 --- a/src/hotspot/share/oops/compiledICHolder.cpp
 +++ b/src/hotspot/share/oops/compiledICHolder.cpp
-@@ -25,6 +25,9 @@
+@@ -25,11 +25,39 @@
  #include "precompiled.hpp"
  #include "oops/compiledICHolder.hpp"
  #include "runtime/atomic.hpp"
@@ -30,8 +30,6 @@ diff --git a/src/hotspot/share/oops/compiledICHolder.cpp b/src/hotspot/share/oop
 +#endif
  
  #ifdef ASSERT
- volatile int CompiledICHolder::_live_count;
-@@ -30,6 +33,31 @@
  volatile int CompiledICHolder::_live_count;
  volatile int CompiledICHolder::_live_not_claimed_count;
  #endif
