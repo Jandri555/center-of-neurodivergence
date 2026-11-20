@@ -1,7 +1,7 @@
 diff --git a/src/java.base/share/classes/jdk/internal/jimage/ImageReaderFactory.java b/src/java.base/share/classes/jdk/internal/jimage/ImageReaderFactory.java
 --- a/src/java.base/share/classes/jdk/internal/jimage/ImageReaderFactory.java
 +++ b/src/java.base/share/classes/jdk/internal/jimage/ImageReaderFactory.java
-@@ -44,8 +44,21 @@
+@@ -47,7 +47,20 @@
      private ImageReaderFactory() {}
 
      private static final String JAVA_HOME = System.getProperty("java.home");
