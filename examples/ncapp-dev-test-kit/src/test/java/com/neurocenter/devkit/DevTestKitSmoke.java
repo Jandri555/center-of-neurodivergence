@@ -19,13 +19,29 @@ public final class DevTestKitSmoke {
         has(home, "NeuroCenter Dev Test Kit");
         show(home);
 
-        String safe = app.onAction("all");
-        has(safe, "Informe de diagnóstico");
+        String startPage = app.onAction("all");
+        has(startPage, "Pruebas guiadas");
+        has(startPage, "Paso 1/7");
+        if (startPage.contains("Clases y Java 21: OK")) {
+            throw new AssertionError("Suite unexpectedly ran all probes in one call");
+        }
+        show(startPage);
+        for (int i = 0; i < 7; i++) {
+            String result = app.onAction("suite-next");
+            if (i < 6) has(result, "Paso " + (i + 2) + "/7");
+            else has(result, "Informe de diagnóstico");
+            show(result);
+        }
+        String safe = app.onAction("report");
         has(safe, "Clases y Java 21: OK");
         has(safe, "Recursos del JAR: OK");
         has(safe, "Hilos: OK");
         has(safe, "Memoria: OK");
         show(safe);
+        String skipPage = app.onAction("all");
+        has(skipPage, "Paso 1/7");
+        has(app.onAction("suite-skip"), "Paso 2/7");
+        show(app.onAction("suite-next"));
 
         for (String action : new String[]{"runtime", "classes", "resources", "threads", "memory",
                 "speed", "sandbox", "home", "report", "agenda-menu"}) {

@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * isolated HotSpot process. No automatic network calls or host writes.
  */
 public final class DevTestKitMobile {
-    private static final String VERSION = "1.0.0";
+    private static final String VERSION = "1.1.0";
     private static final int MAX_REPORT_CHARS = 7400;
     private static final String SAMPLE = "neurocenter-dev-test-kit/1.0\n";
     private static final String[] SAFE_TESTS = {
@@ -45,12 +45,14 @@ public final class DevTestKitMobile {
     private String page = "home";
     private String pendingHost = "";
     private String lastInfo = "Todavía no se han ejecutado pruebas.";
+    private int suiteIndex = -1;
 
     public DevTestKitMobile() { }
 
     public String renderJson() {
         return switch (page) {
             case "results" -> resultsPage();
+            case "suite" -> suitePage();
             case "write-confirm" -> screen("Confirmar prueba de escritura",
                 "Esta prueba AÑADE una tarea real a la Agenda de NeuroCenter, "
                     + "si el permiso agenda.write está concedido. "
@@ -90,8 +92,33 @@ public final class DevTestKitMobile {
                     return "{\"hostRequest\":{\"capability\":\"agenda.read\",\"operation\":\"list\"}}";
                 }
                 case "all" -> {
-                    for (String test : SAFE_TESTS) runTest(test);
-                    page = "results";
+                    // Never execute all probes in one native JVM call. A fatal
+                    // SIGABRT cannot be caught in Java, so each probe needs its
+                    // own user-triggered action and visible last-known stage.
+                    suiteIndex = 0;
+                    lastInfo = "Elige «Ejecutar» para probar una función cada vez. "
+                        + "Si Android aborta, el último DEVKIT_BEGIN del informe nativo "
+                        + "identificará la prueba que estaba activa.";
+                    page = "suite";
+                    breadcrumb("SUITE_READY", "guided");
+                }
+                case "suite-next" -> {
+                    if (suiteIndex >= 0 && suiteIndex < SAFE_TESTS.length) {
+                        String active = SAFE_TESTS[suiteIndex];
+                        runTest(active);
+                        suiteIndex++;
+                    }
+                    page = suiteIndex >= SAFE_TESTS.length ? "results" : "suite";
+                }
+                case "suite-skip" -> {
+                    if (suiteIndex >= 0 && suiteIndex < SAFE_TESTS.length) {
+                        String active = SAFE_TESTS[suiteIndex++];
+                        results.put(active, new Result("OMITIDO",
+                            "Prueba omitida por el usuario (sin ejecutar)."));
+                        lastInfo = resultLine(active);
+                        breadcrumb("SKIP", active);
+                    }
+                    page = suiteIndex >= SAFE_TESTS.length ? "results" : "suite";
                 }
                 case "runtime", "classes", "resources", "threads", "memory",
                      "speed", "sandbox", "network" -> {
@@ -137,14 +164,33 @@ public final class DevTestKitMobile {
     private String homePage() {
         return screen("NeuroCenter Dev Test Kit",
             "Versión " + VERSION + " | Java 21 | Pruebas para .ncapp Android\n\n"
-                + "Pruebas seguras: no cambian la Agenda ni realizan conexiones de red. "
-                + "Las pruebas de red y escritura requieren pulsar sus botones.\n\n"
+                + "Pruebas guiadas: una prueba por pulsación para aislar cierres nativos. "
+                + "No cambian la Agenda ni realizan conexiones de red. "
+                + "Las pruebas de red y escritura son manuales.\n\n"
                 + "Completadas: " + results.size() + " | " + shortSummary(),
-            buttons("all", "Ejecutar pruebas seguras", "runtime", "Java y VM",
+            buttons("all", "Pruebas guiadas (paso a paso)", "runtime", "Java y VM",
                 "classes", "Clases y Java 21", "resources", "Recursos JAR",
                 "threads", "Hilos", "memory", "Memoria", "speed", "Rendimiento",
                 "sandbox", "Aislamiento", "network", "Red local (manual)",
                 "agenda-menu", "Permisos de Agenda", "report", "Informe"));
+    }
+
+    /** Guided mode: the next probe is never started automatically. */
+    private String suitePage() {
+        if (suiteIndex < 0 || suiteIndex >= SAFE_TESTS.length) return resultsPage();
+        String active = SAFE_TESTS[suiteIndex];
+        String progress = "Paso " + (suiteIndex + 1) + "/" + SAFE_TESTS.length
+                + ": " + LABELS.getOrDefault(active, active);
+        String last = suiteIndex == 0 ? "Ninguna prueba ejecutada todavía."
+                : "Último resultado:\n" + resultLine(SAFE_TESTS[suiteIndex - 1]);
+        return screen("Pruebas guiadas — " + progress,
+            lastInfo + "\n\n" + last + "\n\nPRÓXIMA: " + progress
+                + "\nPulsa Ejecutar únicamente si deseas iniciar esta prueba."
+                + " Si se cierra la JVM, revisa la última línea DEVKIT_BEGIN "
+                + "de la captura de HotSpot.",
+            buttons("suite-next", "Ejecutar: " + LABELS.getOrDefault(active, active),
+                    "suite-skip", "Saltar esta prueba", "report", "Ver informe",
+                    "home", "Inicio"));
     }
 
     private String resultsPage() {
@@ -154,7 +200,7 @@ public final class DevTestKitMobile {
         text.append(resultLine("network")).append("\n\n")
             .append(resultLine("agenda"));
         return screen("Informe de diagnóstico", text.toString(),
-            buttons("all", "Repetir pruebas seguras", "home", "Inicio"));
+            buttons("all", "Repetir pruebas guiadas", "home", "Inicio"));
     }
 
     private String resultLine(String key) {
@@ -173,7 +219,18 @@ public final class DevTestKitMobile {
         return ok + " OK / " + warnings + " avisos";
     }
 
+    private static void breadcrumb(String stage, String test) {
+        try {
+            // Diagnostic-only marker; no private data or stack traces are printed.
+            System.err.println("DEVKIT_" + VERSION + "_" + stage + ":" + test);
+            System.err.flush();
+        } catch (Throwable ignored) {
+            // Keep the probe operational even if stderr is unavailable.
+        }
+    }
+
     private void runTest(String key) {
+        breadcrumb("BEGIN", key);
         Result result;
         try {
             result = switch (key) {
@@ -192,6 +249,7 @@ public final class DevTestKitMobile {
         }
         results.put(key, result);
         lastInfo = resultLine(key);
+        breadcrumb("END_" + result.state(), key);
     }
 
     private static Result runtime() {
