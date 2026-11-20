@@ -3,6 +3,7 @@ package com.neurocenter.core;
 import android.app.ApplicationExitInfo;
 import android.os.Build;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -34,11 +35,18 @@ final class NcappTombstoneSummary {
         }
         try (InputStream stream = info.getTraceInputStream()) {
             if (stream == null) return "Tombstone: no disponible (el sistema puede haberla descartado).\n";
-            byte[] data = stream.readNBytes(MAX_PROTO_BYTES + 1);
-            if (data.length > MAX_PROTO_BYTES) {
-                return "Tombstone: demasiado grande para el informe limitado de diagnóstico.\n";
+            // InputStream.readNBytes exists only on Android API 33+, while
+            // native tombstones are available from API 31. Use basic read().
+            ByteArrayOutputStream bounded = new ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
+            int count;
+            while ((count = stream.read(chunk)) != -1) {
+                if (count > MAX_PROTO_BYTES - bounded.size()) {
+                    return "Tombstone: demasiado grande para el informe limitado de diagnóstico.\n";
+                }
+                bounded.write(chunk, 0, count);
             }
-            return summarize(data);
+            return summarize(bounded.toByteArray());
         } catch (Exception ex) {
             return "Tombstone: no se pudo interpretar (" + ex.getClass().getSimpleName() + ").\n";
         }
