@@ -28,7 +28,10 @@ import java.util.stream.Stream;
  */
 public final class AppLoader {
 
-    public record LoadedApp(NeuroApp app, String jarFilename) {}
+    public record LoadedApp(NeuroApp app, String jarFilename, URLClassLoader classLoader)
+            implements AutoCloseable {
+        @Override public void close() throws java.io.IOException { classLoader.close(); }
+    }
     public record Result(List<LoadedApp> apps, List<String> errors) {}
 
     private AppLoader() {}
@@ -99,30 +102,28 @@ public final class AppLoader {
 
                 URL[] urls = { canonicalJar.toUri().toURL() };
                 loader = new URLClassLoader(urls, AppLoader.class.getClassLoader());
-                int found = 0;
-
+                List<NeuroApp> discovered = new ArrayList<>();
                 try {
                     ServiceLoader<NeuroApp> serviceLoader = ServiceLoader.load(NeuroApp.class, loader);
                     for (NeuroApp app : serviceLoader) {
                         String actualId = app.id();
-                        if (actualId == null || !profile.appId().equals(actualId)) {
-                            errors.add(name + ": el identificador de NeuroApp («" + actualId
-                                    + "») no coincide con NeuroCenter-App-Id («" + profile.appId() + "»).");
-                            continue;
-                        }
-                        if (found > 0) {
-                            errors.add(name + ": un .ncapp solo puede registrar una app; instala cada app por separado.");
-                            break;
-                        }
-                        apps.add(new LoadedApp(app, name));
-                        found++;
+                        if (!profile.appId().equals(actualId))
+                            throw new IllegalArgumentException(
+                                    "El ID de NeuroApp («" + actualId
+                                            + "») no coincide con el manifiesto («"
+                                            + profile.appId() + "»).");
+                        discovered.add(app);
+                        if (discovered.size() > 1)
+                            throw new IllegalArgumentException(
+                                    "Un .ncapp solo puede declarar una implementación NeuroApp.");
                     }
-                } catch (ServiceConfigurationError | SecurityException error) {
-                    errors.add(name + ": " + error.getMessage());
-                }
-
-                if (found == 0 && errors.stream().noneMatch(error -> error.startsWith(name + ":"))) {
-                    errors.add(name + ": no declara ninguna implementación NeuroApp válida.");
+                    if (discovered.size() != 1)
+                        throw new IllegalArgumentException("No contiene ninguna implementación NeuroApp.");
+                    apps.add(new LoadedApp(discovered.get(0), name, loader));
+                } catch (Throwable invalidApp) {
+                    errors.add(name + ": " + invalidApp.getMessage());
+                    loader.close(); // Release the archive if the update cannot be activated.
+                    loader = null;
                 }
             } catch (Throwable error) {
                 errors.add(name + ": " + error);

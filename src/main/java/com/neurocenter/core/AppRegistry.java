@@ -32,6 +32,9 @@ public final class AppRegistry {
     /** Persisted startup choice for an installed external .ncapp. */
     public enum StartupMode { NO, YES, DELAYED }
 
+    public record PackageInfo(String id, String name, String author,
+                              String version, Set<String> declaredPermissions) { }
+
     public record AppSecurityProfile(String appId, Set<String> grantedPermissions,
                                      Set<String> declaredPermissions) {
         public AppSecurityProfile(String id, Set<String> grants) { this(id, grants, Set.of()); }
@@ -109,61 +112,116 @@ public final class AppRegistry {
         }
     }
 
-    /** Lee los metadatos del manifiesto y registra un paquete .ncapp. */
-    public void registerJar(Path jar) throws IOException, SQLException {
+    /**
+     * Validates a .ncapp before installing/updating. Identity comes exclusively
+     * from the manifest, never the filename supplied by the user.
+     */
+    public static PackageInfo inspectPackage(Path jar) throws IOException {
         String filename = jar.getFileName().toString();
-        if (!filename.toLowerCase(Locale.ROOT).endsWith(".ncapp")) {
-            throw new IOException("NeuroCenter solo admite aplicaciones .ncapp.");
-        }
-        String fallback = filename.toLowerCase(Locale.ROOT).endsWith(".ncapp")
-                ? filename.substring(0, filename.length() - 6) : filename;
-
-        String id = safeId(fallback);
-        String name = fallback;
-        String author = "Desconocido";
-        String version = "Desconocida";
-        Set<String> declared = Set.of();
-
-        try (JarFile jarFile = new JarFile(jar.toFile())) {
-            Manifest manifest = jarFile.getManifest();
-            Attributes attributes = manifest == null ? new Attributes() : manifest.getMainAttributes();
-            id = safeId(value(attributes, "NeuroCenter-App-Id", id));
-            declared = AppPermissionManifest.parse(manifest);
-            name = value(attributes, Attributes.Name.IMPLEMENTATION_TITLE, name);
-            author = value(attributes, Attributes.Name.IMPLEMENTATION_VENDOR,
+        if (!filename.toLowerCase(Locale.ROOT).endsWith(".ncapp")
+                || !Files.isRegularFile(jar))
+            throw new IOException("NeuroCenter solo admite archivos .ncapp válidos.");
+        String fallback = filename.substring(0, filename.length() - ".ncapp".length());
+        try (JarFile archive = new JarFile(jar.toFile())) {
+            Manifest manifest = archive.getManifest();
+            if (manifest == null)
+                throw new IOException("El .ncapp no incluye META-INF/MANIFEST.MF.");
+            Attributes attributes = manifest.getMainAttributes();
+            String rawId = attributes.getValue("NeuroCenter-App-Id");
+            if (rawId == null || rawId.isBlank())
+                throw new IOException("El .ncapp no declara NeuroCenter-App-Id.");
+            String id = safeId(rawId.trim());
+            if (!id.equals(rawId.trim()))
+                throw new IOException("NeuroCenter-App-Id no es válido: " + rawId);
+            String name = value(attributes, Attributes.Name.IMPLEMENTATION_TITLE, fallback);
+            String author = value(attributes, Attributes.Name.IMPLEMENTATION_VENDOR,
                     value(attributes, Attributes.Name.SPECIFICATION_VENDOR,
-                            value(attributes, "Author", author)));
-            version = value(attributes, Attributes.Name.IMPLEMENTATION_VERSION, version);
-
-            // Comprobar primero la plataforma para que una app móvil no falle
-            // con un mensaje engañoso por no incluir el proveedor Swing.
+                            value(attributes, "Author", "Desconocido")));
+            String version = value(attributes, Attributes.Name.IMPLEMENTATION_VERSION, "Desconocida");
+            Set<String> declared = AppPermissionManifest.parse(manifest);
             PlatformCompatibility.fromAppManifest(manifest)
                     .require(com.neurocenter.api.NeuroPlatform.DESKTOP, "la app «" + name + "»");
-
-            if (jarFile.getJarEntry("META-INF/services/com.neurocenter.api.NeuroApp") == null) {
-                throw new IOException("La app es compatible con escritorio, pero no declara ningún proveedor "
-                        + "NeuroApp. Falta META-INF/services/com.neurocenter.api.NeuroApp.");
-            }
+            if (archive.getJarEntry("META-INF/services/com.neurocenter.api.NeuroApp") == null)
+                throw new IOException("La app no declara un proveedor NeuroApp de escritorio.");
+            return new PackageInfo(id, name, author, version, declared);
         }
+    }
 
-        if (id.isBlank()) throw new IOException("El .ncapp no proporciona un identificador de aplicación válido.");
-        if (name.isBlank()) name = fallback;
-
+    /** Registers a newly installed .ncapp; its ID must be new. */
+    public void registerJar(Path jar) throws IOException, SQLException {
+        PackageInfo info = inspectPackage(jar);
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement("""
                      INSERT INTO installed_apps
                      (id, name, author, version, jar_filename, installed_at, size_bytes, autorun, declared_permissions)
                      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
                      """)) {
-            statement.setString(1, id);
-            statement.setString(2, name);
-            statement.setString(3, author);
-            statement.setString(4, version);
-            statement.setString(5, filename);
+            statement.setString(1, info.id());
+            statement.setString(2, info.name());
+            statement.setString(3, info.author());
+            statement.setString(4, info.version());
+            statement.setString(5, jar.getFileName().toString());
             statement.setString(6, Instant.now().toString());
             statement.setLong(7, Files.size(jar));
-            statement.setString(8, AppPermissionManifest.serialize(declared));
+            statement.setString(8, AppPermissionManifest.serialize(info.declaredPermissions()));
             statement.executeUpdate();
+        }
+    }
+
+    /** Preserves app ID, install date, startup mode, app data, and shared grants.
+     * Grants not declared in the replacement package are permanently revoked.
+     * The caller stages and validates the new code before committing the change.
+     */
+    public void updateJar(String expectedAppId, Path newPackage) throws IOException, SQLException {
+        PackageInfo info = inspectPackage(newPackage);
+        if (!info.id().equals(expectedAppId))
+            throw new IOException("El paquete tiene un ID distinto: " + info.id());
+        try (Connection connection = connect()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement update = connection.prepareStatement("""
+                        UPDATE installed_apps
+                        SET name = ?, author = ?, version = ?, jar_filename = ?,
+                            size_bytes = ?, declared_permissions = ?
+                        WHERE id = ?
+                        """)) {
+                    update.setString(1, info.name());
+                    update.setString(2, info.author());
+                    update.setString(3, info.version());
+                    update.setString(4, newPackage.getFileName().toString());
+                    update.setLong(5, Files.size(newPackage));
+                    update.setString(6, AppPermissionManifest.serialize(info.declaredPermissions()));
+                    update.setString(7, expectedAppId);
+                    if (update.executeUpdate() != 1)
+                        throw new SQLException("La aplicación no está instalada: " + expectedAppId);
+                }
+                // Revoke permissions removed from the manifest; never silently
+                // restore an old decision on a subsequent upgrade.
+                try (PreparedStatement select = connection.prepareStatement(
+                        "SELECT permission_id FROM app_permissions WHERE app_id = ?")) {
+                    select.setString(1, expectedAppId);
+                    try (ResultSet rows = select.executeQuery()) {
+                        List<String> revoked = new ArrayList<>();
+                        while (rows.next()) {
+                            String permission = rows.getString(1);
+                            if (!info.declaredPermissions().contains(permission)) revoked.add(permission);
+                        }
+                        try (PreparedStatement delete = connection.prepareStatement(
+                                "DELETE FROM app_permissions WHERE app_id = ? AND permission_id = ?")) {
+                            for (String permission : revoked) {
+                                delete.setString(1, expectedAppId);
+                                delete.setString(2, permission);
+                                delete.addBatch();
+                            }
+                            delete.executeBatch();
+                        }
+                    }
+                }
+                connection.commit();
+            } catch (SQLException | IOException | RuntimeException failure) {
+                connection.rollback();
+                throw failure;
+            }
         }
     }
 

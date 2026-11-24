@@ -109,6 +109,12 @@ public final class NeuroCenterSecurity {
         active.registerTrustedPlugin(jar.toRealPath());
     }
 
+    /** Revoke a retired application's CodeSource when its classloader is closed. */
+    static void unregisterExternalApp(Path jar) {
+        NeuroCenterPolicy active = policy;
+        if (active != null && jar != null) active.unregisterApp(jar);
+    }
+
     /** Registra los permisos efectivos de un JAR antes de cargar sus clases. */
     static void registerExternalApp(Path jar, String appId, Set<String> grantedPermissions) throws Exception {
         NeuroCenterPolicy active = policy;
@@ -226,6 +232,14 @@ public final class NeuroCenterSecurity {
         }
 
         void registerTrustedPlugin(Path jar) throws Exception { trustedPlugins.add(locationKey(jar.toUri().toURL())); }
+
+        void unregisterApp(Path jar) {
+            try {
+                appPermissions.remove(locationKey(jar.toAbsolutePath().normalize().toUri().toURL()));
+            } catch (Exception ignored) {
+                // Fail closed for removed archives in the app directory.
+            }
+        }
 
         void registerApp(Path jar, Path dataDirectory, Set<String> grantedPermissions) throws Exception {
             Path canonicalJar = jar.toRealPath();
