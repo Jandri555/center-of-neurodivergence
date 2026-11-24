@@ -91,7 +91,7 @@ La carpeta `apps/` contiene las apps externas instaladas, `themes/` los temas `.
 
 El registro de aplicaciones externas se guarda en `apps.db` (SQLite), dentro de esa misma carpeta. La tabla `installed_apps` conserva el identificador, nombre, autor, versión, nombre del paquete .ncapp, fecha de instalación, tamaño en bytes y la opción `autorun` (0 = desactivado, 1 = activado). La base de datos es la fuente de verdad: al iniciar solo se cargan los paquetes .ncapp registrados.
 
-En **Ajustes → Gestionar apps → Configurar inicio automático** puedes activar o desactivar el arranque automático de cada app. Las apps con `autorun = 1` se inician al abrir Center of Neurodivergence, pero la pantalla inicial sigue siendo Inicio.
+En **Ajustes → Gestionar apps → Configurar inicio automático** puedes activar o desactivar el arranque automático de cada app. Las apps con `autorun_mode = 'YES'` se inician al abrir Center of Neurodivergence, pero la pantalla inicial sigue siendo Inicio.
 
 ## Inicio automático de aplicaciones
 
@@ -106,9 +106,10 @@ Cada fila ofrece tres opciones: **No**, **Sí** o **Retrasado (15 segundos)**.
   se cancela el arranque programado para evitar duplicados.
 
 El menú guarda todas las elecciones de una vez y las aplica en el próximo
-inicio. Las instalaciones anteriores con el antiguo campo booleano
-`autorun` se migran automáticamente sin perder sus preferencias ni datos.
-Las aplicaciones integradas siguen siendo parte del núcleo y no se incluyen
+inicio. El registro usa únicamente `autorun_mode` con los valores
+`NO`, `YES` y `DELAYED`. **No se ejecutan migraciones de esquemas
+pre-release de aplicaciones**; antes de usar esta rama hay que partir del
+registro SQLite actual o crear uno nuevo. Las aplicaciones integradas siguen siendo parte del núcleo y no se incluyen
 en las opciones de inicio automático de paquetes externos.
 
 ## Aplicaciones externas (.ncapp): un formato para escritorio y Android
@@ -345,10 +346,10 @@ Los APK Android externos declaran su lista por separado mediante el
 `<meta-data android:name="com.neurocenter.app.permissions" ...>` de su
 `AndroidManifest.xml`. Ver `docs/android-external-apps.md`.
 
-Nota: una app instalada antes de este cambio que no declarase permisos
-no tendrá autorizaciones adicionales; para utilizar la versión adaptada
-deberá actualizarse/reinstalarse el paquete. Una capacidad de Agenda también
-requiere el plugin Agenda Bridge instalado.
+Las aplicaciones deben empaquetarse directamente para este contrato: los
+permisos se declaran en el manifiesto y se solicitan cuando hacen falta.
+No existe un traductor de manifiestos de aplicaciones pre-release. Las
+capacidades de Agenda siguen necesitando Agenda Bridge.
 
 ## Actualización directa de paquetes .ncapp (escritorio)
 
@@ -412,3 +413,18 @@ se indica que debe reiniciarse manualmente.
 
 Los cambios afectan a las **apps `.ncapp`**, no al núcleo integrado ni a
 los plugins privilegiados `.ncp`, cuyo ciclo de vida es diferente.
+
+### Esquema actual de aplicaciones (sin migraciones antiguas)
+
+La rama `dev` usa un único modelo de registro en `apps.db`: nombre,
+ID, versión y nombre del `.ncapp`, permisos declarados y `autorun_mode`
+(`NO`, `YES` o `DELAYED`). Se han eliminado las conversiones automáticas
+de esquemas experimentales de versiones de aplicaciones anteriores a la
+primera release estable. **El sistema sigue admitiendo actualización en
+caliente de paquetes actuales por ID; eso no es una migración del formato.**
+
+Si una instalación de pruebas conserva un `apps.db` antiguo incompatible,
+no se transforma silenciosamente. Cierra NeuroCenter y haz una copia de
+`%APPDATA%\\CenterOfNeurodivergence\\apps.db` antes de apartarlo o crear
+uno nuevo. Esto reinicia únicamente el registro de apps y sus decisiones de
+permisos; evita borrar las carpetas `data/`, `themes/` o `plugins/`.

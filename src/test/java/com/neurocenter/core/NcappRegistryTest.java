@@ -42,6 +42,21 @@ class NcappRegistryTest {
     }
 
     @Test
+    void currentApplicationSchemaDoesNotContainLegacyAutorunColumn() throws Exception {
+        Path db = sandbox.resolve("schema.db");
+        new AppRegistry(db);
+        try (java.sql.Connection conn = java.sql.DriverManager.getConnection("jdbc:sqlite:" + db);
+             java.sql.Statement st = conn.createStatement();
+             java.sql.ResultSet columns = st.executeQuery("PRAGMA table_info(installed_apps)")) {
+            java.util.Set<String> names = new java.util.HashSet<>();
+            while (columns.next()) names.add(columns.getString("name"));
+            assertTrue(names.contains("autorun_mode"));
+            assertTrue(names.contains("declared_permissions"));
+            assertFalse(names.contains("autorun"));
+        }
+    }
+
+    @Test
     void threeStartupModesPersistAndDoNotOverwritePermissions() throws Exception {
         Path archive = sandbox.resolve("demo.ncapp");
         Manifest mf = new Manifest();
