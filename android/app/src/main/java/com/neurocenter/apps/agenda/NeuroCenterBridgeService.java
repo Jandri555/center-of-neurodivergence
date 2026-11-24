@@ -141,7 +141,7 @@ public final class NeuroCenterBridgeService extends Service {
     private Caller requireCapability(String capabilityId) {
         Caller caller = caller();
         try (NeuroCenterCapabilityStore store = new NeuroCenterCapabilityStore(this)) {
-            if (!store.isGranted(caller.packageName, caller.signingDigest, capabilityId)) {
+            if (!store.consumeAuthorization(caller.packageName, caller.signingDigest, capabilityId)) {
                 throw new SecurityException("NeuroCenter no ha concedido «" + capabilityId
                         + "» a " + caller.packageName + ".");
             }

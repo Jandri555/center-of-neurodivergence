@@ -24,8 +24,20 @@ import java.util.Set;
 public final class NeuroCenterCapabilityStore implements Closeable {
 
     private final SQLiteDatabase db;
+    private final Context context;
+    // One-use grants are bound to the authenticated APK signature; they never
+    // survive process death and expire if the client does not use them promptly.
+    private static final java.util.concurrent.ConcurrentMap<String, Long> oneTimeGrants =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long ONE_TIME_TTL_MS = 120_000;
+
+    private static String onceKey(String pkg, String signer, String capability) {
+        return pkg + ":" + signer + ":" + capability;
+    }
+
 
     public NeuroCenterCapabilityStore(Context context) throws IOException {
+        this.context = context.getApplicationContext();
         Path file = AppPaths.root(context).resolve("capabilities.db").toAbsolutePath();
         Path parent = file.getParent();
         if (parent != null) Files.createDirectories(parent);
@@ -70,7 +82,8 @@ public final class NeuroCenterCapabilityStore implements Closeable {
                 new String[]{packageName, signingDigest})) {
             while (c.moveToNext()) {
                 String id = c.getString(0);
-                if (NeuroCenterCapabilities.isSupported(id)) result.add(id);
+                if (NeuroCenterCapabilities.isSupported(id)
+                        && AndroidExternalApps.declaredCapabilities(context, packageName).contains(id)) result.add(id);
             }
         }
         return Collections.unmodifiableSet(result);
@@ -78,7 +91,10 @@ public final class NeuroCenterCapabilityStore implements Closeable {
 
     public synchronized boolean isGranted(String packageName, String signingDigest, String capabilityId) {
         validateIdentity(packageName, signingDigest);
-        if (!NeuroCenterCapabilities.isSupported(capabilityId)) return false;
+        if (!NeuroCenterCapabilities.isSupported(capabilityId)
+                || !AndroidExternalApps.declaredCapabilities(context, packageName).contains(capabilityId))
+            return false;
+        if (hasOneTimeGrant(packageName, signingDigest, capabilityId)) return true;
         try (Cursor c = db.rawQuery(
                 "SELECT 1 FROM app_capabilities "
                         + "WHERE package_name = ? AND signing_digest = ? AND capability_id = ? AND granted = 1",
@@ -94,7 +110,8 @@ public final class NeuroCenterCapabilityStore implements Closeable {
         Set<String> safe = new LinkedHashSet<>();
         if (capabilityIds != null) {
             for (String id : capabilityIds) {
-                if (!NeuroCenterCapabilities.isSupported(id)) {
+                if (!NeuroCenterCapabilities.isSupported(id)
+                        || !AndroidExternalApps.declaredCapabilities(context, packageName).contains(id)) {
                     throw new IllegalArgumentException("Capacidad no reconocida: " + id);
                 }
                 safe.add(id);
@@ -117,6 +134,61 @@ public final class NeuroCenterCapabilityStore implements Closeable {
         } finally {
             db.endTransaction();
         }
+    }
+
+    public synchronized Boolean storedDecision(String packageName, String signer, String capability) {
+        validateIdentity(packageName, signer);
+        if (!AndroidExternalApps.declaredCapabilities(context, packageName).contains(capability))
+            return false;
+        try (Cursor c = db.rawQuery(
+                "SELECT granted FROM app_capabilities WHERE package_name=? AND signing_digest=? AND capability_id=?",
+                new String[]{packageName, signer, capability})) {
+            return c.moveToFirst() ? c.getInt(0) == 1 : null;
+        }
+    }
+
+    public synchronized void setDecision(String packageName, String signer,
+                                         String capability, Boolean allow) {
+        validateIdentity(packageName, signer);
+        if (!AndroidExternalApps.declaredCapabilities(context, packageName).contains(capability))
+            throw new SecurityException("Capacidad no declarada: " + capability);
+        oneTimeGrants.remove(onceKey(packageName, signer, capability));
+        if (allow == null) {
+            db.delete("app_capabilities",
+                    "package_name=? AND signing_digest=? AND capability_id=?",
+                    new String[]{packageName,signer,capability});
+        } else {
+            ContentValues values = new ContentValues();
+            values.put("package_name", packageName);
+            values.put("signing_digest", signer);
+            values.put("capability_id", capability);
+            values.put("granted", allow ? 1 : 0);
+            db.insertWithOnConflict("app_capabilities", null, values,
+                    SQLiteDatabase.CONFLICT_REPLACE);
+        }
+    }
+
+    public static void grantOnce(String pkg, String signer, String capability) {
+        oneTimeGrants.put(onceKey(pkg, signer, capability),
+                android.os.SystemClock.elapsedRealtime() + ONE_TIME_TTL_MS);
+    }
+
+    private static boolean hasOneTimeGrant(String pkg, String signer, String capability) {
+        String key = onceKey(pkg, signer, capability);
+        Long deadline = oneTimeGrants.get(key);
+        if (deadline == null) return false;
+        if (deadline < android.os.SystemClock.elapsedRealtime()) {
+            oneTimeGrants.remove(key, deadline);
+            return false;
+        }
+        return true;
+    }
+
+    /** Use this for privileged Binder operations so allow-once cannot be reused. */
+    public synchronized boolean consumeAuthorization(String pkg, String signer, String capability) {
+        if (!isGranted(pkg, signer, capability)) return false;
+        if (Boolean.TRUE.equals(storedDecision(pkg, signer, capability))) return true;
+        return oneTimeGrants.remove(onceKey(pkg, signer, capability)) != null;
     }
 
     /** Removes obsolete grants when a package is uninstalled. */

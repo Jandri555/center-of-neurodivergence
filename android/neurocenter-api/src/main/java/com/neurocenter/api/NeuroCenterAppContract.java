@@ -13,12 +13,23 @@ public final class NeuroCenterAppContract {
 
     public static final String META_APP_ID = "com.neurocenter.app.id";
     public static final String META_APP_DESCRIPTION = "com.neurocenter.app.description";
+    public static final String META_APP_PERMISSIONS = "com.neurocenter.app.permissions";
+    public static final String ACTION_REQUEST_PERMISSION = "com.neurocenter.action.REQUEST_PERMISSION";
+    public static final String EXTRA_REQUESTED_PERMISSION = "com.neurocenter.extra.PERMISSION";
 
     public static final String HOST_PACKAGE = "com.neurocenter";
     public static final String BRIDGE_SERVICE_CLASS =
             "com.neurocenter.apps.agenda.NeuroCenterBridgeService";
 
-    private NeuroCenterAppContract() {}
+    private NeuroCenterAppContract() { }
+
+    /** Call startActivityForResult(intent, code) from the requesting Android app. */
+    public static Intent permissionRequestIntent(String permission) {
+        return new Intent(ACTION_REQUEST_PERMISSION)
+                .setComponent(new ComponentName(HOST_PACKAGE,
+                        "com.neurocenter.core.AndroidPermissionRequestActivity"))
+                .putExtra(EXTRA_REQUESTED_PERMISSION, permission);
+    }
 
     /** Explicit service intent, compatible with Android package-visibility filtering. */
     public static Intent bridgeIntent() {

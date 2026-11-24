@@ -14,6 +14,9 @@ import android.os.Build;
 import android.os.Bundle;
 
 import com.neurocenter.api.NeuroCenterAppContract;
+import com.neurocenter.api.NeuroCenterCapabilities;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import android.provider.Settings;
 
 import java.util.ArrayList;
@@ -40,6 +43,7 @@ public final class AndroidExternalApps {
     public static final String ACTION_OPEN = NeuroCenterAppContract.ACTION_OPEN_APP;
     public static final String META_APP_ID = NeuroCenterAppContract.META_APP_ID;
     public static final String META_APP_DESCRIPTION = NeuroCenterAppContract.META_APP_DESCRIPTION;
+    public static final String META_APP_PERMISSIONS = NeuroCenterAppContract.META_APP_PERMISSIONS;
 
     private static final String APK_MIME_TYPE = "application/vnd.android.package-archive";
 
@@ -236,6 +240,39 @@ public final class AndroidExternalApps {
 
     private static boolean isValidPackageName(String name) {
         return name != null && name.matches("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+");
+    }
+
+    /**
+     * The only capabilities an APK may request. They must be declared in its
+     * AndroidManifest.xml as application meta-data com.neurocenter.app.permissions.
+     * Unknown, duplicate, empty, or malformed values fail closed.
+     */
+    public static Set<String> declaredCapabilities(Context context, String packageName) {
+        if (!isCompatiblePackage(context, packageName)) return Set.of();
+        try {
+            PackageManager pm = context.getPackageManager();
+            android.content.pm.ApplicationInfo info;
+            if (Build.VERSION.SDK_INT >= 33) {
+                info = pm.getApplicationInfo(packageName,
+                    PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA));
+            } else {
+                info = pm.getApplicationInfo(packageName, PackageManager.GET_META_DATA);
+            }
+            Bundle metadata = info.metaData;
+            if (metadata == null) return Set.of();
+            String raw = metadata.getString(META_APP_PERMISSIONS);
+            if (raw == null || raw.isBlank()) return Set.of();
+            if (raw.length() > 2048) return Set.of();
+            Set<String> allowed = new LinkedHashSet<>();
+            for (String value : raw.split(",", -1)) {
+                String capability = value.trim();
+                if (!NeuroCenterCapabilities.isSupported(capability)
+                        || !allowed.add(capability)) return Set.of();
+            }
+            return Set.copyOf(allowed);
+        } catch (PackageManager.NameNotFoundException | RuntimeException ex) {
+            return Set.of();
+        }
     }
 
     /** Checks one package without materializing the complete external-app list. */

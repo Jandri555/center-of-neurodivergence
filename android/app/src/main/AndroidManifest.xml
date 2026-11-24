@@ -20,6 +20,15 @@
         android:label="@string/neurocenter_variant_label"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity
+            android:name="com.neurocenter.core.AndroidPermissionRequestActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="com.neurocenter.action.REQUEST_PERMISSION" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <service
             android:name="com.neurocenter.apps.agenda.BluetoothSyncService"
             android:exported="false"
