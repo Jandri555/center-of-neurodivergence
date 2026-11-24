@@ -1392,10 +1392,8 @@ public final class MainWindow extends JFrame {
                     JOptionPane.WARNING_MESSAGE, null,
                     installed.toArray(AppRegistry.AppRecord[]::new), installed.get(0));
             if (selected == null) return;
-            if (!externalAppIds.contains(selected.id()))
-                throw new IllegalStateException(
-                        "La aplicación no está cargada. Corrige su instalación antes de eliminarla.");
-
+            // A corrupted or incompatible package may still exist in SQLite
+            // without a loaded Java instance; it must also be uninstallable.
             AppSession running = appSessions.get(selected.id());
             if (running != null && running.closing) {
                 JOptionPane.showMessageDialog(this,
