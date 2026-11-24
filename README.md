@@ -93,6 +93,24 @@ El registro de aplicaciones externas se guarda en `apps.db` (SQLite), dentro de 
 
 En **Ajustes → Gestionar apps → Configurar inicio automático** puedes activar o desactivar el arranque automático de cada app. Las apps con `autorun = 1` se inician al abrir Center of Neurodivergence, pero la pantalla inicial sigue siendo Inicio.
 
+## Inicio automático de aplicaciones
+
+En **Ajustes → Gestionar apps → Configurar inicio automático**, aparece una
+lista de todas las aplicaciones externas instaladas, una fila por aplicación.
+Cada fila ofrece tres opciones: **No**, **Sí** o **Retrasado (15 segundos)**.
+
+- **No:** la aplicación no se inicia automáticamente.
+- **Sí:** se inicia en segundo plano cuando arranca NeuroCenter.
+- **Retrasado:** se inicia en segundo plano 15 segundos después de arrancar
+  NeuroCenter, sin cambiar de la página Inicio. Si la abres manualmente antes,
+  se cancela el arranque programado para evitar duplicados.
+
+El menú guarda todas las elecciones de una vez y las aplica en el próximo
+inicio. Las instalaciones anteriores con el antiguo campo booleano
+`autorun` se migran automáticamente sin perder sus preferencias ni datos.
+Las aplicaciones integradas siguen siendo parte del núcleo y no se incluyen
+en las opciones de inicio automático de paquetes externos.
+
 ## Aplicaciones externas (.ncapp): un formato para escritorio y Android
 
 **Solo hay un formato de distribución de aplicaciones NeuroCenter: `.ncapp`.**

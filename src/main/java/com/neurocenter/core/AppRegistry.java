@@ -29,6 +29,9 @@ public final class AppRegistry {
 
     private final String jdbcUrl;
 
+    /** Persisted startup choice for an installed external .ncapp. */
+    public enum StartupMode { NO, YES, DELAYED }
+
     public record AppSecurityProfile(String appId, Set<String> grantedPermissions,
                                      Set<String> declaredPermissions) {
         public AppSecurityProfile(String id, Set<String> grants) { this(id, grants, Set.of()); }
@@ -42,10 +45,12 @@ public final class AppRegistry {
             String jarFilename,
             String installedAt,
             long sizeBytes,
-            boolean autorun) {
+            boolean autorun,
+            StartupMode startupMode) {
         @Override
         public String toString() {
-            return name + (autorun ? " — inicio automático: sí" : " — inicio automático: no");
+            // A permission selector must only identify the application.
+            return name;
         }
     }
 
@@ -72,7 +77,9 @@ public final class AppRegistry {
                         installed_at TEXT NOT NULL,
                         size_bytes INTEGER NOT NULL,
                         autorun INTEGER NOT NULL DEFAULT 0 CHECK (autorun IN (0, 1)),
-                        declared_permissions TEXT NOT NULL DEFAULT ''
+                        declared_permissions TEXT NOT NULL DEFAULT '',
+                        autorun_mode TEXT NOT NULL DEFAULT 'NO'
+                            CHECK (autorun_mode IN ('NO', 'YES', 'DELAYED'))
                     )
                     """);
             statement.executeUpdate("""
@@ -86,6 +93,15 @@ public final class AppRegistry {
             // Existing SQLite installations need a non-destructive schema migration.
             try {
                 statement.executeUpdate("ALTER TABLE installed_apps ADD COLUMN declared_permissions TEXT NOT NULL DEFAULT ''");
+            } catch (SQLException ex) {
+                if (ex.getMessage() == null || !ex.getMessage().contains("duplicate column"))
+                    throw ex;
+            }
+            // Non-destructive migration: existing boolean autorun becomes YES/NO.
+            // Only migrate once; otherwise a DELAYED choice could be overwritten.
+            try {
+                statement.executeUpdate("ALTER TABLE installed_apps ADD COLUMN autorun_mode TEXT NOT NULL DEFAULT 'NO'");
+                statement.executeUpdate("UPDATE installed_apps SET autorun_mode = CASE WHEN autorun=1 THEN 'YES' ELSE 'NO' END");
             } catch (SQLException ex) {
                 if (ex.getMessage() == null || !ex.getMessage().contains("duplicate column"))
                     throw ex;
@@ -155,7 +171,7 @@ public final class AppRegistry {
         List<AppRecord> result = new ArrayList<>();
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement("""
-                     SELECT id, name, author, version, jar_filename, installed_at, size_bytes, autorun
+                     SELECT id, name, author, version, jar_filename, installed_at, size_bytes, autorun, autorun_mode
                      FROM installed_apps ORDER BY name COLLATE NOCASE
                      """);
              ResultSet rows = statement.executeQuery()) {
@@ -168,7 +184,8 @@ public final class AppRegistry {
                         rows.getString("jar_filename"),
                         rows.getString("installed_at"),
                         rows.getLong("size_bytes"),
-                        rows.getInt("autorun") == 1));
+                        rows.getInt("autorun") == 1,
+                        parseStartupMode(rows.getString("autorun_mode"))));
             }
         }
         return result;
@@ -189,7 +206,7 @@ public final class AppRegistry {
         List<String> result = new ArrayList<>();
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT jar_filename FROM installed_apps WHERE autorun = 1 ORDER BY name COLLATE NOCASE");
+                     "SELECT jar_filename FROM installed_apps WHERE autorun_mode = 'YES' ORDER BY name COLLATE NOCASE");
              ResultSet rows = statement.executeQuery()) {
             while (rows.next()) result.add(rows.getString(1));
         }
@@ -324,14 +341,58 @@ public final class AppRegistry {
         }
     }
 
-    public void setAutorun(String id, boolean autorun) throws SQLException {
-        try (Connection connection = connect();
-             PreparedStatement statement = connection.prepareStatement(
-                     "UPDATE installed_apps SET autorun = ? WHERE id = ?")) {
-            statement.setInt(1, autorun ? 1 : 0);
-            statement.setString(2, id);
-            statement.executeUpdate();
+    private static StartupMode parseStartupMode(String value) {
+        try {
+            return value == null ? StartupMode.NO : StartupMode.valueOf(value);
+        } catch (IllegalArgumentException invalidData) {
+            return StartupMode.NO;
         }
+    }
+
+    /** Choices for installed apps, keyed by .ncapp filename. */
+    public Map<String, StartupMode> startupModesByJar() throws SQLException {
+        Map<String, StartupMode> result = new LinkedHashMap<>();
+        try (Connection conn = connect();
+             PreparedStatement query = conn.prepareStatement(
+                     "SELECT jar_filename, autorun_mode FROM installed_apps ORDER BY name COLLATE NOCASE");
+             ResultSet rows = query.executeQuery()) {
+            while (rows.next()) {
+                result.put(rows.getString("jar_filename"), parseStartupMode(rows.getString("autorun_mode")));
+            }
+        }
+        return result;
+    }
+
+    public void setStartupMode(String id, StartupMode mode) throws SQLException {
+        setStartupModes(Map.of(id, mode));
+    }
+
+    /** Save the entire settings panel atomically: no partial updates on failure. */
+    public void setStartupModes(Map<String, StartupMode> changes) throws SQLException {
+        if (changes == null || changes.isEmpty()) return;
+        try (Connection conn = connect()) {
+            conn.setAutoCommit(false);
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "UPDATE installed_apps SET autorun_mode=?, autorun=? WHERE id=?")) {
+                for (Map.Entry<String, StartupMode> change : changes.entrySet()) {
+                    StartupMode mode = java.util.Objects.requireNonNull(change.getValue(), "startup mode");
+                    stmt.setString(1, mode.name());
+                    stmt.setInt(2, mode == StartupMode.YES ? 1 : 0);
+                    stmt.setString(3, change.getKey());
+                    if (stmt.executeUpdate() != 1)
+                        throw new SQLException("No existe la aplicación: " + change.getKey());
+                }
+                conn.commit();
+            } catch (SQLException | RuntimeException ex) {
+                conn.rollback();
+                throw ex;
+            }
+        }
+    }
+
+    /** Backwards-compatible setter for existing code. */
+    public void setAutorun(String id, boolean autorun) throws SQLException {
+        setStartupMode(id, autorun ? StartupMode.YES : StartupMode.NO);
     }
 
     public void removeByFilename(String filename) throws SQLException {

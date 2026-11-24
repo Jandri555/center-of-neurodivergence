@@ -89,6 +89,7 @@ import java.util.concurrent.TimeUnit;
 public final class MainWindow extends JFrame {
 
     private static final String HOME = "__home__";
+    private static final int DELAYED_STARTUP_MS = 15_000;
 
     private final PropertiesStore appSettings;
     private AppRegistry appRegistry;
@@ -104,6 +105,7 @@ public final class MainWindow extends JFrame {
     private final Map<String, JPanel> navMarkers = new HashMap<>();
     private final Map<String, JPanel> navRows = new HashMap<>();
     private final Map<String, AppSession> appSessions = new LinkedHashMap<>();
+    private final Map<String, javax.swing.Timer> delayedStartupTimers = new HashMap<>();
     private final JPanel openAppsList = new JPanel();
     private String activeAppId = HOME;
     private boolean shuttingDown;
@@ -127,7 +129,7 @@ public final class MainWindow extends JFrame {
         register(new PdfReaderApp(), false);
 
         // 2) Apps externas: solo se cargan paquetes .ncapp registrados en SQLite.
-        Set<String> autorunJars = new HashSet<>();
+        Map<String, AppRegistry.StartupMode> startupModes = Map.of();
         try {
             appRegistry = new AppRegistry(AppPaths.root().resolve("apps.db"));
             permissionPrompts = new DesktopPermissionPrompts(this, appRegistry);
@@ -137,7 +139,7 @@ public final class MainWindow extends JFrame {
             AppLoader.Result externalApps = AppLoader.load(
                     AppPaths.appsDir(), appRegistry.securityProfilesByJar());
             loadErrors.addAll(externalApps.errors());
-            autorunJars.addAll(appRegistry.autorunJarFilenames());
+            startupModes = appRegistry.startupModesByJar();
             for (AppLoader.LoadedApp loaded : externalApps.apps()) {
                 register(loaded.app(), true, loaded.jarFilename());
             }
@@ -158,10 +160,23 @@ public final class MainWindow extends JFrame {
         refreshProgramIcon();
         showApp(HOME);
 
-        // Las apps con autorun arrancan en segundo plano, pero Inicio permanece
-        // como pantalla activa al abrir el panel.
+        // Start in the background without leaving Inicio. "Retrasado" starts
+        // 15 seconds later, on the EDT, unless the app was opened manually.
         for (Map.Entry<String, String> entry : externalJarByAppId.entrySet()) {
-            if (autorunJars.contains(entry.getValue())) launchApp(entry.getKey(), false);
+            AppRegistry.StartupMode mode = startupModes.getOrDefault(
+                    entry.getValue(), AppRegistry.StartupMode.NO);
+            if (mode == AppRegistry.StartupMode.YES) {
+                launchApp(entry.getKey(), false);
+            } else if (mode == AppRegistry.StartupMode.DELAYED) {
+                String id = entry.getKey();
+                javax.swing.Timer timer = new javax.swing.Timer(DELAYED_STARTUP_MS, e -> {
+                    delayedStartupTimers.remove(id);
+                    if (!shuttingDown && apps.containsKey(id)) launchApp(id, false);
+                });
+                timer.setRepeats(false);
+                delayedStartupTimers.put(id, timer);
+                timer.start();
+            }
         }
 
         if (!loadErrors.isEmpty()) SwingUtilities.invokeLater(this::showLoadErrors);
@@ -328,6 +343,8 @@ public final class MainWindow extends JFrame {
     private void shutdown() {
         if (shuttingDown) return;
         shuttingDown = true;
+        delayedStartupTimers.values().forEach(javax.swing.Timer::stop);
+        delayedStartupTimers.clear();
 
         if (trayIcon != null) {
             SystemTray.getSystemTray().remove(trayIcon);
@@ -584,6 +601,9 @@ public final class MainWindow extends JFrame {
 
     /** Inicia una app; activate=false permite arrancarla sin abandonar Inicio. */
     private void launchApp(String id, boolean activate) {
+        javax.swing.Timer pending = delayedStartupTimers.remove(id);
+        if (pending != null) pending.stop();
+        if (shuttingDown) return;
         NeuroApp app = apps.get(id);
         if (app == null) return;
 
@@ -1067,29 +1087,71 @@ public final class MainWindow extends JFrame {
         try {
             List<AppRegistry.AppRecord> installed = appRegistry.listApps();
             if (installed.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "No hay apps externas instaladas.");
+                JOptionPane.showMessageDialog(this, "No hay aplicaciones externas instaladas.");
                 return;
             }
-            AppRegistry.AppRecord selected = (AppRegistry.AppRecord) JOptionPane.showInputDialog(
-                    this, "Selecciona la aplicación:", "Inicio automático",
-                    JOptionPane.QUESTION_MESSAGE, null,
-                    installed.toArray(AppRegistry.AppRecord[]::new), installed.get(0));
-            if (selected == null) return;
 
-            boolean enable = !selected.autorun();
-            int answer = JOptionPane.showConfirmDialog(this,
-                    "¿Quieres que «" + selected.name() + "» se "
-                            + (enable ? "inicie automáticamente al abrir el panel" : "deje de iniciarse automáticamente")
-                            + "?",
-                    "Inicio automático", JOptionPane.YES_NO_OPTION);
-            if (answer == JOptionPane.YES_OPTION) {
-                appRegistry.setAutorun(selected.id(), enable);
-                JOptionPane.showMessageDialog(this,
-                        enable ? "La aplicación se iniciará automáticamente la próxima vez."
-                                : "Se ha desactivado el inicio automático.");
+            JPanel rows = new JPanel();
+            rows.setLayout(new BoxLayout(rows, BoxLayout.Y_AXIS));
+            rows.setBorder(new EmptyBorder(8, 12, 8, 12));
+
+            JLabel heading = new JLabel("Inicio automático de las aplicaciones instaladas");
+            heading.setFont(heading.getFont().deriveFont(Font.BOLD));
+            heading.setAlignmentX(Component.LEFT_ALIGNMENT);
+            rows.add(heading);
+            rows.add(Box.createVerticalStrut(10));
+
+            Map<String, javax.swing.JComboBox<String>> selectors = new LinkedHashMap<>();
+            for (AppRegistry.AppRecord installedApp : installed) {
+                JPanel line = new JPanel(new BorderLayout(16, 0));
+                line.setBorder(new EmptyBorder(5, 0, 5, 0));
+                JLabel label = new JLabel(installedApp.name());
+                label.setToolTipText(installedApp.id());
+                line.add(label, BorderLayout.CENTER);
+
+                javax.swing.JComboBox<String> choice =
+                        new javax.swing.JComboBox<>(new String[]{"No", "Sí", "Retrasado (15 segundos)"});
+                choice.setSelectedIndex(switch (installedApp.startupMode()) {
+                    case NO -> 0;
+                    case YES -> 1;
+                    case DELAYED -> 2;
+                });
+                choice.setPreferredSize(new Dimension(190, choice.getPreferredSize().height));
+                line.add(choice, BorderLayout.EAST);
+                line.setAlignmentX(Component.LEFT_ALIGNMENT);
+                rows.add(line);
+                selectors.put(installedApp.id(), choice);
             }
+            rows.add(Box.createVerticalStrut(12));
+            JLabel help = new JLabel("Retrasado: inicia tras 15 segundos, sin abrir su pantalla.");
+            help.setAlignmentX(Component.LEFT_ALIGNMENT);
+            rows.add(help);
+            JLabel when = new JLabel("Los cambios se aplicarán al volver a iniciar NeuroCenter.");
+            when.setAlignmentX(Component.LEFT_ALIGNMENT);
+            rows.add(when);
+
+            JScrollPane scroll = new JScrollPane(rows);
+            scroll.setBorder(BorderFactory.createEmptyBorder());
+            scroll.setPreferredSize(new Dimension(550, Math.min(410, 95 + installed.size() * 43)));
+            int answer = JOptionPane.showConfirmDialog(this, scroll,
+                    "Configurar inicio automático", JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.PLAIN_MESSAGE);
+            if (answer != JOptionPane.OK_OPTION) return;
+
+            Map<String, AppRegistry.StartupMode> updated = new LinkedHashMap<>();
+            for (Map.Entry<String, javax.swing.JComboBox<String>> selection : selectors.entrySet()) {
+                updated.put(selection.getKey(), switch (selection.getValue().getSelectedIndex()) {
+                    case 1 -> AppRegistry.StartupMode.YES;
+                    case 2 -> AppRegistry.StartupMode.DELAYED;
+                    default -> AppRegistry.StartupMode.NO;
+                });
+            }
+            appRegistry.setStartupModes(updated);
+            JOptionPane.showMessageDialog(this,
+                    "Preferencias de inicio automático guardadas. Se aplicarán al próximo inicio.");
         } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "No se pudo cambiar el inicio automático: " + ex.getMessage(),
+            JOptionPane.showMessageDialog(this,
+                    "No se pudo configurar el inicio automático: " + ex.getMessage(),
                     "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
