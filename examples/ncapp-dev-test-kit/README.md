@@ -1,62 +1,53 @@
-# NeuroCenter Dev Test Kit (.ncapp)
+# NeuroCenter Dev Test Kit 1.4.0 (.ncapp)
 
-Aplicación **Android, Java 21** (versión **1.3.0**) para diagnosticar el runtime y el sandbox de las `.ncapp`.
-Es independiente de `examples/ncapp-demo`; **no es un APK** y no necesita APIs Android.
+**Un único paquete Java 21 para Windows y Android**, adaptado a las APIs de la rama `dev`. No es un APK ni requiere renombrar archivos JAR.
 
-## Qué comprueba
+## Qué contiene
 
-- Entorno Java, versión de VM, arquitectura, límite del heap y presencia de SecurityManager.
-- Carga de clases (incluye un `.class` independiente y un `record` de Java), recursos del propio `.ncapp` y `ClassLoader`.
-- Creación de hilos, asignación de 256 KiB de memoria y cálculo de rendimiento breve.
-- Indicadores de aislamiento (`/proc/self/status`) e intento de listar **solo** el directorio privado estándar del anfitrión; nunca lee ni imprime archivos.
-- Test de conexión **solo a `127.0.0.1:9`**, manual, sin envío de datos. Un rechazo TCP no demuestra ausencia de permisos de red.
-- API de Agenda (solo cuando existe el plugin **Agenda Bridge** instalado y habilitado): `agenda.read` sin mostrar tareas privadas y `agenda.write` con **confirmación explícita**. La escritura crea una tarea real y exige borrarla manualmente. Ninguna de las dos se ejecuta en «Pruebas seguras».
-- Prueba independiente de formato regional/CLDR, sin interferir en las medidas de memoria o rendimiento.
-- Informe local con resultados `OK`, `AVISO`, `ERROR` o `ALERTA` y una cadena limitada de causas de errores Java. El resultado no se transmite a ningún servidor.
+- **Escritorio (`DevTestKitDesktop`)**: prueba manual de Java 21, ClassLoader y recurso empaquetado, los permisos declarados, el diálogo del anfitrión al pedir `network.connect`, `credentials.access`, `agenda.read` y `agenda.write`, y la disponibilidad del plugin Agenda Bridge. Incluye la casilla `UNSAVED_CHANGES` para comprobar que NeuroCenter advierte de cambios sin guardar al cerrar o actualizar la app. No envía peticiones de red ni escribe credenciales.
+- **Android (`DevTestKitMobile`)**: prueba el proceso aislado, clases Java 21, recursos, hilos, memoria, rendimiento, UID, Seccomp y CLDR. Los ensayos de red son **manuales**, solo hacia `127.0.0.1:9`. Las operaciones de Agenda también son manuales; la escritura real necesita confirmación explícita y crea una tarea que tendrás que borrar después.
 
-**Importante:** Las pruebas son orientativas, no una auditoría de seguridad. En especial, un error por ruta inexistente no demuestra bloqueo SELinux. No sustituye la verificación de UID, Binder ni los ensayos de permisos en Android.
+## Permisos del manifiesto (contrato actual)
 
-## Uso
+```text
+NeuroCenter-App-Id: com.neurocenter.devtestkit
+NeuroCenter-App-Desktop: true
+NeuroCenter-App-Mobile: true
+NeuroCenter-Mobile-Class: com.neurocenter.devkit.DevTestKitMobile
+NeuroCenter-App-Permissions: agenda.read,agenda.write,network.connect,credentials.access
+```
 
-1. En **GitHub Actions → NeuroCenter Dev Test Kit (.ncapp)**, descarga el artefacto `neurocenter-dev-test-kit-ncapp` de un run exitoso.
-2. Descomprime el ZIP de GitHub Actions y selecciona `neurocenter-dev-test-kit.ncapp` en el gestor de aplicaciones de NeuroCenter Android.
-3. Ejecuta «Pruebas guiadas (paso a paso)». Pulsa **Ejecutar** para cada prueba, o **Saltar esta prueba** para continuar sin ejecutarla.
-   Nunca se lanzan todas en una única acción: si la JVM aborta, sabremos cuál falló.
-4. Antes de las pruebas, pulsa **Probar comunicación JNI**. Esta acción no escribe diagnósticos ni realiza pruebas: permite comprobar la comunicación básica del proceso aislado.
-5. Si se produce un aborto, copia el informe de NeuroCenter Android. En «Fase: Ejecutando ...» figura el nombre de la acción que se estaba ejecutando.
-6. Consulta el «Informe» para los resultados obtenidos en esa sesión.
-7. Para probar `agenda.read`, usa el botón «Permisos de Agenda»; repite con el permiso denegado y concedido en el gestor de NeuroCenter.
-8. Para probar `agenda.write`, pulsa «Probar agenda.write» y confirma. Después elimina la tarea `[Dev Test Kit] Tarea de prueba` desde la Agenda.
+El manifiesto es el **límite máximo**. El kit solo pide permisos al usar sus pruebas, nunca al abrirse. NeuroCenter muestra «Permitir», «Denegar», «Permitir siempre» y «Denegar siempre» cuando se solicita un permiso permitido por el manifiesto. Si un permiso no está declarado no puede solicitarse.
 
-En la versión 1.2.0 se eliminó el uso de `System.err.println` y `flush` en las acciones del kit, porque un aborto con «Pointer tag ... was truncated» apareció inmediatamente después de su emisión sin que se ejecutara ninguna prueba. Si el fallo persiste, su origen está en otra operación nativa; no se ha desactivado el etiquetado de punteros de Android.
+**Agenda:** un permiso no crea la API. `agenda.read` y `agenda.write` solo pueden funcionar si el plugin **Agenda Bridge** está instalado, habilitado y ha registrado el servicio. Android puede informar `SIN PLUGIN` en esta prueba; no equivale a un fallo de aislamiento.
 
-El kit es **solo móvil** (`NeuroCenter-App-Desktop: false`) para evitar declarar funcionalidades de escritorio que aún no tiene.
+## Instalación, actualización y desinstalación
 
-## Compilación local
+Instala **el mismo archivo** `neurocenter-dev-test-kit.ncapp` en cualquiera de las dos plataformas. Para actualizar, utiliza «Instalar o actualizar» y selecciona la nueva versión con el mismo `NeuroCenter-App-Id`; no hace falta desinstalar la anterior ni reiniciar NeuroCenter. El kit no incluye migraciones de esquemas ni conversiones de manifiestos antiguos. Para comprobar el ciclo de vida de escritorio:
 
-Requiere JDK 21. Desde la raíz del repositorio:
+1. Abre el kit y activa `UNSAVED_CHANGES`; intenta cerrarlo o actualizarlo para comprobar la advertencia.
+2. Desactiva la casilla, cierra y vuelve a abrir; confirma que no aparece el aviso.
+3. Comprueba cada botón de permiso y revoca/concede sus decisiones desde el gestor de NeuroCenter.
+4. Prueba la actualización y desinstalación en caliente sin cerrar otras aplicaciones.
+
+En Android, ejecuta «Pruebas guiadas (paso a paso)» para que cada prueba nativa sea independiente. Puedes usar «Probar comunicación JNI» para comprobar el puente básico; «Formato CLDR» aparece en Informe. Las pruebas de Agenda están fuera de la batería segura.
+
+## Compilar
+
+El workflow **NeuroCenter Dev Test Kit (.ncapp)** construye Java 21, verifica el contrato de escritorio y el contrato JSON móvil, comprueba el manifiesto, las clases y el `ServiceLoader`, y publica el paquete `neurocenter-dev-test-kit.ncapp`.
+
+En local, desde la raíz del repositorio, con JDK 21 y Maven:
 
 ```sh
+mvn -B -DskipTests package
 mkdir -p build/devtest/classes dist
-javac --release 21 -encoding UTF-8 -d build/devtest/classes \
+javac --release 21 -encoding UTF-8 -cp target/classes -d build/devtest/classes \
   examples/ncapp-dev-test-kit/src/main/java/com/neurocenter/devkit/*.java
 jar --create --file dist/neurocenter-dev-test-kit.ncapp \
   --manifest examples/ncapp-dev-test-kit/MANIFEST.MF \
   -C build/devtest/classes . \
+  -C examples/ncapp-dev-test-kit META-INF/services \
   -C examples/ncapp-dev-test-kit/src/main/resources .
 ```
 
-El workflow dedicado compila, ejecuta pruebas del contrato JSON y sube el `.ncapp` como artefacto independiente. Para cambiar el formato de UI o introducir más capacidades deberá actualizarse el anfitrión y el kit de forma coordinada.
-
-## Correcciones de la 1.3.0
-
-- Las pruebas de **memoria** y **rendimiento** ya no dependen de `java.util.Formatter` ni CLDR. Así no informan falsos errores cuando faltan los adaptadores regionales del JRE Android.
-- La prueba **Formato CLDR** está disponible en **Informe**, de forma manual y separada; ese posible defecto del JDK sigue visible.
-- La prueba de **recursos** usa explícitamente el ClassLoader de la .ncapp. NeuroCenter Android 1.6.16 prioriza el recurso empaquetado antes del cargador padre; comprueba de nuevo si se resuelve `ExceptionInInitializerError`.
-- Los errores muestran hasta cuatro niveles de causas para facilitar diagnóstico sin imprimir trazas completas.
-
-Si la prueba de recursos sigue fallando, copia el mensaje de error completo con causas. La diferencia entre `ExceptionInInitializerError`, `NoClassDefFoundError` y `UnsatisfiedLinkError` determinará la corrección necesaria.
-
-> Desde NeuroCenter Android 1.6.18, un permiso concedido no activa Agenda:
-> el acceso externo requiere también el plugin Agenda Bridge. Hasta desarrollar
-> el cargador de .ncp en Android, estas pruebas se deniegan por diseño.
+El Dev Test Kit es una herramienta de diagnóstico, **no una prueba exhaustiva de seguridad**: un resultado `AVISO` en `/proc` o un puerto TCP cerrado no demuestra por sí solo aislamiento.

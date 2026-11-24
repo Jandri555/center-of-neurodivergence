@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * isolated HotSpot process. No automatic network calls or host writes.
  */
 public final class DevTestKitMobile {
-    private static final String VERSION = "1.3.0";
+    private static final String VERSION = "1.4.0";
     private static final int MAX_REPORT_CHARS = 7400;
     private static final String SAMPLE = "neurocenter-dev-test-kit/1.0\n";
     private static final String[] SAFE_TESTS = {
@@ -55,12 +55,14 @@ public final class DevTestKitMobile {
             case "suite" -> suitePage();
             case "write-confirm" -> screen("Confirmar prueba de escritura",
                 "Esta prueba AÑADE una tarea real a la Agenda de NeuroCenter, "
-                    + "si el permiso agenda.write está concedido. "
+                    + "solo si Agenda Bridge está activo y el usuario autoriza agenda.write. "
                     + "Tendrás que borrarla manualmente. No se ejecuta automáticamente.",
                 buttons("confirm-write", "Crear tarea de prueba", "agenda-menu", "Cancelar"));
             case "agenda-menu" -> screen("Pruebas de Agenda",
-                "La aplicación solicita operaciones al anfitrión. "
-                    + "NeuroCenter debe comprobar los permisos de la .ncapp.\n\n"
+                "El permiso se solicita al usar la función (Permitir, Denegar, "
+                    + "Permitir siempre o Denegar siempre). El manifiesto es el límite. "
+                    + "Agenda Bridge debe estar instalado y habilitado; "
+                    + "si no existe, ninguna concesión activa su API.\n\n"
                     + lastInfo + "\n\n" + resultLine("agenda"),
                 buttons("read-agenda", "Probar agenda.read", "ask-write", "Probar agenda.write",
                     "home", "Inicio"));
@@ -152,14 +154,20 @@ public final class DevTestKitMobile {
             return renderJson();
         }
         pendingHost = "";
-        boolean ok = responseJson != null && responseJson.trim().startsWith("{\"ok\":true");
+        String text = responseJson == null ? "" : responseJson.trim();
+        boolean ok = text.matches("(?s).*\\\"ok\\\"\\s*:\\s*true.*");
+        String lower = text.toLowerCase(java.util.Locale.ROOT);
+        boolean noProvider = !ok && (lower.contains("agenda bridge")
+                || lower.contains("requiere el plugin"));
         String note = ok
                 ? ("read".equals(type)
                     ? "NeuroCenter autorizó agenda.read. Se recibió una respuesta, sin mostrar tareas privadas."
                     : "NeuroCenter creó la tarea de prueba. Bórrala cuando termines.")
-                : "NeuroCenter denegó la operación o devolvió un error. "
-                    + "Comprueba los permisos en el gestor de aplicaciones.";
-        results.put("agenda", new Result(ok ? "OK" : "DENEGADO/ERROR",
+                : noProvider
+                    ? "Agenda Bridge no está disponible. El permiso por sí solo no crea el servicio."
+                    : "NeuroCenter denegó la operación o devolvió un error. "
+                    + "Comprueba los permisos declarados y concedidos.";
+        results.put("agenda", new Result(ok ? "OK" : noProvider ? "SIN PLUGIN" : "DENEGADO/ERROR",
                 capability + ": " + note));
         lastInfo = note;
         page = "agenda-menu";
@@ -168,7 +176,7 @@ public final class DevTestKitMobile {
 
     private String homePage() {
         return screen("NeuroCenter Dev Test Kit",
-            "Versión " + VERSION + " | Java 21 | Pruebas para .ncapp Android\n\n"
+            "Versión " + VERSION + " | Java 21 | Mismo .ncapp para Android y Windows\n\n"
                 + "Pruebas guiadas: una prueba por pulsación para aislar cierres nativos. "
                 + "No cambian la Agenda ni realizan conexiones de red. "
                 + "Las pruebas de red y escritura son manuales.\n\n"
