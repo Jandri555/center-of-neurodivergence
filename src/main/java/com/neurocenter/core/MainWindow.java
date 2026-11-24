@@ -62,6 +62,8 @@ import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.io.StringWriter;
@@ -101,6 +103,7 @@ public final class MainWindow extends JFrame {
     private final Map<String, NeuroApp> apps = new LinkedHashMap<>();
     private final Set<String> externalAppIds = new HashSet<>();
     private final Map<String, String> externalJarByAppId = new HashMap<>();
+    private final Map<String, URLClassLoader> externalClassLoaders = new HashMap<>();
     private final Map<String, JToggleButton> navButtons = new HashMap<>();
     private final Map<String, JPanel> navMarkers = new HashMap<>();
     private final Map<String, JPanel> navRows = new HashMap<>();
@@ -142,6 +145,7 @@ public final class MainWindow extends JFrame {
             startupModes = appRegistry.startupModesByJar();
             for (AppLoader.LoadedApp loaded : externalApps.apps()) {
                 register(loaded.app(), true, loaded.jarFilename());
+                externalClassLoaders.put(loaded.app().id(), loaded.classLoader());
             }
         } catch (Exception ex) {
             loadErrors.add("No se pudo abrir el registro de aplicaciones (apps.db): " + ex.getMessage());
@@ -386,6 +390,11 @@ public final class MainWindow extends JFrame {
                     session.worker.shutdownNow();
                 }
             }
+            for (URLClassLoader loader : externalClassLoaders.values()) {
+                try { loader.close(); }
+                catch (IOException ignored) { /* Shutdown proceeds even on locked files. */ }
+            }
+            externalClassLoaders.clear();
             System.exit(0);
         }, "app-shutdown");
         terminator.setDaemon(false);
@@ -708,6 +717,11 @@ public final class MainWindow extends JFrame {
     }
 
     private void closeApp(AppSession session) {
+        closeApp(session, null);
+    }
+
+    /** Optional callback runs on Swing EDT, after the old app's stop() finishes. */
+    private void closeApp(AppSession session, Runnable afterClosed) {
         if (session.closing) return;
         session.closing = true;
 
@@ -756,6 +770,7 @@ public final class MainWindow extends JFrame {
                             && statusLabel.getText().equals("Cerrando " + session.app.name() + "…")) {
                         statusLabel.setText(" ");
                     }
+                    if (!shuttingDown && afterClosed != null) afterClosed.run();
                 });
             }
         });
@@ -1011,7 +1026,7 @@ public final class MainWindow extends JFrame {
             return;
         }
 
-        String[] options = {"Instalar aplicación (.ncapp)", "Desinstalar app", "Configurar inicio automático",
+        String[] options = {"Instalar o actualizar (.ncapp)", "Desinstalar app", "Configurar inicio automático",
                 "Configurar permisos"};
         int choice = JOptionPane.showOptionDialog(this,
                 "Formato único de aplicaciones: .ncapp (escritorio y Android). "
@@ -1022,7 +1037,7 @@ public final class MainWindow extends JFrame {
 
         if (choice == 0) {
             javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
-            chooser.setDialogTitle("Instalar una aplicación NeuroCenter (.ncapp)");
+            chooser.setDialogTitle("Instalar o actualizar una aplicación (.ncapp)");
             chooser.setAcceptAllFileFilterUsed(false);
             chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Aplicaciones NeuroCenter (*.ncapp)", "ncapp"));
             if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
@@ -1037,49 +1052,182 @@ public final class MainWindow extends JFrame {
         }
     }
 
-    /** Abre la confirmación de instalación, tanto desde el gestor como por doble clic. */
-    public void installNcapp(java.nio.file.Path source) {
+    /**
+     * One-click install or update by manifest app ID, independently of the
+     * source filename. No NeuroCenter restart is needed.
+     */
+    public void installNcapp(Path source) {
         if (!SwingUtilities.isEventDispatchThread()) {
             SwingUtilities.invokeLater(() -> installNcapp(source));
             return;
         }
         activateFromAnotherLaunch();
         if (appRegistry == null) {
-            JOptionPane.showMessageDialog(this, "El registro SQLite de aplicaciones no está disponible.",
-                    "Error al instalar", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "El registro de aplicaciones no está disponible.",
+                    "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
-        if (source == null || !source.getFileName().toString()
-                .toLowerCase(java.util.Locale.ROOT).endsWith(".ncapp")
-                || !java.nio.file.Files.isRegularFile(source)) {
-            JOptionPane.showMessageDialog(this, "Selecciona un archivo .ncapp válido.",
-                    "Error al instalar", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-        if (JOptionPane.showConfirmDialog(this,
-                "¿Instalar la aplicación «" + source.getFileName() + "» en NeuroCenter?",
-                "Instalar aplicación .ncapp",
-                JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE) != JOptionPane.YES_OPTION) {
-            return;
-        }
-        java.nio.file.Path target = AppPaths.appsDir().resolve(source.getFileName());
+
+        Path staged = null;
+        AppLoader.LoadedApp prepared = null;
         try {
-            if (java.nio.file.Files.exists(target)) {
-                throw new java.io.IOException("Ya existe un archivo con ese nombre.");
+            AppRegistry.PackageInfo metadata = AppRegistry.inspectPackage(source);
+            AppRegistry.AppRecord current = appRegistry.listApps().stream()
+                    .filter(row -> row.id().equals(metadata.id()))
+                    .findFirst().orElse(null);
+            if (current != null && !externalAppIds.contains(metadata.id())
+                    && apps.containsKey(metadata.id())) {
+                throw new IOException("Hay una aplicación integrada con ese ID; no se puede sustituir.");
             }
-            java.nio.file.Files.copy(source, target);
-            try {
-                appRegistry.registerJar(target);
-            } catch (Exception ex) {
-                java.nio.file.Files.deleteIfExists(target);
-                throw ex;
+            if (current == null && apps.containsKey(metadata.id())) {
+                throw new IOException("Ya existe una aplicación o plugin con el ID " + metadata.id());
             }
-            JOptionPane.showMessageDialog(this,
-                    "App instalada. Estará disponible al reiniciar.\n"
-                            + "El inicio automático se puede configurar desde este mismo gestor.");
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "No se pudo instalar la app: " + ex.getMessage(),
-                    "Error al instalar", JOptionPane.ERROR_MESSAGE);
+            AppSession existing = appSessions.get(metadata.id());
+            if (existing != null && existing.closing)
+                throw new IOException("La aplicación está cerrándose. Inténtalo de nuevo cuando termine.");
+
+            String operation = current == null ? "Instalar" : "Actualizar";
+            StringBuilder confirmation = new StringBuilder();
+            confirmation.append(operation).append(" «").append(metadata.name()).append("»");
+            confirmation.append("\nVersión del paquete: ").append(metadata.version());
+            if (current != null) {
+                confirmation.append("\nVersión instalada: ").append(current.version());
+                Set<String> previous = appRegistry.declaredPermissions(current.id());
+                Set<String> added = new HashSet<>(metadata.declaredPermissions());
+                added.removeAll(previous);
+                if (!added.isEmpty()) {
+                    confirmation.append("\n\nPermisos nuevos declarados (NO se concederán automáticamente):");
+                    for (String permission : added)
+                        confirmation.append("\n  • ").append(permission);
+                }
+                confirmation.append("\n\nSe conservarán los datos, el inicio automático");
+                confirmation.append("\ny las decisiones de permisos que sigan declarados.");
+                if (existing != null && hasUnsavedChanges(existing.app)) {
+                    confirmation.append("\n\nATENCIÓN: esta app tiene cambios sin guardar.");
+                    confirmation.append("\nSe cerrará la app antes de actualizarla.");
+                }
+                confirmation.append("\n\nEl paquete debe proceder de una fuente de confianza:");
+                confirmation.append("\nNeuroCenter no verifica firmas criptográficas .ncapp.");
+            } else {
+                confirmation.append("\n\nSe instalará y podrá abrirse ahora, sin reiniciar NeuroCenter.");
+            }
+            int reply = JOptionPane.showConfirmDialog(this, confirmation.toString(),
+                    operation + " aplicación NeuroCenter", JOptionPane.YES_NO_OPTION,
+                    current != null ? JOptionPane.WARNING_MESSAGE : JOptionPane.QUESTION_MESSAGE);
+            if (reply != JOptionPane.YES_OPTION) return;
+
+            // Unique immutable archive avoids overwriting an open ZIP on Windows.
+            String stagedName = metadata.id() + "-" + java.util.UUID.randomUUID() + ".ncapp";
+            staged = AppPaths.appsDir().resolve(stagedName);
+            Files.copy(source, staged);
+            AppRegistry.PackageInfo copied = AppRegistry.inspectPackage(staged);
+            if (!copied.id().equals(metadata.id())
+                    || !copied.declaredPermissions().equals(metadata.declaredPermissions()))
+                throw new IOException("El contenido del .ncapp cambió durante la copia.");
+
+            Set<String> previousGrants = current == null
+                    ? Set.of() : appRegistry.grantedPermissions(current.id());
+            Set<String> grants = new HashSet<>(previousGrants);
+            grants.retainAll(metadata.declaredPermissions());
+            AppRegistry.AppSecurityProfile profile = new AppRegistry.AppSecurityProfile(
+                    metadata.id(), grants, metadata.declaredPermissions());
+            AppLoader.Result validation = AppLoader.load(AppPaths.appsDir(), Map.of(stagedName, profile));
+            if (validation.apps().size() != 1 || !validation.errors().isEmpty())
+                throw new IOException("La nueva aplicación no se pudo cargar: "
+                        + String.join(" | ", validation.errors()));
+            prepared = validation.apps().get(0);
+
+            if (current == null) {
+                appRegistry.registerJar(staged);
+                register(prepared.app(), true, stagedName);
+                externalClassLoaders.put(metadata.id(), prepared.classLoader());
+                JOptionPane.showMessageDialog(this,
+                        "«" + metadata.name() + "» instalada correctamente. Ya puedes abrirla.",
+                        "Instalación completada", JOptionPane.INFORMATION_MESSAGE);
+            } else {
+                final Path preparedArchive = staged;
+                final AppLoader.LoadedApp ready = prepared;
+                final boolean reopen = existing != null;
+                final boolean showUpdated = reopen && metadata.id().equals(activeAppId);
+                Runnable finishUpdate = () -> applyNcappUpdate(current, preparedArchive, ready, reopen, showUpdated);
+                if (existing != null) closeApp(existing, finishUpdate);
+                else finishUpdate.run();
+            }
+            // Ownership transferred to app registry and classloader map.
+            staged = null;
+            prepared = null;
+        } catch (Exception error) {
+            JOptionPane.showMessageDialog(this, "No se pudo instalar o actualizar la aplicación:\n"
+                    + error.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        } finally {
+            if (prepared != null) closePreparedPackage(prepared, staged);
+            else if (staged != null) {
+                NeuroCenterSecurity.unregisterExternalApp(staged);
+                try { Files.deleteIfExists(staged); }
+                catch (IOException ignored) { queueOldPackageDeletion(staged); }
+            }
+        }
+    }
+
+    /**
+     * Swaps the running application only AFTER its worker has called stop().
+     * Existing app settings are under the stable ID in NeuroCenter's data dir.
+     */
+    private void applyNcappUpdate(AppRegistry.AppRecord old, Path staged,
+                                  AppLoader.LoadedApp prepared,
+                                  boolean reopen, boolean activate) {
+        try {
+            appRegistry.updateJar(old.id(), staged);
+        } catch (Exception failed) {
+            closePreparedPackage(prepared, staged);
+            JOptionPane.showMessageDialog(this, "La actualización no se ha aplicado:\n"
+                    + failed.getMessage() + "\nLa versión anterior permanece instalada.",
+                    "Error al actualizar", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        javax.swing.Timer timer = delayedStartupTimers.remove(old.id());
+        if (timer != null) timer.stop();
+        URLClassLoader previousLoader = externalClassLoaders.put(old.id(), prepared.classLoader());
+        apps.put(old.id(), prepared.app());
+        externalJarByAppId.put(old.id(), prepared.jarFilename());
+        if (previousLoader != null) {
+            try { previousLoader.close(); }
+            catch (IOException ignored) { /* The obsolete file will be cleaned later. */ }
+        }
+        Path previousArchive = AppPaths.appsDir().resolve(old.jarFilename());
+        NeuroCenterSecurity.unregisterExternalApp(previousArchive);
+        try {
+            Files.deleteIfExists(previousArchive);
+        } catch (IOException locked) {
+            queueOldPackageDeletion(previousArchive);
+        }
+
+        if (reopen) launchApp(old.id(), activate);
+        JOptionPane.showMessageDialog(this, "«" + prepared.app().name()
+                        + "» actualizada a " + safeVersion(prepared.app())
+                        + ".\nNo ha sido necesario reiniciar NeuroCenter.",
+                "Actualización completada", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void closePreparedPackage(AppLoader.LoadedApp prepared, Path staged) {
+        try { prepared.close(); }
+        catch (IOException ignored) { }
+        if (staged != null) {
+            NeuroCenterSecurity.unregisterExternalApp(staged);
+            try { Files.deleteIfExists(staged); }
+            catch (IOException ignored) { queueOldPackageDeletion(staged); }
+        }
+    }
+
+    private static void queueOldPackageDeletion(Path archive) {
+        try {
+            Files.writeString(AppPaths.root().resolve("pending-uninstall.txt"),
+                    archive.getFileName() + System.lineSeparator(),
+                    java.nio.file.StandardOpenOption.CREATE,
+                    java.nio.file.StandardOpenOption.APPEND);
+        } catch (IOException failure) {
+            System.err.println("No se pudo programar la limpieza del paquete antiguo: " + failure);
         }
     }
 
