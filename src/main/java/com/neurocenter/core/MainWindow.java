@@ -92,6 +92,7 @@ public final class MainWindow extends JFrame {
 
     private final PropertiesStore appSettings;
     private AppRegistry appRegistry;
+    private DesktopPermissionPrompts permissionPrompts;
     private final ServiceRegistry pluginServices = new ServiceRegistry();
     private final EventBus pluginEvents = new EventBus();
     private final ExtensionRegistry pluginExtensions = new ExtensionRegistry();
@@ -129,6 +130,7 @@ public final class MainWindow extends JFrame {
         Set<String> autorunJars = new HashSet<>();
         try {
             appRegistry = new AppRegistry(AppPaths.root().resolve("apps.db"));
+            permissionPrompts = new DesktopPermissionPrompts(this, appRegistry);
             pluginManager = new PluginManager(PluginPaths.pluginsDir(), pluginServices, pluginEvents,
                     pluginExtensions, app -> register(app, false));
             loadErrors.addAll(pluginManager.loadAll());
@@ -714,6 +716,16 @@ public final class MainWindow extends JFrame {
             } catch (Throwable t) {
                 t.printStackTrace();
             } finally {
+                if (permissionPrompts != null && externalAppIds.contains(session.id())) {
+                    try {
+                        AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+                            permissionPrompts.close(session.app, externalJarByAppId.get(session.id));
+                            return null;
+                        });
+                    } catch (RuntimeException ex) {
+                        ex.printStackTrace();
+                    }
+                }
                 session.worker.shutdown();
                 SwingUtilities.invokeLater(() -> {
                     pluginEvents.publish(new PluginManager.ApplicationStoppedEvent(session.id, session.app.name()));
@@ -1093,39 +1105,44 @@ public final class MainWindow extends JFrame {
                     installed.toArray(AppRegistry.AppRecord[]::new), installed.get(0));
             if (selected == null) return;
 
-            Set<String> granted = appRegistry.grantedPermissions(selected.id());
+            Set<String> declared = appRegistry.declaredPermissions(selected.id());
             JPanel options = new JPanel();
             options.setLayout(new BoxLayout(options, BoxLayout.Y_AXIS));
             options.add(new JLabel("Permisos para «" + selected.name() + "»:"));
             options.add(Box.createVerticalStrut(8));
 
-            Map<String, JCheckBox> controls = new LinkedHashMap<>();
+            Map<String, javax.swing.JComboBox<String>> controls = new LinkedHashMap<>();
             for (NeuroCenterSecurity.AppPermission permission : NeuroCenterSecurity.supportedPermissions()) {
-                JCheckBox checkbox = new JCheckBox(permission.name(), granted.contains(permission.id()));
-                checkbox.setToolTipText(permission.description());
-                checkbox.setAlignmentX(Component.LEFT_ALIGNMENT);
-                controls.put(permission.id(), checkbox);
-                options.add(checkbox);
+                if (!declared.contains(permission.id())) continue;
+                Boolean decision = appRegistry.storedDecision(selected.id(), permission.id());
+                String[] choices = {"Preguntar", "Permitir siempre", "Denegar siempre"};
+                javax.swing.JComboBox<String> choice = new javax.swing.JComboBox<>(choices);
+                choice.setSelectedIndex(decision == null ? 0 : decision ? 1 : 2);
+                controls.put(permission.id(), choice);
+                JPanel line = new JPanel(new BorderLayout(8, 0));
+                line.add(new JLabel(permission.name()), BorderLayout.CENTER);
+                line.add(choice, BorderLayout.EAST);
+                options.add(line);
                 JLabel description = new JLabel("  " + permission.description());
                 description.setBorder(new EmptyBorder(0, 20, 7, 0));
                 description.setAlignmentX(Component.LEFT_ALIGNMENT);
                 options.add(description);
             }
+            if (controls.isEmpty()) options.add(new JLabel("Esta aplicación no declara permisos."));
 
             int answer = JOptionPane.showConfirmDialog(this, options,
                     "Permisos de «" + selected.name() + "»",
                     JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
             if (answer != JOptionPane.OK_OPTION) return;
 
-            Set<String> updated = new HashSet<>();
-            controls.forEach((permissionId, checkbox) -> {
-                if (checkbox.isSelected()) updated.add(permissionId);
-            });
-            appRegistry.setGrantedPermissions(selected.id(), updated);
-
-            JOptionPane.showMessageDialog(this,
-                    "Permisos guardados. Se aplicarán cuando reinicies NeuroCenter.\\n\\n"
-                            + "Concedidos: " + NeuroCenterSecurity.permissionSummary(updated));
+            for (Map.Entry<String, javax.swing.JComboBox<String>> item : controls.entrySet()) {
+                int option = item.getValue().getSelectedIndex();
+                appRegistry.setDecision(selected.id(), item.getKey(),
+                        option == 0 ? null : option == 1);
+            }
+            if (apps.containsKey(selected.id()) && permissionPrompts != null)
+                permissionPrompts.refreshPolicy(apps.get(selected.id()), selected.jarFilename());
+            JOptionPane.showMessageDialog(this, "Permisos guardados. Se aplican inmediatamente.");
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this,
                     "No se pudieron guardar los permisos: " + ex.getMessage(),
@@ -1216,6 +1233,18 @@ public final class MainWindow extends JFrame {
 
         Ctx(NeuroApp app) { this.app = app; }
 
+        @Override public boolean requestPermission(String id) {
+            if (!externalAppIds.contains(app.id())) return true;
+            return AccessController.doPrivileged((PrivilegedAction<Boolean>) () ->
+                    permissionPrompts.request(app, externalJarByAppId.get(app.id()), id));
+        }
+
+        @Override public boolean hasPermission(String id) {
+            if (!externalAppIds.contains(app.id())) return true;
+            return AccessController.doPrivileged((PrivilegedAction<Boolean>) () ->
+                    permissionPrompts.has(app, id));
+        }
+
         @Override public Path dataDir() { return AppPaths.appDataDir(app.id()); }
         @Override public ServiceRegistry services() { return pluginServices; }
         @Override public EventBus events() { return pluginEvents; }
@@ -1235,19 +1264,8 @@ public final class MainWindow extends JFrame {
          * Los JAR externos necesitan el permiso explícito credentials.access.
          */
         private void requireCredentialPermission() {
-            if (!externalAppIds.contains(app.id())) return;
-            if (appRegistry == null) {
-                throw new SecurityException("No se puede comprobar el permiso para usar el almacén de credenciales.");
-            }
-            try {
-                if (!appRegistry.grantedPermissions(app.id()).contains("credentials.access")) {
-                    throw new SecurityException(
-                            "La aplicación «" + app.name() + "» no tiene el permiso «Usar el almacén de credenciales». "
-                                    + "Concédelo en Ajustes → Gestionar apps → Configurar permisos y reinicia NeuroCenter.");
-                }
-            } catch (java.sql.SQLException error) {
-                throw new SecurityException("No se pudo comprobar el permiso del almacén de credenciales.", error);
-            }
+            if (externalAppIds.contains(app.id()) && !hasPermission("credentials.access"))
+                throw new SecurityException("La app no tiene el permiso credentials.access.");
         }
 
         @Override public void saveSecret(String key, char[] secret) {
