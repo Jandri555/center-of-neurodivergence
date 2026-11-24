@@ -29,7 +29,10 @@ public final class AppRegistry {
 
     private final String jdbcUrl;
 
-    public record AppSecurityProfile(String appId, Set<String> grantedPermissions) {}
+    public record AppSecurityProfile(String appId, Set<String> grantedPermissions,
+                                     Set<String> declaredPermissions) {
+        public AppSecurityProfile(String id, Set<String> grants) { this(id, grants, Set.of()); }
+    }
 
     public record AppRecord(
             String id,
@@ -68,7 +71,8 @@ public final class AppRegistry {
                         jar_filename TEXT NOT NULL UNIQUE,
                         installed_at TEXT NOT NULL,
                         size_bytes INTEGER NOT NULL,
-                        autorun INTEGER NOT NULL DEFAULT 0 CHECK (autorun IN (0, 1))
+                        autorun INTEGER NOT NULL DEFAULT 0 CHECK (autorun IN (0, 1)),
+                        declared_permissions TEXT NOT NULL DEFAULT ''
                     )
                     """);
             statement.executeUpdate("""
@@ -79,6 +83,13 @@ public final class AppRegistry {
                         PRIMARY KEY (app_id, permission_id)
                     )
                     """);
+            // Existing SQLite installations need a non-destructive schema migration.
+            try {
+                statement.executeUpdate("ALTER TABLE installed_apps ADD COLUMN declared_permissions TEXT NOT NULL DEFAULT ''");
+            } catch (SQLException ex) {
+                if (ex.getMessage() == null || !ex.getMessage().contains("duplicate column"))
+                    throw ex;
+            }
         }
     }
 
@@ -95,11 +106,13 @@ public final class AppRegistry {
         String name = fallback;
         String author = "Desconocido";
         String version = "Desconocida";
+        Set<String> declared = Set.of();
 
         try (JarFile jarFile = new JarFile(jar.toFile())) {
             Manifest manifest = jarFile.getManifest();
             Attributes attributes = manifest == null ? new Attributes() : manifest.getMainAttributes();
             id = safeId(value(attributes, "NeuroCenter-App-Id", id));
+            declared = AppPermissionManifest.parse(manifest);
             name = value(attributes, Attributes.Name.IMPLEMENTATION_TITLE, name);
             author = value(attributes, Attributes.Name.IMPLEMENTATION_VENDOR,
                     value(attributes, Attributes.Name.SPECIFICATION_VENDOR,
@@ -123,8 +136,8 @@ public final class AppRegistry {
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement("""
                      INSERT INTO installed_apps
-                     (id, name, author, version, jar_filename, installed_at, size_bytes, autorun)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                     (id, name, author, version, jar_filename, installed_at, size_bytes, autorun, declared_permissions)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
                      """)) {
             statement.setString(1, id);
             statement.setString(2, name);
@@ -133,6 +146,7 @@ public final class AppRegistry {
             statement.setString(5, filename);
             statement.setString(6, Instant.now().toString());
             statement.setLong(7, Files.size(jar));
+            statement.setString(8, AppPermissionManifest.serialize(declared));
             statement.executeUpdate();
         }
     }
@@ -190,13 +204,14 @@ public final class AppRegistry {
         Map<String, AppSecurityProfile> result = new LinkedHashMap<>();
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT id, jar_filename FROM installed_apps ORDER BY jar_filename");
+                     "SELECT id, jar_filename, declared_permissions FROM installed_apps ORDER BY jar_filename");
              ResultSet rows = statement.executeQuery()) {
             while (rows.next()) {
                 String appId = rows.getString("id");
                 String jarFilename = rows.getString("jar_filename");
                 result.put(jarFilename,
-                        new AppSecurityProfile(appId, grantedPermissions(connection, appId)));
+                        new AppSecurityProfile(appId, grantedPermissions(connection, appId),
+                           AppPermissionManifest.deserialize(rows.getString("declared_permissions"))));
             }
         }
         return result;
@@ -217,7 +232,52 @@ public final class AppRegistry {
                 while (rows.next()) result.add(rows.getString(1));
             }
         }
+        result.retainAll(declaredPermissions(connection, appId));
         return Set.copyOf(result);
+    }
+
+    public Set<String> declaredPermissions(String appId) throws SQLException {
+        try (Connection conn = connect()) { return declaredPermissions(conn, appId); }
+    }
+
+    private Set<String> declaredPermissions(Connection conn, String appId) throws SQLException {
+        try (PreparedStatement q = conn.prepareStatement(
+                "SELECT declared_permissions FROM installed_apps WHERE id=?")) {
+            q.setString(1, appId);
+            try (ResultSet rows = q.executeQuery()) {
+                return rows.next() ? AppPermissionManifest.deserialize(rows.getString(1)) : Set.of();
+            }
+        }
+    }
+
+    public Boolean storedDecision(String appId, String permission) throws SQLException {
+        if (!declaredPermissions(appId).contains(permission)) return null;
+        try (Connection conn = connect(); PreparedStatement q = conn.prepareStatement(
+                "SELECT granted FROM app_permissions WHERE app_id=? AND permission_id=?")) {
+            q.setString(1, appId); q.setString(2, permission);
+            try (ResultSet rows = q.executeQuery()) {
+                return rows.next() ? rows.getInt(1) == 1 : null;
+            }
+        }
+    }
+
+    public void setDecision(String appId, String permission, Boolean allowed) throws SQLException {
+        if (!declaredPermissions(appId).contains(permission))
+            throw new SecurityException("Permiso no declarado: " + permission);
+        try (Connection conn = connect()) {
+            if (allowed == null) {
+                try (PreparedStatement q = conn.prepareStatement(
+                        "DELETE FROM app_permissions WHERE app_id=? AND permission_id=?")) {
+                    q.setString(1, appId); q.setString(2, permission); q.executeUpdate();
+                }
+            } else {
+                try (PreparedStatement q = conn.prepareStatement(
+                        "INSERT OR REPLACE INTO app_permissions(app_id,permission_id,granted) VALUES(?,?,?)")) {
+                    q.setString(1,appId); q.setString(2,permission);
+                    q.setInt(3, allowed ? 1 : 0); q.executeUpdate();
+                }
+            }
+        }
     }
 
     /** Sustituye el conjunto de permisos concedidos a una aplicación. */
@@ -228,6 +288,8 @@ public final class AppRegistry {
                 if (!NeuroCenterSecurity.isSupportedPermission(permissionId)) {
                     throw new IllegalArgumentException("Permiso no reconocido: " + permissionId);
                 }
+                if (!declaredPermissions(appId).contains(permissionId))
+                    throw new SecurityException("Permiso no declarado: " + permissionId);
                 validated.add(permissionId);
             }
         }

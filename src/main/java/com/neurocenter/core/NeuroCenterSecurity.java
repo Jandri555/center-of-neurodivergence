@@ -56,7 +56,11 @@ public final class NeuroCenterSecurity {
             new AppPermission("clipboard.access", "Acceder al portapapeles",
                     "Permite leer y modificar el portapapeles del sistema."),
             new AppPermission("credentials.access", "Usar el almacén de credenciales",
-                    "Permite guardar, consultar y eliminar credenciales propias de la aplicación en el almacén seguro del sistema operativo.")
+                    "Permite guardar, consultar y eliminar credenciales propias de la aplicación en el almacén seguro del sistema operativo."),
+            new AppPermission("agenda.read", "Leer la Agenda",
+                    "Permite leer la Agenda mediante un plugin instalado."),
+            new AppPermission("agenda.write", "Modificar la Agenda",
+                    "Permite importar tareas mediante Agenda Bridge si está instalado.")
     );
 
     private static volatile NeuroCenterPolicy policy;
@@ -255,6 +259,10 @@ public final class NeuroCenterSecurity {
             permissions.add(new AWTPermission("accessEventQueue"));
             permissions.add(new AWTPermission("showWindowWithoutWarningBanner"));
 
+            if (safeGrants.contains("agenda.read"))
+                permissions.add(new RuntimePermission("neurocenter.agenda.read"));
+            if (safeGrants.contains("agenda.write"))
+                permissions.add(new RuntimePermission("neurocenter.agenda.write"));
             if (safeGrants.contains("network.connect")) {
                 permissions.add(new SocketPermission("*", "connect,resolve"));
                 permissions.add(new URLPermission("http://*/-", "*:*"));

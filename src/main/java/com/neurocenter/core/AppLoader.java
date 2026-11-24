@@ -85,9 +85,17 @@ public final class AppLoader {
                     }
                 }
 
+                // The live manifest is another hard upper bound on stored grants.
+                Set<String> liveDeclared;
+                try (JarFile verify = new JarFile(canonicalJar.toFile())) {
+                    liveDeclared = AppPermissionManifest.parse(verify.getManifest());
+                }
+                Set<String> grants = new HashSet<>(profile.grantedPermissions());
+                grants.retainAll(profile.declaredPermissions());
+                grants.retainAll(liveDeclared);
                 // Es esencial registrar primero el CodeSource exacto del JAR.
                 NeuroCenterSecurity.registerExternalApp(
-                        canonicalJar, profile.appId(), profile.grantedPermissions());
+                        canonicalJar, profile.appId(), grants);
 
                 URL[] urls = { canonicalJar.toUri().toURL() };
                 loader = new URLClassLoader(urls, AppLoader.class.getClassLoader());

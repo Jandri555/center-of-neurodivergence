@@ -67,6 +67,14 @@ public interface AppContext extends NeuroAppContext {
         throw new UnsupportedOperationException("El host no proporciona un almacén seguro de credenciales.");
     }
 
+    /** Ask NeuroCenter for a manifest-declared permission when needed. */
+    default boolean requestPermission(String id) {
+        throw new UnsupportedOperationException("El host no implementa solicitudes de permisos.");
+    }
+
+    /** True only when a declared permission is currently granted. */
+    default boolean hasPermission(String id) { return false; }
+
     /** Trae la ventana al frente (y la restaura si estaba minimizada). Útil para avisos. */
     void requestAttention();
 }
