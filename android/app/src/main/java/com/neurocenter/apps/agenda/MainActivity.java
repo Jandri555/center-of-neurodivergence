@@ -173,13 +173,9 @@ public final class MainActivity extends Activity {
                     Toast.LENGTH_LONG).show();
             return;
         }
-        Uri selected = source;
-        new AlertDialog.Builder(this)
-                .setTitle("Instalar aplicación NeuroCenter")
-                .setMessage("¿Quieres instalar «" + fileName + "» dentro de NeuroCenter?")
-                .setPositiveButton("Instalar", (d, w) -> installNcapp(selected))
-                .setNegativeButton("Cancelar", null)
-                .show();
+        // The file is inspected first; the following dialog shows the actual
+        // app ID and version and offers Install or Update as appropriate.
+        installNcapp(source);
     }
 
     private void buildScreen() {
@@ -608,12 +604,19 @@ public final class MainActivity extends Activity {
                                 String outcome;
                                 try {
                                     NcappManager.InstalledApp installed = NcappManager.activate(this, staged);
-                                    if (update) {
-                                        // Invalidate all decisions bound to the obsolete hash.
-                                        NcappPermissionStore.revoke(this, old);
-                                    }
                                     outcome = (update ? "Actualizada " : "Instalada ")
                                             + installed.name() + " (" + installed.version() + ").";
+                                    if (update) {
+                                        try {
+                                            // Old SHA-256 grants must not carry over.
+                                            NcappPermissionStore.revoke(this, old);
+                                        } catch (RuntimeException revokeFailed) {
+                                            // The new hash is already denied by default, so
+                                            // failure to clean obsolete entries is not an
+                                            // installation failure.
+                                            outcome += " Comprueba los permisos en el gestor.";
+                                        }
+                                    }
                                 } catch (Exception failure) {
                                     outcome = "No se pudo instalar o actualizar: " + failure.getMessage();
                                 } finally {
