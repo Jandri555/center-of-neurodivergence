@@ -1,0 +1,32 @@
+﻿CENTER OF NEURODIVERGENCE
+
+NeuroCenter es un panel de aplicaciones y herramientas integrado: Agenda,
+lector Bionic PDF, aplicaciones .ncapp, plugins y temas personalizados.
+Permite utilizar las herramientas desde un mismo espacio de trabajo.
+
+¿QUÉ INSTALARÁ ESTE ASISTENTE?
+
+- La aplicación Center of Neurodivergence.
+- Una versión privada de Java 21 para el programa.
+  No instalará Java globalmente ni modificará el JDK del ordenador.
+- Un acceso directo al menú Inicio y, si lo deseas, otro en el escritorio.
+- La asociación de archivos .ncapp para instalar aplicaciones NeuroCenter.
+
+¿DÓNDE SE INSTALARÁ?
+
+La siguiente pantalla te mostrará la carpeta de destino y permitirá cambiarla.
+Por defecto: %LOCALAPPDATA%\Center of Neurodivergence.
+
+¿QUÉ OCURRE SI YA ESTÁ INSTALADO?
+
+El asistente detectará la instalación anterior y la actualizará. Puede
+migrar la versión antigua que utilizaba Windows Installer (jpackage).
+No es necesario desinstalar manualmente.
+
+Los datos, la Agenda, las aplicaciones, los plugins, los temas y los ajustes
+se conservarán en %APPDATA%\CenterOfNeurodivergence.
+
+ANTES DE INSTALAR O ACTUALIZAR
+
+Cierra NeuroCenter por completo desde su icono de la bandeja del sistema.
+Después revisa el destino y las opciones, y pulsa INSTALAR o ACTUALIZAR.

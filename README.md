@@ -23,55 +23,61 @@ java -Djava.security.manager=allow -jar target/center-of-neurodivergence.jar
 ```
 
 
-## Generar el instalador de Windows (.exe)
+## Instalación y actualización en Windows
 
-En Windows, el perfil Maven `windows-exe` se activa automáticamente al ejecutar:
+El instalador EXE de Windows incluye un **asistente en español** con una
+presentación de Center of Neurodivergence, una explicación del tipo de
+instalación, un selector de carpeta, una opción de acceso directo al escritorio,
+un resumen antes de empezar y un botón **Instalar** o **Actualizar**.
+
+- **Carpeta predeterminada:** `%LOCALAPPDATA%\Center of Neurodivergence`,
+  modificable en el asistente. No necesita permisos de administrador.
+- **Modo de instalación:** instala la app y un runtime privado **Java 21**.
+  No modifica el Java global de Windows.
+- **Actualización:** reutiliza la instalación anterior si ya se utilizó este
+  asistente. También detecta y retira el instalador anterior basado en
+  `jpackage`/Windows Installer antes de instalar la nueva versión; no es
+  necesario desinstalar NeuroCenter manualmente.
+- **Datos del usuario:** se mantienen en
+  `%APPDATA%\CenterOfNeurodivergence`. Actualizar no borra apps `.ncapp`,
+  plugins, temas, Agenda ni preferencias de ese directorio.
+- **Integración:** crea un acceso directo del menú Inicio, ofrece un acceso
+  directo de escritorio y registra el formato `.ncapp`.
+
+**Antes de actualizar**, cierra NeuroCenter por completo desde el icono de
+bandeja para que Windows pueda sustituir el lanzador y el runtime Java.
+
+### Compilar el instalador
+
+En Windows necesitas JDK 21, Maven y **Inno Setup 6**:
 
 ```powershell
-mvn package
+choco install innosetup -y
+mvn clean package
 ```
 
-El instalador siempre debe generarse con **JDK 21**, porque el runtime incluido necesita Security Manager. El proceso comprueba la versión leyendo el archivo `release` del JDK y aborta con un error claro si no es Java 21.
-
-Si Maven se está ejecutando con otro JDK (por ejemplo, Java 25), indica dónde está instalado el JDK 21 mediante `JDK21_HOME`:
+`mvn package` también funciona. El perfil Windows se activa automáticamente.
+El proceso comprueba que la JVM de empaquetado sea Java 21; si Maven se
+ejecuta desde otro JDK, define `JDK21_HOME` sin modificar el JDK global:
 
 ```powershell
 $env:JDK21_HOME = "C:\Ruta\al\jdk-21"
 mvn clean package
 ```
 
-Si no defines `JDK21_HOME`, se utilizará el mismo JDK con el que se ejecuta Maven; la comprobación impedirá crear por accidente un instalador incompatible.
-
-Cada compilación genera el instalador en una carpeta propia con versión y fecha/hora, por ejemplo:
+`jpackage` prepara el lanzador y el runtime de Java 21, mientras que Inno
+Setup genera el asistente de instalación y actualización. No se necesita WiX
+Toolset para esta nueva modalidad. Los instaladores se guardan en
+`target/installer/<versión>-<fecha>/`, con un nombre como:
 
 ```text
-target/installer/1.0-20261117-102239/Center of Neurodivergence-1.0.exe
+Center-of-Neurodivergence-Setup-1.2.0.exe
 ```
 
-Así no es necesario sobrescribir ni borrar el instalador de la compilación anterior. Para localizar los instaladores generados:
-
-```powershell
-Get-ChildItem target\\installer -Recurse -Filter "*.exe"
-```
-
-Para crear instaladores `.exe`, `jpackage` necesita WiX Toolset 3.0 o superior. En el equipo de desarrollo puedes instalar la versión 3.14.1 desde PowerShell con Chocolatey:
-
-```powershell
-choco install wixtoolset --version=3.14.1.20250415 --no-progress -y
-```
-
-Maven añade automáticamente la carpeta habitual de WiX 3.14 al `PATH` del proceso `jpackage`, sin modificar el `PATH` global de Windows. Si WiX está instalado en otra ubicación, indica su carpeta `bin` al compilar:
-
-```powershell
-mvn package "-Dwix.bin=D:/Ruta/a/WiX/bin"
-```
-
-La ruta predeterminada es `C:/Program Files (x86)/WiX Toolset v3.14/bin`.
-
-El instalador incluye un runtime privado de Java 21 y crea accesos directos en el menú Inicio. El lanzador activa el modo que permite a NeuroCenter instalar su Security Manager y la política de permisos antes de cargar aplicaciones externas. La compilación de GitHub Actions instala WiX automáticamente y publica el `.exe` como artefacto de la ejecución.
-
-
-**Runtime fijado a Java 21:** el proyecto compila con `maven.compiler.release=21`. `jpackage` y `jlink` utilizan JDK 21, seleccionado desde `JDK21_HOME` o, si no está definida, desde el JDK con el que se ejecuta Maven. La compilación verifica la versión efectiva antes de crear el instalador.
+El compilador de Inno Setup se detecta en `PATH`, `INNO_SETUP_HOME` o en su
+ubicación habitual `C:\Program Files (x86)\Inno Setup 6\`.
+El repositorio incluye el asistente en `packaging/windows/` y las
+comprobaciones de instalación y actualización en GitHub Actions.
 
 ## Datos de usuario
 

@@ -6,7 +6,7 @@
 
     <groupId>com.neurocenter</groupId>
     <artifactId>center-of-neurodivergence</artifactId>
-    <version>1.1</version>
+    <version>1.2.0</version>
     <packaging>jar</packaging>
     <name>Center of Neurodivergence</name>
 
@@ -16,9 +16,8 @@
         <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
         <lombok.version>1.18.42</lombok.version>
         <jna.version>5.19.1</jna.version>
-        <!-- Ubicación habitual de WiX 3.14 instalado mediante Chocolatey.
-             Se puede cambiar con -Dwix.bin="ruta/a/WiX/bin". -->
-        <wix.bin>C:/Program Files (x86)/WiX Toolset v3.14/bin</wix.bin>
+        <!-- Windows: jpackage (JDK 21) creates the runtime image;
+             Inno Setup 6 builds the interactive, upgrade-capable wizard. -->
     </properties>
 
     <dependencies>
@@ -124,7 +123,7 @@
         </plugins>
     </build>
 
-    <!-- En Windows, mvn package también genera un instalador EXE con su propio runtime de Java. -->
+    <!-- En Windows, mvn package genera un EXE con asistente y Java 21 privado. -->
     <profiles>
         <profile>
             <id>windows-exe</id>
@@ -162,78 +161,25 @@
                             <execution>
                                 <id>package-windows-exe</id>
                                 <phase>package</phase>
-                                <goals>
-                                    <goal>run</goal>
-                                </goals>
+                                <goals><goal>run</goal></goals>
                                 <configuration>
                                     <target>
-                                        <!-- Permite empaquetar con JDK 21 aunque Maven se ejecute con otra versión. -->
-                                        <property environment="env"/>
-                                        <condition property="jpackage.jdk.home"
-                                                   value="${env.JDK21_HOME}"
-                                                   else="${java.home}">
-                                            <isset property="env.JDK21_HOME"/>
-                                        </condition>
-
-                                        <!-- NeuroCenter necesita el Security Manager, disponible en Java 21. -->
-                                        <loadfile property="jpackage.jdk.release"
-                                                  srcFile="${jpackage.jdk.home}/release"/>
-                                        <condition property="jpackage.is.java21">
-                                            <contains string="${jpackage.jdk.release}"
-                                                      substring='JAVA_VERSION="21.'/>
-                                        </condition>
-                                        <fail unless="jpackage.is.java21"
-                                              message="NeuroCenter necesita JDK 21 para generar el instalador. Ejecuta Maven con JDK 21 o define JDK21_HOME con la ruta del JDK 21. JDK seleccionado: ${jpackage.jdk.home}"/>
-
-                                        <echo message="jpackage y jlink usarán JDK 21: ${jpackage.jdk.home}"/>
-                                        <!-- Cada compilación usa su propia carpeta para no tener que borrar
-                                             un instalador anterior que Windows pueda mantener bloqueado. -->
-                                        <delete dir="${project.build.directory}/jpackage-input"/>
-                                        <mkdir dir="${project.build.directory}/jpackage-input"/>
-                                        <mkdir dir="${project.build.directory}/installer/${project.version}-${maven.build.timestamp}"/>
-                                        <copy
-                                                file="${project.build.directory}/${project.build.finalName}.jar"
-                                                todir="${project.build.directory}/jpackage-input"/>
-                                        <exec executable="${jpackage.jdk.home}/bin/jpackage.exe" failonerror="true">
-                                            <!-- jpackage busca candle.exe/light.exe mediante PATH.
-                                                 Añadimos la ruta de WiX sin modificar el PATH global de Windows. -->
-                                            <!-- jpackage y jlink deben pertenecer al mismo JDK.
-                                                 JAVA_HOME puede apuntar a otra versión instalada en Windows. -->
-                                            <env key="JAVA_HOME" value="${jpackage.jdk.home}"/>
-                                            <env key="PATH" value="${jpackage.jdk.home}/bin;${env.PATH};${wix.bin}"/>
-                                            <arg value="--type"/>
-                                            <arg value="exe"/>
-                                            <arg value="--name"/>
-                                            <arg value="Center of Neurodivergence"/>
-                                            <arg value="--app-version"/>
+                                        <exec executable="powershell.exe" failonerror="true">
+                                            <arg value="-NoProfile"/>
+                                            <arg value="-NonInteractive"/>
+                                            <arg value="-ExecutionPolicy"/>
+                                            <arg value="Bypass"/>
+                                            <arg value="-File"/>
+                                            <arg value="${project.basedir}/scripts/build-windows-installer.ps1"/>
+                                            <arg value="-ProjectDir"/>
+                                            <arg value="${project.basedir}"/>
+                                            <arg value="-JavaHome"/>
+                                            <arg value="${java.home}"/>
+                                            <arg value="-Version"/>
                                             <arg value="${project.version}"/>
-                                            <arg value="--vendor"/>
-                                            <arg value="Center of Neurodivergence"/>
-                                            <arg value="--description"/>
-                                            <arg value="Centro de aplicaciones de neurodivergencia"/>
-                                            <arg value="--input"/>
-                                            <arg value="${project.build.directory}/jpackage-input"/>
-                                            <arg value="--main-jar"/>
-                                            <arg value="${project.build.finalName}.jar"/>
-                                            <arg value="--main-class"/>
-                                            <arg value="com.neurocenter.Main"/>
-                                            <arg value="--file-associations"/>
-                                            <arg value="${project.basedir}/src/main/jpackage/ncapp.properties"/>
-                                            <!-- El runtime incluido se genera con el mismo JDK 21 que compila
-                                                 el proyecto; no mezclar módulos de otros JDK. -->
-                                            <arg value="--java-options"/>
-                                            <arg value="-Djava.security.manager=allow"/>
-                                            <arg value="--dest"/>
+                                            <arg value="-OutputDir"/>
                                             <arg value="${project.build.directory}/installer/${project.version}-${maven.build.timestamp}"/>
-                                            <arg value="--win-per-user-install"/>
-                                            <arg value="--win-menu"/>
-                                            <arg value="--win-menu-group"/>
-                                            <arg value="Center of Neurodivergence"/>
-                                            <arg value="--win-shortcut"/>
-                                            <arg value="--win-upgrade-uuid"/>
-                                            <arg value="b273a720-1483-4f49-bd16-9f3b1092c3ab"/>
                                         </exec>
-                                        <delete dir="${project.build.directory}/jpackage-input"/>
                                     </target>
                                 </configuration>
                             </execution>

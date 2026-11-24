@@ -34,33 +34,49 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Install WiX Toolset 3.14
+      - name: Install Inno Setup 6
         shell: pwsh
         run: |
-          choco install wixtoolset --version=3.14.1.20250415 --no-progress -y
-          $wixRoot = Join-Path ${env:ProgramFiles(x86)} "WiX Toolset v3.14"
-          $wixBin = Join-Path $wixRoot "bin"
-          if (!(Test-Path (Join-Path $wixBin "candle.exe")) -or !(Test-Path (Join-Path $wixBin "light.exe"))) {
-            $candle = Get-ChildItem -Path "${env:ProgramFiles(x86)}" -Filter candle.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($null -eq $candle) {
-              throw "No se encontró candle.exe después de instalar WiX Toolset."
-            }
-            $wixBin = $candle.DirectoryName
+          choco install innosetup --no-progress -y
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $compiler)) {
+            $command = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+            if ($null -eq $command) { throw "Inno Setup 6 (ISCC.exe) no encontrado." }
+            $compiler = $command.Source
           }
-          if (!(Test-Path (Join-Path $wixBin "light.exe"))) {
-            throw "No se encontró light.exe en $wixBin."
-          }
-          Add-Content -Path $env:GITHUB_PATH -Value $wixBin
-          Write-Host "WiX Toolset añadido al PATH: $wixBin"
-
-      - name: Verify WiX tools
-        shell: pwsh
-        run: |
-          Get-Command candle.exe
-          Get-Command light.exe
+          Write-Host "Compilador Inno Setup: $compiler"
 
       - name: Build, test and package EXE
         run: mvn --batch-mode --no-transfer-progress clean package
+
+      - name: Verify installer and per-user upgrade
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem target/installer -Recurse -Filter "*.exe" | Select-Object -First 1
+          if ($null -eq $installer) { throw "No se generó el instalador EXE." }
+          $testDir = Join-Path $env:RUNNER_TEMP "NeuroCenter-Installer-Smoke"
+          & $installer.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$testDir"
+          if ($LASTEXITCODE -ne 0) { throw "Fallo en instalación limpia: $LASTEXITCODE" }
+          $exe = Join-Path $testDir "Center of Neurodivergence.exe"
+          $jar = Join-Path $testDir "app/center-of-neurodivergence.jar"
+          $jre = Join-Path $testDir "runtime/bin/server/jvm.dll"
+          if (!(Test-Path $exe) -or !(Test-Path $jar)) {
+            throw "El instalador no instaló el lanzador o la aplicación."
+          }
+          if (!(Test-Path (Join-Path $testDir "runtime"))) {
+            throw "El instalador no incluyó Java 21."
+          }
+          # Reinstall/update the same AppId without requiring an uninstall.
+          & $installer.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$testDir"
+          if ($LASTEXITCODE -ne 0) { throw "Fallo al actualizar: $LASTEXITCODE" }
+          if (!(Test-Path $exe) -or !(Test-Path $jar)) {
+            throw "La actualización dejó la aplicación incompleta."
+          }
+          $uninstaller = Get-ChildItem $testDir -Filter "unins*.exe" | Select-Object -First 1
+          if ($uninstaller) {
+            & $uninstaller.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+            if ($LASTEXITCODE -ne 0) { throw "Fallo al desinstalar el paquete de prueba." }
+          }
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
