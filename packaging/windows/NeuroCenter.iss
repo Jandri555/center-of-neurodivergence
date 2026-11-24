@@ -44,7 +44,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Crear un acceso directo en el escritorio"; Flags: unchecked
+Name: "desktopicon"; Description: "Crear un acceso directo en el escritorio"
 
 [Files]
 Source: "{#AppImage}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
