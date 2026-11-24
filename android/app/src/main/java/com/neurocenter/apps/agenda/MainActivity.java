@@ -421,26 +421,89 @@ public final class MainActivity extends Activity {
     }
 
     private void showExternalAppPermissions() {
-        final List<NcappManager.InstalledApp> installed;
+        final List<NcappManager.InstalledApp> ncapps;
         try {
-            installed = NcappManager.list(this);
+            ncapps = NcappManager.list(this);
         } catch (IOException ex) {
-            Toast.makeText(this, "Error al consultar las apps: " + ex.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Error consultando apps: " + ex.getMessage(), Toast.LENGTH_LONG).show();
             return;
         }
-        if (installed.isEmpty()) {
+        final List<com.neurocenter.core.AndroidExternalApps.InstalledApp> apks =
+                com.neurocenter.core.AndroidExternalApps.discover(this);
+        if (ncapps.isEmpty() && apks.isEmpty()) {
             new AlertDialog.Builder(this).setTitle("Permisos de aplicaciones")
-                    .setMessage("No hay aplicaciones .ncapp instaladas.")
+                    .setMessage("No hay aplicaciones externas instaladas.")
                     .setPositiveButton("Aceptar", null).show();
             return;
         }
-        String[] labels = new String[installed.size()];
-        for (int i = 0; i < installed.size(); i++) {
-            labels[i] = installed.get(i).name() + " (" + installed.get(i).id() + ")";
-        }
-        new AlertDialog.Builder(this).setTitle("Elige una aplicación")
-                .setItems(labels, (dialog, which) -> editExternalAppPermissions(installed.get(which)))
+        String[] labels = new String[ncapps.size() + apks.size()];
+        for (int i = 0; i < ncapps.size(); i++)
+            labels[i] = ncapps.get(i).name() + " (.ncapp)";
+        for (int i = 0; i < apks.size(); i++)
+            labels[ncapps.size() + i] = apks.get(i).name() + " (APK)";
+        new AlertDialog.Builder(this).setTitle("Permisos declarados")
+                .setItems(labels, (dialog, which) -> {
+                    if (which < ncapps.size()) editExternalAppPermissions(ncapps.get(which));
+                    else editNativeAppPermissions(apks.get(which - ncapps.size()));
+                })
                 .setNegativeButton("Cancelar", null).show();
+    }
+
+    private void editNativeAppPermissions(
+            com.neurocenter.core.AndroidExternalApps.InstalledApp app) {
+        java.util.Set<String> declared =
+                com.neurocenter.core.AndroidExternalApps.declaredCapabilities(this, app.packageName());
+        LinearLayout options = new LinearLayout(this);
+        options.setOrientation(LinearLayout.VERTICAL);
+        options.setPadding(dp(18), dp(8), dp(18), dp(8));
+        java.util.Map<String, android.widget.Spinner> controls = new java.util.LinkedHashMap<>();
+        try (com.neurocenter.core.NeuroCenterCapabilityStore permissions =
+                     new com.neurocenter.core.NeuroCenterCapabilityStore(this)) {
+            for (String permission : com.neurocenter.api.NeuroCenterCapabilities.supported()) {
+                if (!declared.contains(permission)) continue;
+                options.addView(text(permission, 15, false));
+                android.widget.Spinner picker = new android.widget.Spinner(this);
+                String[] choices = {"Preguntar", "Permitir siempre", "Denegar siempre"};
+                android.widget.ArrayAdapter<String> adapter =
+                        new android.widget.ArrayAdapter<>(this,
+                                android.R.layout.simple_spinner_item, choices);
+                adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+                picker.setAdapter(adapter);
+                Boolean decision = permissions.storedDecision(
+                        app.packageName(), app.signingDigest(), permission);
+                picker.setSelection(decision == null ? 0 : decision ? 1 : 2);
+                controls.put(permission, picker);
+                options.addView(picker);
+            }
+        } catch (IOException | RuntimeException ex) {
+            Toast.makeText(this, "No se pudieron leer permisos: " + ex.getMessage(),
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (controls.isEmpty()) options.addView(
+                text("Este APK no declara capacidades de NeuroCenter.", 15, false));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(options);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Permisos declarados · " + app.name())
+                .setView(scroll).setNegativeButton("Cancelar", null)
+                .setPositiveButton("Guardar", null).create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    try (com.neurocenter.core.NeuroCenterCapabilityStore permissions =
+                                 new com.neurocenter.core.NeuroCenterCapabilityStore(this)) {
+                        for (java.util.Map.Entry<String, android.widget.Spinner> item : controls.entrySet()) {
+                            int index = item.getValue().getSelectedItemPosition();
+                            permissions.setDecision(app.packageName(), app.signingDigest(),
+                                    item.getKey(), index == 0 ? null : index == 1);
+                        }
+                        dialog.dismiss();
+                    } catch (IOException | RuntimeException ex) {
+                        Toast.makeText(this, "Error guardando permisos: " + ex.getMessage(),
+                                Toast.LENGTH_LONG).show();
+                    }
+                }));
+        dialog.show();
     }
 
     private void editExternalAppPermissions(NcappManager.InstalledApp app) {
