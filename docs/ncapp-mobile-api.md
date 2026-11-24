@@ -139,3 +139,12 @@ del paquete. Una actualización cambia la huella; por seguridad **no hereda
 permisos** y debe solicitarlos de nuevo según su manifiesto. Si falla la
 validación o el intercambio atómico, permanece el paquete anterior.
 No se aceptan paquetes móviles no compatibles ni .ncapp sin manifiesto.
+
+## Desinstalación sin reiniciar (Android 1.6.22)
+
+La desinstalación de una `.ncapp` es inmediata: si tiene una sesión Java
+abierta, NeuroCenter cierra **solo esa sesión** y libera el proceso aislado.
+Después elimina el paquete y revoca las autorizaciones vinculadas a su
+huella. El resto de aplicaciones y la Agenda integrada continúan
+funcionando. No es necesario reiniciar NeuroCenter. La carpeta privada de
+datos no se borra automáticamente.

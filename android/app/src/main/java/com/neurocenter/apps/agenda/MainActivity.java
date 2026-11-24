@@ -358,9 +358,21 @@ public final class MainActivity extends Activity {
                 .setMessage("Se eliminará el paquete .ncapp y se revocarán todos sus permisos.")
                 .setPositiveButton("Desinstalar", (d, w) -> {
                     try {
+                        // Stop and dismiss only this app's isolated Java session.
+                        // Other sessions and the built-in Agenda remain running.
+                        NcappUiController.closeForApp(this, app.id());
                         NcappManager.uninstall(this, app);
-                        NcappPermissionStore.revoke(this, app);
-                        Toast.makeText(this, "Aplicación desinstalada", Toast.LENGTH_SHORT).show();
+                        try {
+                            NcappPermissionStore.revoke(this, app);
+                        } catch (RuntimeException revokeFailure) {
+                            // The package was removed; grants are keyed by its
+                            // obsolete SHA-256 and cannot authorize a new install.
+                            Toast.makeText(this, "Aplicación eliminada. No se pudieron borrar "
+                                    + "todos los permisos antiguos.", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        Toast.makeText(this, "Aplicación desinstalada sin reiniciar NeuroCenter.",
+                                Toast.LENGTH_SHORT).show();
                     } catch (IOException ex) {
                         Toast.makeText(this, "No se pudo desinstalar: " + ex.getMessage(),
                                 Toast.LENGTH_LONG).show();
