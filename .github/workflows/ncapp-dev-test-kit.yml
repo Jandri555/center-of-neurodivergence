@@ -2,14 +2,16 @@ name: NeuroCenter Dev Test Kit (.ncapp)
 
 on:
   push:
-    branches: ["feature/android10-java21-ncapp", "dev", "main"]
+    branches: ["dev", "main"]
     paths:
       - "examples/ncapp-dev-test-kit/**"
+      - "src/main/java/com/neurocenter/api/**"
       - ".github/workflows/ncapp-dev-test-kit.yml"
   pull_request:
     branches: ["dev", "main"]
     paths:
       - "examples/ncapp-dev-test-kit/**"
+      - "src/main/java/com/neurocenter/api/**"
       - ".github/workflows/ncapp-dev-test-kit.yml"
   workflow_dispatch:
 
@@ -18,7 +20,7 @@ permissions:
 
 jobs:
   build-dev-test-kit:
-    name: Build and smoke-test Java 21 .ncapp
+    name: Build and test desktop + Android Java 21 .ncapp
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,35 +29,60 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          cache: maven
 
-      - name: Build Android-only Dev Test Kit (.ncapp)
+      - name: Compile current NeuroCenter host API
+        run: mvn --batch-mode --no-transfer-progress -DskipTests package
+
+      - name: Build unified Windows + Android Dev Test Kit (.ncapp)
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/devtest/classes build/devtest/tests dist
-          javac --release 21 -encoding UTF-8 -d build/devtest/classes \
+          javac --release 21 -encoding UTF-8 -cp target/classes \
+            -d build/devtest/classes \
             examples/ncapp-dev-test-kit/src/main/java/com/neurocenter/devkit/*.java
           jar --create --file dist/neurocenter-dev-test-kit.ncapp \
             --manifest examples/ncapp-dev-test-kit/MANIFEST.MF \
             -C build/devtest/classes . \
+            -C examples/ncapp-dev-test-kit META-INF/services \
             -C examples/ncapp-dev-test-kit/src/main/resources .
-          unzip -l dist/neurocenter-dev-test-kit.ncapp | grep -F 'com/neurocenter/devkit/DevTestKitMobile.class'
-          unzip -l dist/neurocenter-dev-test-kit.ncapp | grep -F 'com/neurocenter/devkit/ProbeDependency.class'
-          unzip -l dist/neurocenter-dev-test-kit.ncapp | grep -F 'dev-test-kit/probe.txt'
-          unzip -p dist/neurocenter-dev-test-kit.ncapp META-INF/MANIFEST.MF \
-            | grep -F 'NeuroCenter-Mobile-Class: com.neurocenter.devkit.DevTestKitMobile'
-          unzip -p dist/neurocenter-dev-test-kit.ncapp META-INF/MANIFEST.MF \
-            | grep -F 'NeuroCenter-App-Desktop: false'
+          jar tf dist/neurocenter-dev-test-kit.ncapp | grep -Fx 'com/neurocenter/devkit/DevTestKitDesktop.class'
+          jar tf dist/neurocenter-dev-test-kit.ncapp | grep -Fx 'com/neurocenter/devkit/DevTestKitMobile.class'
+          jar tf dist/neurocenter-dev-test-kit.ncapp | grep -Fx 'com/neurocenter/devkit/ProbeDependency.class'
+          jar tf dist/neurocenter-dev-test-kit.ncapp | grep -Fx 'META-INF/services/com.neurocenter.api.NeuroApp'
+          jar tf dist/neurocenter-dev-test-kit.ncapp | grep -Fx 'dev-test-kit/probe.txt'
+          test "$(unzip -p dist/neurocenter-dev-test-kit.ncapp             META-INF/services/com.neurocenter.api.NeuroApp | tr -d '\r\n')" =             'com.neurocenter.devkit.DevTestKitDesktop'
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          p = 'dist/neurocenter-dev-test-kit.ncapp'
+          with ZipFile(p) as archive:
+              lines = archive.read('META-INF/MANIFEST.MF').decode().replace('\r\n','\n').splitlines()
+          unfolded = []
+          for line in lines:
+              if line.startswith(' '):
+                  assert unfolded
+                  unfolded[-1] += line[1:]
+              else:
+                  unfolded.append(line)
+          metadata = dict(line.split(': ', 1) for line in unfolded if ': ' in line)
+          assert metadata['NeuroCenter-App-Id'] == 'com.neurocenter.devtestkit'
+          assert metadata['NeuroCenter-App-Desktop'] == 'true'
+          assert metadata['NeuroCenter-App-Mobile'] == 'true'
+          assert metadata['NeuroCenter-Mobile-Class'] == 'com.neurocenter.devkit.DevTestKitMobile'
+          assert metadata['Implementation-Version'] == '1.4.0'
+          assert set(metadata['NeuroCenter-App-Permissions'].split(',')) == {
+              'network.connect', 'credentials.access', 'agenda.read', 'agenda.write'}
+          print('PASS: same .ncapp targets desktop and Android with four declared permissions')
+          PY
 
-      - name: Smoke test app contract (Java 21)
+      - name: Smoke test both platform contracts
         shell: bash
         run: |
           set -euo pipefail
-          javac --release 21 -encoding UTF-8 -cp build/devtest/classes \
-            -d build/devtest/tests \
-            examples/ncapp-dev-test-kit/src/test/java/com/neurocenter/devkit/DevTestKitSmoke.java
-          java -cp "build/devtest/classes:build/devtest/tests:examples/ncapp-dev-test-kit/src/main/resources" \
-            com.neurocenter.devkit.DevTestKitSmoke > build/devtest/smoke.log
+          javac --release 21 -encoding UTF-8             -cp "target/classes:build/devtest/classes"             -d build/devtest/tests             examples/ncapp-dev-test-kit/src/test/java/com/neurocenter/devkit/*.java
+          java -Djava.awt.headless=true             -cp "dist/neurocenter-dev-test-kit.ncapp:target/classes:build/devtest/tests"             com.neurocenter.devkit.DevTestKitDesktopSmoke
+          java -cp "dist/neurocenter-dev-test-kit.ncapp:target/classes:build/devtest/tests"             com.neurocenter.devkit.DevTestKitSmoke > build/devtest/smoke.log
           python3 - <<'PY'
           import json
           import re
@@ -82,7 +109,7 @@ jobs:
           print('PASS: validated', screens, 'JSON screens and host requests')
           PY
 
-      - name: Upload .ncapp diagnostic kit
+      - name: Upload unified .ncapp diagnostic kit
         uses: actions/upload-artifact@v4
         with:
           name: neurocenter-dev-test-kit-ncapp

@@ -53,10 +53,17 @@ public final class DevTestKitSmoke {
                 "speed", "sandbox", "home", "report", "agenda-menu"}) {
             show(app.onAction(action));
         }
+        has(app.onAction("agenda-menu"), "Permitir siempre");
+        has(app.onAction("agenda-menu"), "Agenda Bridge");
         String request = app.onAction("read-agenda");
         has(request, "\"capability\":\"agenda.read\"");
         show(request);
         show(app.onHostResponse("agenda.read", "{\"ok\":false,\"error\":\"permission denied\"}"));
+        show(app.onAction("read-agenda"));
+        String absentPlugin = app.onHostResponse("agenda.read",
+                "{\"ok\":false,\"error\":\"Esta función requiere el plugin Agenda Bridge instalado y habilitado.\"}");
+        has(absentPlugin, "SIN PLUGIN");
+        show(absentPlugin);
         String confirmation = app.onAction("ask-write");
         has(confirmation, "Confirmar prueba de escritura");
         if (confirmation.contains("hostRequest")) throw new AssertionError("Write without confirmation");
