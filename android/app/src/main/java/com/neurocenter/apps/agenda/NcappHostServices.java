@@ -20,7 +20,7 @@ public final class NcappHostServices {
     private NcappHostServices() {}
 
     public static String handle(Context context, NcappManager.InstalledApp app,
-                                String request) {
+                                String request, boolean authorizedForThisRequest) {
         try {
             if (!NcappManager.inspect(app.archive()).sha256().equals(app.sha256())) {
                 throw new SecurityException("La aplicación instalada ha sido modificada.");
@@ -35,7 +35,8 @@ public final class NcappHostServices {
                 throw new SecurityException("Capacidad desconocida.");
             }
             // La concesión se liga tanto al ID como al SHA-256 actual del paquete.
-            if (!NcappPermissionStore.has(context, app, capability)) {
+            if (!app.declaredPermissions().contains(capability)
+                    || !authorizedForThisRequest) {
                 throw new SecurityException("Permiso «" + capability + "» denegado por NeuroCenter.");
             }
             AndroidPluginServices.AgendaBridge agenda = AndroidPluginServices.requireAgendaBridge();

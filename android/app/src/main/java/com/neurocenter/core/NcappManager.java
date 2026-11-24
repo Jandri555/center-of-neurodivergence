@@ -2,6 +2,7 @@ package com.neurocenter.core;
 
 import android.content.Context;
 import android.net.Uri;
+import com.neurocenter.api.NeuroCenterCapabilities;
 
 import java.io.File;
 import java.io.ByteArrayInputStream;
@@ -36,7 +37,8 @@ public final class NcappManager {
     private static final String EXTENSION = ".ncapp";
 
     public record InstalledApp(String id, String name, String version, String author,
-                               String sha256, String mobileClass, File archive) {}
+                               String sha256, String mobileClass, File archive,
+                               Set<String> declaredPermissions) {}
 
     private NcappManager() {}
 
@@ -150,6 +152,20 @@ public final class NcappManager {
             if (!mobileClass.matches("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*){1,15}")) {
                 throw new IOException("NeuroCenter-Mobile-Class debe ser una clase Java válida.");
             }
+            Set<String> declaredPermissions = new java.util.LinkedHashSet<>();
+            String permissionList = meta.getValue("NeuroCenter-App-Permissions");
+            if (permissionList != null && !permissionList.isBlank()) {
+                if (permissionList.length() > 2048) throw new IOException("Lista de permisos demasiado larga.");
+                for (String raw : permissionList.split(",", -1)) {
+                    String permission = raw.trim();
+                    if (!NeuroCenterCapabilities.isSupported(permission)) {
+                        throw new IOException("Permiso no reconocido en el manifiesto: " + permission);
+                    }
+                    if (!declaredPermissions.add(permission)) {
+                        throw new IOException("Permiso duplicado en el manifiesto: " + permission);
+                    }
+                }
+            }
             String desktop = meta.getValue("NeuroCenter-App-Desktop");
             if (desktop != null && !desktop.equalsIgnoreCase("true")
                     && !desktop.equalsIgnoreCase("false")) {
@@ -180,7 +196,7 @@ public final class NcappManager {
             return new InstalledApp(id, optional(meta, "Implementation-Title", id),
                     optional(meta, "Implementation-Version", "Sin versión"),
                     optional(meta, "Implementation-Vendor", "Desconocido"),
-                    digest(file), mobileClass, file);
+                    digest(file), mobileClass, file, Set.copyOf(declaredPermissions));
         } catch (IllegalArgumentException error) {
             throw new IOException("Archivo .ncapp inválido.", error);
         }
