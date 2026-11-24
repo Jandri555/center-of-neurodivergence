@@ -94,6 +94,68 @@ class NcappRegistryTest {
     }
 
     @Test
+    void updatesExistingAppWithoutLosingPreferencesAndWithoutNewPrivileges() throws Exception {
+        Path oldArchive = sandbox.resolve("old.ncapp");
+        Path updatedArchive = sandbox.resolve("new.ncapp");
+        createPackage(oldArchive, "aula.app", "0.4.1", "network.connect,credentials.access");
+        createPackage(updatedArchive, "aula.app", "0.4.2", "credentials.access,agenda.write");
+        AppRegistry registry = new AppRegistry(sandbox.resolve("upgrade.db"));
+        registry.registerJar(oldArchive);
+        registry.setDecision("aula.app", "network.connect", true);
+        registry.setDecision("aula.app", "credentials.access", true);
+        registry.setStartupMode("aula.app", AppRegistry.StartupMode.DELAYED);
+        String originalDate = registry.listApps().get(0).installedAt();
+
+        registry.updateJar("aula.app", updatedArchive);
+        AppRegistry.AppRecord updated = registry.listApps().get(0);
+        assertEquals("new.ncapp", updated.jarFilename());
+        assertEquals("0.4.2", updated.version());
+        assertEquals(originalDate, updated.installedAt());
+        assertEquals(AppRegistry.StartupMode.DELAYED, updated.startupMode());
+        assertEquals(java.util.Set.of("credentials.access"), registry.grantedPermissions("aula.app"));
+        assertNull(registry.storedDecision("aula.app", "network.connect"));
+        assertNull(registry.storedDecision("aula.app", "agenda.write"));
+        assertEquals(java.util.Set.of("credentials.access", "agenda.write"),
+                registry.declaredPermissions("aula.app"));
+
+        // Updating to a version that declares the previously removed permission
+        // must NOT resurrect the previously granted network permission.
+        registry.updateJar("aula.app", oldArchive);
+        assertNull(registry.storedDecision("aula.app", "network.connect"));
+    }
+
+    @Test
+    void rejectedUpgradeLeavesRegisteredPackageUntouched() throws Exception {
+        Path original = sandbox.resolve("first.ncapp");
+        Path unrelated = sandbox.resolve("second.ncapp");
+        createPackage(original, "aula.app", "0.4.1", "network.connect");
+        createPackage(unrelated, "different.app", "1.0", "network.connect");
+        AppRegistry registry = new AppRegistry(sandbox.resolve("rollback.db"));
+        registry.registerJar(original);
+        registry.setStartupMode("aula.app", AppRegistry.StartupMode.YES);
+        assertThrows(IOException.class, () -> registry.updateJar("aula.app", unrelated));
+        assertEquals("first.ncapp", registry.listApps().get(0).jarFilename());
+        assertEquals(AppRegistry.StartupMode.YES, registry.listApps().get(0).startupMode());
+    }
+
+    private static void createPackage(Path file, String id, String version, String permissions)
+            throws IOException {
+        Manifest mf = new Manifest();
+        Attributes attrs = mf.getMainAttributes();
+        attrs.put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        attrs.putValue("NeuroCenter-App-Id", id);
+        attrs.putValue("NeuroCenter-App-Desktop", "true");
+        attrs.putValue("Implementation-Title", "Aula Demo");
+        attrs.putValue("Implementation-Version", version);
+        attrs.putValue("NeuroCenter-App-Permissions", permissions);
+        try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(file), mf)) {
+            jar.putNextEntry(new JarEntry("META-INF/services/com.neurocenter.api.NeuroApp"));
+            jar.write("com.test.StandaloneApp\n".getBytes(StandardCharsets.UTF_8));
+            jar.closeEntry();
+        }
+    }
+
+    @Test
     void rejectsLegacyJarExtension() throws Exception {
         Path archive = sandbox.resolve("legacy.jar");
         Files.writeString(archive, "not an application");

@@ -349,3 +349,42 @@ Nota: una app instalada antes de este cambio que no declarase permisos
 no tendrá autorizaciones adicionales; para utilizar la versión adaptada
 deberá actualizarse/reinstalarse el paquete. Una capacidad de Agenda también
 requiere el plugin Agenda Bridge instalado.
+
+## Actualización directa de paquetes .ncapp (escritorio)
+
+Desde NeuroCenter 1.2.2, **Ajustes → Gestionar apps → Instalar o actualizar
+(.ncapp)** admite tanto una app nueva como otra que ya esté instalada.
+También puedes abrir el archivo `.ncapp` mediante doble clic.
+
+El gestor identifica las actualizaciones por `NeuroCenter-App-Id`, no por el
+nombre del archivo. Cuando el ID ya existe:
+
+1. Muestra nombre, versión instalada y versión entrante. Los permisos
+   adicionales declarados se presentan, pero **no se conceden automáticamente**.
+2. Copia la actualización a un archivo nuevo y comprueba su manifiesto,
+   compatibilidad de escritorio, ID, clase de inicio y permisos.
+3. Si la app está abierta, revisa su indicador de cambios sin guardar y
+   solicita confirmación antes de cerrarla. Solo se detiene esa app.
+4. Tras terminar `stop()`, cambia el registro SQLite de forma transaccional y
+   carga la versión nueva en el mismo NeuroCenter; si la app estaba abierta,
+   vuelve a abrirla. **No se reinicia NeuroCenter.**
+5. Mantiene la carpeta de datos asociada al ID, fecha inicial de instalación,
+   preferencias de inicio automático y autorizaciones de los permisos que
+   sigan declarados. Los permisos eliminados se revocan; los nuevos se
+   solicitarán cuando hagan falta.
+6. El archivo antiguo se elimina cuando se libera su ClassLoader. Si Windows
+   lo mantiene bloqueado, NeuroCenter programa su limpieza para el próximo
+   inicio sin afectar a la app actualizada.
+
+En caso de paquete inválido, ID distinto, error de carga o fallo de guardado,
+el archivo registrado previamente permanece instalado. El gestor no permite
+reemplazar una aplicación integrada.
+
+**Seguridad:** los paquetes `.ncapp` no se autentican mediante firmas del
+desarrollador. Revisa el origen antes de confirmar una actualización: una
+app con el mismo ID puede acceder a su carpeta de datos y heredar permisos
+que hayas concedido anteriormente. Los cambios declarados se muestran en
+el diálogo de confirmación.
+
+La función afecta a aplicaciones `.ncapp` externas, no a los plugins
+privilegiados `.ncp` ni a la actualización del propio NeuroCenter.
