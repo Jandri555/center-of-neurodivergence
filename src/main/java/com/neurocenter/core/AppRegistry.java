@@ -453,18 +453,29 @@ public final class AppRegistry {
         setStartupMode(id, autorun ? StartupMode.YES : StartupMode.NO);
     }
 
+    /** Uninstall metadata and remembered permissions as a single transaction.
+     * App data remains available if the user decides to reinstall later.
+     */
     public void removeByFilename(String filename) throws SQLException {
         try (Connection connection = connect()) {
-            try (PreparedStatement permissions = connection.prepareStatement(
-                    "DELETE FROM app_permissions WHERE app_id IN "
-                            + "(SELECT id FROM installed_apps WHERE jar_filename = ?)")) {
-                permissions.setString(1, filename);
-                permissions.executeUpdate();
-            }
-            try (PreparedStatement app = connection.prepareStatement(
-                    "DELETE FROM installed_apps WHERE jar_filename = ?")) {
-                app.setString(1, filename);
-                app.executeUpdate();
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement permissions = connection.prepareStatement(
+                        "DELETE FROM app_permissions WHERE app_id IN "
+                                + "(SELECT id FROM installed_apps WHERE jar_filename = ?)")) {
+                    permissions.setString(1, filename);
+                    permissions.executeUpdate();
+                }
+                try (PreparedStatement app = connection.prepareStatement(
+                        "DELETE FROM installed_apps WHERE jar_filename = ?")) {
+                    app.setString(1, filename);
+                    if (app.executeUpdate() != 1)
+                        throw new SQLException("El paquete ya no está instalado: " + filename);
+                }
+                connection.commit();
+            } catch (SQLException | RuntimeException failure) {
+                connection.rollback();
+                throw failure;
             }
         }
     }

@@ -156,6 +156,29 @@ class NcappRegistryTest {
     }
 
     @Test
+    void uninstallIsTransactionalAndNewInstallationCanUseSameIdImmediately() throws Exception {
+        Path first = sandbox.resolve("first.ncapp");
+        Path second = sandbox.resolve("second.ncapp");
+        createPackage(first, "aula.app", "0.4.1", "network.connect");
+        createPackage(second, "aula.app", "0.4.2", "credentials.access");
+        AppRegistry registry = new AppRegistry(sandbox.resolve("uninstall.db"));
+        registry.registerJar(first);
+        registry.setStartupMode("aula.app", AppRegistry.StartupMode.DELAYED);
+        registry.setDecision("aula.app", "network.connect", true);
+
+        registry.removeByFilename("first.ncapp");
+        assertTrue(registry.listApps().isEmpty());
+        assertEquals(java.util.Set.of(), registry.grantedPermissions("aula.app"));
+        assertThrows(java.sql.SQLException.class,
+                () -> registry.removeByFilename("first.ncapp"));
+
+        registry.registerJar(second);
+        assertEquals("second.ncapp", registry.listApps().get(0).jarFilename());
+        assertEquals(AppRegistry.StartupMode.NO, registry.listApps().get(0).startupMode());
+        assertNull(registry.storedDecision("aula.app", "credentials.access"));
+    }
+
+    @Test
     void rejectsLegacyJarExtension() throws Exception {
         Path archive = sandbox.resolve("legacy.jar");
         Files.writeString(archive, "not an application");

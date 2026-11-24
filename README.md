@@ -388,3 +388,27 @@ el diálogo de confirmación.
 
 La función afecta a aplicaciones `.ncapp` externas, no a los plugins
 privilegiados `.ncp` ni a la actualización del propio NeuroCenter.
+
+## Instalación y desinstalación en caliente (escritorio 1.2.3)
+
+NeuroCenter puede **instalar, actualizar y desinstalar aplicaciones externas
+`.ncapp` sin reiniciarse**. El gestor activa las apps recién instaladas y
+actualiza sus tarjetas inmediatamente.
+
+Para desinstalar una app abierta, se avisa de posibles cambios sin guardar,
+se cierra solo esa app (esperando a su `stop()`), se retira su registro
+SQLite y sus permisos de forma transaccional, se libera el ClassLoader y
+se actualiza la lista de Inicio. Las apps integradas y otras apps abiertas
+siguen funcionando. Se conserva la carpeta de datos de la app por si se
+reinstala más adelante.
+
+Normalmente el archivo `.ncapp` se elimina inmediatamente. Si Windows
+mantiene bloqueado algún fichero, NeuroCenter **ya ha desinstalado la app
+lógicamente** y programa la limpieza de ese fichero para el siguiente inicio.
+En ese caso ofrece **«Reiniciar NeuroCenter»** o **«Más tarde»**; el reinicio
+automático espera a que el proceso anterior libere el bloqueo de instancia
+antes de abrir el mismo ejecutable. En modo desarrollo sin lanzador empaquetado,
+se indica que debe reiniciarse manualmente.
+
+Los cambios afectan a las **apps `.ncapp`**, no al núcleo integrado ni a
+los plugins privilegiados `.ncp`, cuyo ciclo de vida es diferente.

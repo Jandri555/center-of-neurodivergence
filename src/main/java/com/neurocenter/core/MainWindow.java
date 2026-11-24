@@ -1234,14 +1234,16 @@ public final class MainWindow extends JFrame {
         }
     }
 
-    private static void queueOldPackageDeletion(Path archive) {
+    private static boolean queueOldPackageDeletion(Path archive) {
         try {
             Files.writeString(AppPaths.root().resolve("pending-uninstall.txt"),
                     archive.getFileName() + System.lineSeparator(),
                     java.nio.file.StandardOpenOption.CREATE,
                     java.nio.file.StandardOpenOption.APPEND);
+            return true;
         } catch (IOException failure) {
             System.err.println("No se pudo programar la limpieza del paquete antiguo: " + failure);
+            return false;
         }
     }
 
@@ -1377,6 +1379,7 @@ public final class MainWindow extends JFrame {
         }
     }
 
+    /** Removes a .ncapp from this running NeuroCenter, never other apps. */
     private void uninstallExternalApp() {
         try {
             List<AppRegistry.AppRecord> installed = appRegistry.listApps();
@@ -1389,19 +1392,145 @@ public final class MainWindow extends JFrame {
                     JOptionPane.WARNING_MESSAGE, null,
                     installed.toArray(AppRegistry.AppRecord[]::new), installed.get(0));
             if (selected == null) return;
+            if (!externalAppIds.contains(selected.id()))
+                throw new IllegalStateException(
+                        "La aplicación no está cargada. Corrige su instalación antes de eliminarla.");
 
-            if (JOptionPane.showConfirmDialog(this,
-                    "Se eliminará «" + selected.name() + "» al próximo inicio. ¿Continuar?",
-                    "Confirmar desinstalación", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
+            AppSession running = appSessions.get(selected.id());
+            if (running != null && running.closing) {
+                JOptionPane.showMessageDialog(this,
+                        "Esta aplicación todavía está cerrándose. Inténtalo de nuevo cuando termine.",
+                        "Desinstalar app", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            boolean unsaved = running != null && hasUnsavedChanges(running.app);
+            String message = "¿Desinstalar «" + selected.name() + "» ahora?\n\n"
+                    + "Se cerrará únicamente esta aplicación si está abierta y desaparecerá "
+                    + "de Inicio inmediatamente.\n"
+                    + "NeuroCenter y las demás apps seguirán funcionando.\n"
+                    + "Se revocarán los permisos de la app; su carpeta de datos se conservará."
+                    + (unsaved ? "\n\nATENCIÓN: la aplicación declara cambios sin guardar." : "");
+            if (JOptionPane.showConfirmDialog(this, message,
+                    "Confirmar desinstalación", JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
 
-            java.nio.file.Files.writeString(AppPaths.root().resolve("pending-uninstall.txt"),
-                    selected.jarFilename() + System.lineSeparator(),
-                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
-            appRegistry.removeByFilename(selected.jarFilename());
-            JOptionPane.showMessageDialog(this, "Desinstalación programada para el próximo inicio.");
+            if (running != null) {
+                statusLabel.setText("Desinstalando " + selected.name() + "…");
+                closeApp(running, () -> finishUninstallExternalApp(selected));
+            } else {
+                finishUninstallExternalApp(selected);
+            }
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, "No se pudo gestionar la app: " + ex.getMessage(),
                     "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /** Runs on Swing EDT after stop() and session cleanup have completed. */
+    private void finishUninstallExternalApp(AppRegistry.AppRecord selected) {
+        String appId = selected.id();
+        Path archive = AppPaths.appsDir().resolve(selected.jarFilename());
+        try {
+            // Do NOT unload the app until SQLite has forgotten the package.
+            // If the transaction fails, the old app remains available to reopen.
+            appRegistry.removeByFilename(selected.jarFilename());
+        } catch (Exception failure) {
+            JOptionPane.showMessageDialog(this, "No se pudo completar la desinstalación:\n"
+                    + failure.getMessage() + "\nLa aplicación sigue instalada.",
+                    "Error de desinstalación", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        javax.swing.Timer timer = delayedStartupTimers.remove(appId);
+        if (timer != null) timer.stop();
+        URLClassLoader loader = externalClassLoaders.remove(appId);
+        if (loader != null) {
+            try {
+                loader.close();
+            } catch (IOException closeFailure) {
+                System.err.println("No se pudo liberar el archivo de la app: " + closeFailure);
+            }
+        }
+        NeuroCenterSecurity.unregisterExternalApp(archive);
+        apps.remove(appId);
+        externalAppIds.remove(appId);
+        externalJarByAppId.remove(appId);
+        refreshHomeCards();
+
+        boolean pendingCleanup = false;
+        boolean cleanupScheduled = false;
+        try {
+            Files.deleteIfExists(archive);
+        } catch (IOException locked) {
+            pendingCleanup = true;
+            cleanupScheduled = queueOldPackageDeletion(archive);
+        }
+
+        if (!pendingCleanup) {
+            JOptionPane.showMessageDialog(this,
+                    "«" + selected.name() + "» se ha desinstalado.\n"
+                            + "No necesitas reiniciar NeuroCenter.",
+                    "Desinstalación completada", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        if (!cleanupScheduled) {
+            JOptionPane.showMessageDialog(this,
+                    "La aplicación ya se ha retirado de NeuroCenter, pero Windows mantiene "
+                            + "bloqueado su archivo:\n" + archive
+                            + "\n\nNo se pudo programar su borrado automático. "
+                            + "Podrás eliminarlo manualmente después de cerrar NeuroCenter.",
+                    "Archivo pendiente de eliminar", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        Object[] options = {"Reiniciar NeuroCenter", "Más tarde"};
+        int answer = JOptionPane.showOptionDialog(this,
+                "«" + selected.name() + "» ya está desinstalada y no aparece en Inicio.\n"
+                        + "Windows mantiene bloqueado el archivo antiguo.\n"
+                        + "Está programado para eliminarse al próximo inicio de NeuroCenter.\n\n"
+                        + "¿Quieres reiniciar NeuroCenter ahora para completar la limpieza?",
+                "Limpieza pendiente", JOptionPane.DEFAULT_OPTION,
+                JOptionPane.QUESTION_MESSAGE, null, options, options[1]);
+        if (answer == 0) restartNeuroCenter();
+    }
+
+    /**
+     * Restart only the packaged Windows executable. A detached PowerShell
+     * process waits until the single-instance lock has been released by the
+     * main process, then starts the same installed launcher.
+     */
+    private void restartNeuroCenter() {
+        String launcher = System.getProperty("jpackage.app-path", "");
+        if (launcher.isBlank()) {
+            launcher = ProcessHandle.current().info().command().orElse("");
+            if (!launcher.toLowerCase(java.util.Locale.ROOT)
+                    .endsWith("center of neurodivergence.exe")) launcher = "";
+        }
+        if (launcher.isBlank() || !Files.isRegularFile(Path.of(launcher))) {
+            JOptionPane.showMessageDialog(this,
+                    "No se ha podido identificar el ejecutable instalado.\n"
+                            + "Cierra NeuroCenter y vuelve a abrirlo manualmente para terminar la limpieza.",
+                    "Reinicio no disponible", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        // A single-quoted PowerShell literal handles spaces and quotes in paths
+        // without treating the install directory as executable script.
+        String safeLauncher = launcher.replace("'", "''");
+        long pid = ProcessHandle.current().pid();
+        String command = "Wait-Process -Id " + pid
+                + " -ErrorAction SilentlyContinue; "
+                + "Start-Process -FilePath '" + safeLauncher + "'";
+        try {
+            new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive",
+                    "-WindowStyle", "Hidden", "-Command", command).start();
+            shutdown();
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(this,
+                    "No se pudo preparar el reinicio automático:\n" + ex.getMessage()
+                            + "\n\nPuedes cerrar y abrir NeuroCenter manualmente.",
+                    "Error al reiniciar", JOptionPane.WARNING_MESSAGE);
         }
     }
 
