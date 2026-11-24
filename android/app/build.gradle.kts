@@ -25,8 +25,8 @@ android {
         targetSdk = 36
         // El JRE de OpenJDK 21 incluido actualmente es para ARM64.
         ndk.abiFilters += "arm64-v8a"
-        versionCode = 27
-        versionName = "1.6.20"
+        versionCode = 28
+        versionName = "1.6.21"
     }
 
     buildFeatures {

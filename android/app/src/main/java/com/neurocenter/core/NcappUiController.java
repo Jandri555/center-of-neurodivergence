@@ -49,6 +49,22 @@ public final class NcappUiController {
         session.start();
     }
 
+    /** Close only an app's isolated sessions before replacing its archive. */
+    public static void closeForApp(Activity activity, String appId) {
+        List<Session> matches = new ArrayList<>();
+        synchronized (ACTIVE) {
+            List<Session> sessions = ACTIVE.get(activity);
+            if (sessions != null) {
+                for (Session session : sessions)
+                    if (session.app.id().equals(appId)) matches.add(session);
+            }
+        }
+        for (Session session : matches) {
+            session.close();
+            session.dialog.dismiss();
+        }
+    }
+
     public static void closeAll(Activity activity) {
         List<Session> sessions;
         synchronized (ACTIVE) {

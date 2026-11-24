@@ -329,7 +329,7 @@ public final class MainActivity extends Activity {
 
         AlertDialog.Builder dialog = new AlertDialog.Builder(this)
                 .setTitle("Aplicaciones de NeuroCenter (.ncapp)")
-                .setPositiveButton("Instalar .ncapp", (d, w) -> selectExternalAppPackage())
+                .setPositiveButton("Instalar o actualizar", (d, w) -> selectExternalAppPackage())
                 .setNegativeButton("Cerrar", null);
         if (installed.isEmpty()) {
             dialog.setMessage("Aún no hay aplicaciones .ncapp instaladas. "
@@ -570,16 +570,64 @@ public final class MainActivity extends Activity {
 
     private void installNcapp(Uri source) {
         ncappExecutor.execute(() -> {
-            String result;
+            final NcappManager.PreparedApp staged;
             try {
-                NcappManager.InstalledApp app = NcappManager.install(this, source);
-                result = "Instalada " + app.name() + " (" + app.id() + "). "
-                        + "Puedes abrirla desde Aplicaciones de NeuroCenter.";
-            } catch (Exception ex) {
-                result = "No se pudo instalar el .ncapp: " + ex.getMessage();
+                staged = NcappManager.prepare(this, source);
+            } catch (Exception failure) {
+                runOnUiThread(() -> Toast.makeText(this,
+                        "No se pudo comprobar el .ncapp: " + failure.getMessage(),
+                        Toast.LENGTH_LONG).show());
+                return;
             }
-            String message = result;
-            runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show());
+            runOnUiThread(() -> {
+                NcappManager.InstalledApp old = staged.previous();
+                NcappManager.InstalledApp candidate = staged.candidate();
+                boolean update = old != null;
+                StringBuilder message = new StringBuilder("Aplicación: " + candidate.name()
+                        + "\nID: " + candidate.id()
+                        + "\nVersión nueva: " + candidate.version());
+                if (update) {
+                    message.append("\nVersión instalada: ").append(old.version());
+                    java.util.Set<String> newPerms =
+                            new java.util.HashSet<>(candidate.declaredPermissions());
+                    newPerms.removeAll(old.declaredPermissions());
+                    if (!newPerms.isEmpty())
+                        message.append("\n\nNuevos permisos declarados (sin conceder): ")
+                                .append(String.join(", ", newPerms));
+                    message.append("\n\nSe cerrará solo esta aplicación si está abierta.");
+                    message.append("\nSus datos se conservarán. Los permisos se pedirán de nuevo");
+                    message.append("\nporque están vinculados al SHA-256 del paquete.");
+                    message.append("\n\nComprueba que el nuevo paquete sea de confianza.");
+                }
+                new AlertDialog.Builder(this)
+                        .setTitle(update ? "Actualizar aplicación .ncapp" : "Instalar aplicación .ncapp")
+                        .setMessage(message.toString())
+                        .setPositiveButton(update ? "Actualizar" : "Instalar", (dialog, choice) -> {
+                            if (update) NcappUiController.closeForApp(this, old.id());
+                            ncappExecutor.execute(() -> {
+                                String outcome;
+                                try {
+                                    NcappManager.InstalledApp installed = NcappManager.activate(this, staged);
+                                    if (update) {
+                                        // Invalidate all decisions bound to the obsolete hash.
+                                        NcappPermissionStore.revoke(this, old);
+                                    }
+                                    outcome = (update ? "Actualizada " : "Instalada ")
+                                            + installed.name() + " (" + installed.version() + ").";
+                                } catch (Exception failure) {
+                                    outcome = "No se pudo instalar o actualizar: " + failure.getMessage();
+                                } finally {
+                                    NcappManager.discard(staged);
+                                }
+                                final String finished = outcome;
+                                runOnUiThread(() -> Toast.makeText(this, finished,
+                                        Toast.LENGTH_LONG).show());
+                            });
+                        })
+                        .setNegativeButton("Cancelar", (dialog, choice) -> NcappManager.discard(staged))
+                        .setOnCancelListener(dialog -> NcappManager.discard(staged))
+                        .show();
+            });
         });
     }
 

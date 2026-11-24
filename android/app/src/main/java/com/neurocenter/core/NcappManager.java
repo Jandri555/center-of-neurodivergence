@@ -50,15 +50,21 @@ public final class NcappManager {
         return dir;
     }
 
-    public static InstalledApp install(Context context, Uri uri) throws IOException {
-        if (uri == null || !"content".equals(uri.getScheme())) {
+    /**
+     * Temporary validated package and the existing installation with the same ID.
+     * Package identity never depends on the picked document's filename.
+     */
+    public record PreparedApp(File staged, InstalledApp candidate, InstalledApp previous) {}
+
+    public static PreparedApp prepare(Context context, Uri uri) throws IOException {
+        if (uri == null || !"content".equals(uri.getScheme()))
             throw new IOException("Selecciona un archivo local con el gestor de documentos.");
-        }
         File dir = directory(context);
-        File temp = File.createTempFile("ncapp-import-", ".tmp", dir);
+        File staged = File.createTempFile("ncapp-import-", ".tmp", dir);
+        boolean ok = false;
         try {
             try (InputStream input = context.getContentResolver().openInputStream(uri);
-                 FileOutputStream output = new FileOutputStream(temp)) {
+                 FileOutputStream output = new FileOutputStream(staged)) {
                 if (input == null) throw new IOException("No se pudo abrir el archivo seleccionado.");
                 byte[] buffer = new byte[32 * 1024];
                 long bytes = 0;
@@ -70,22 +76,60 @@ public final class NcappManager {
                 }
                 output.getFD().sync();
             }
-            InstalledApp inspected = inspect(temp);
-            File destination = new File(dir, inspected.id() + EXTENSION);
-            if (destination.exists()) {
-                throw new IOException("Ya existe la aplicación «" + inspected.id()
-                        + "». Desinstálala antes de instalar otra versión.");
-            }
-            Files.move(temp.toPath(), destination.toPath());
-            // Jar legible mediante FD en el UID aislado, pero la carpeta que lo
-            // contiene sigue siendo privada (0700) y fuera de su alcance.
-            if (!destination.setReadable(true, false)) {
-                Files.deleteIfExists(destination.toPath());
-                throw new IOException("No se pudo preparar el .ncapp para su ejecución aislada.");
-            }
-            return inspect(destination);
+            InstalledApp candidate = inspect(staged);
+            File installed = new File(dir, candidate.id() + EXTENSION);
+            InstalledApp previous = installed.isFile() ? inspect(installed) : null;
+            ok = true;
+            return new PreparedApp(staged, candidate, previous);
         } finally {
-            Files.deleteIfExists(temp.toPath());
+            if (!ok) Files.deleteIfExists(staged.toPath());
+        }
+    }
+
+    /**
+     * Install or update in one atomic rename. An open read-only descriptor
+     * continues referencing the old inode; readers opening the app afterwards
+     * get the complete new file, never a half-copied archive.
+     */
+    public static InstalledApp activate(Context context, PreparedApp prepared) throws IOException {
+        File dir = directory(context);
+        File destination = new File(dir, prepared.candidate().id() + EXTENSION);
+        // Reject changes on disk while the user was confirming.
+        InstalledApp candidate = inspect(prepared.staged());
+        if (!candidate.sha256().equals(prepared.candidate().sha256())
+                || !candidate.id().equals(prepared.candidate().id()))
+            throw new IOException("El archivo seleccionado cambió durante la instalación.");
+        if (prepared.previous() != null) {
+            if (!destination.isFile()
+                    || !inspect(destination).sha256().equals(prepared.previous().sha256()))
+                throw new IOException("La aplicación instalada cambió durante la actualización.");
+        } else if (destination.exists()) {
+            throw new IOException("Se ha instalado otra versión durante la confirmación.");
+        }
+        if (!prepared.staged().setReadable(true, false))
+            throw new IOException("No se pudo preparar el .ncapp para el proceso aislado.");
+        try {
+            Files.move(prepared.staged().toPath(), destination.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+            throw new IOException("Este almacenamiento no admite actualización atómica segura.", unsupported);
+        }
+        return inspect(destination);
+    }
+
+    public static void discard(PreparedApp prepared) {
+        if (prepared == null) return;
+        try { Files.deleteIfExists(prepared.staged().toPath()); }
+        catch (IOException ignored) { /* The temporary path is not installed. */ }
+    }
+
+    /** Backwards-compatible installation API for internal callers. */
+    public static InstalledApp install(Context context, Uri uri) throws IOException {
+        PreparedApp prepared = prepare(context, uri);
+        try {
+            return activate(context, prepared);
+        } finally {
+            discard(prepared);
         }
     }
 

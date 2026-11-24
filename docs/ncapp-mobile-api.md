@@ -119,3 +119,23 @@ para Android todavía no está implementado.** Hasta incorporarlo, los accesos
 externos a la Agenda se deniegan aunque la app tenga el permiso concedido.
 El mismo requisito se comprueba para APK externas que usen el puente Binder.
 Los plugins de escritorio son independientes y no se cargan en Android.
+
+## Instalación y actualización de aplicaciones en Android
+
+Desde Android 1.6.21 el gestor **Instalar o actualizar** reconoce las apps
+por `NeuroCenter-App-Id`, independientemente del nombre del fichero.
+El paquete se lee y valida en un directorio temporal, se muestra su ID,
+nombre, versión instalada y nueva y los permisos añadidos, y solo al
+confirmar se activa mediante un cambio de archivo atómico. No hay que
+desinstalar la app ni reiniciar NeuroCenter.
+
+Si la versión anterior tiene una sesión Java aislada abierta, se cierra
+únicamente la sesión de esa app antes del cambio. Otras apps y la Agenda
+integrada permanecen activas. Se conservan los datos privados de la app
+(`NeuroCenter-App-Id` permanece igual).
+
+**Permisos:** los permisos Android de cada .ncapp se vinculan al SHA-256 exacto
+del paquete. Una actualización cambia la huella; por seguridad **no hereda
+permisos** y debe solicitarlos de nuevo según su manifiesto. Si falla la
+validación o el intercambio atómico, permanece el paquete anterior.
+No se aceptan paquetes móviles no compatibles ni .ncapp sin manifiesto.
