@@ -123,16 +123,6 @@ public final class NcappManager {
         catch (IOException ignored) { /* The temporary path is not installed. */ }
     }
 
-    /** Backwards-compatible installation API for internal callers. */
-    public static InstalledApp install(Context context, Uri uri) throws IOException {
-        PreparedApp prepared = prepare(context, uri);
-        try {
-            return activate(context, prepared);
-        } finally {
-            discard(prepared);
-        }
-    }
-
     public static List<InstalledApp> list(Context context) throws IOException {
         File[] files = directory(context).listFiles(file ->
                 file.isFile() && file.getName().endsWith(EXTENSION));

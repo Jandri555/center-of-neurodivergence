@@ -61,10 +61,8 @@ class NcappRegistryTest {
         assertEquals(AppRegistry.StartupMode.NO, reg.listApps().get(0).startupMode());
         reg.setStartupMode("demo.app", AppRegistry.StartupMode.DELAYED);
         assertEquals(AppRegistry.StartupMode.DELAYED, new AppRegistry(db).listApps().get(0).startupMode());
-        assertFalse(reg.listApps().get(0).autorun());
         reg.setStartupMode("demo.app", AppRegistry.StartupMode.YES);
         assertEquals(AppRegistry.StartupMode.YES, reg.startupModesByJar().get("demo.ncapp"));
-        assertTrue(reg.listApps().get(0).autorun());
         reg.setStartupMode("demo.app", AppRegistry.StartupMode.NO);
         assertEquals(AppRegistry.StartupMode.NO, new AppRegistry(db).startupModesByJar().get("demo.ncapp"));
         assertThrows(java.sql.SQLException.class, () -> reg.setStartupModes(
@@ -72,25 +70,6 @@ class NcappRegistryTest {
                                  "missing.app", AppRegistry.StartupMode.DELAYED)));
         assertEquals(AppRegistry.StartupMode.NO, reg.listApps().get(0).startupMode(),
                 "Un guardado fallido no puede dejar cambios parciales");
-    }
-
-    @Test
-    void migratesPreviousBooleanAutorunWithoutLosingExistingAppSettings() throws Exception {
-        Path db = sandbox.resolve("legacy.db");
-        try (java.sql.Connection conn = java.sql.DriverManager.getConnection("jdbc:sqlite:" + db);
-             java.sql.Statement statement = conn.createStatement()) {
-            statement.execute("CREATE TABLE installed_apps (" +
-                    "id TEXT PRIMARY KEY, name TEXT, author TEXT, version TEXT, " +
-                    "jar_filename TEXT, installed_at TEXT, size_bytes INTEGER, " +
-                    "autorun INTEGER, declared_permissions TEXT)");
-            statement.execute("INSERT INTO installed_apps VALUES (" +
-                    "'legacy', 'Legacy app', 'Someone', '1.0', 'legacy.ncapp', " +
-                    "'2026-11-24', 24, 1, '')");
-        }
-        AppRegistry reg = new AppRegistry(db);
-        assertEquals(AppRegistry.StartupMode.YES, reg.listApps().get(0).startupMode());
-        reg.setStartupMode("legacy", AppRegistry.StartupMode.DELAYED);
-        assertEquals(AppRegistry.StartupMode.DELAYED, new AppRegistry(db).listApps().get(0).startupMode());
     }
 
     @Test

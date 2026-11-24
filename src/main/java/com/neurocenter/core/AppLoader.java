@@ -36,19 +36,6 @@ public final class AppLoader {
 
     private AppLoader() {}
 
-    /**
-     * Compatibilidad interna para llamadas antiguas: carga solo paquetes .ncapp indicados
-     * y les aplica el perfil mínimo sin permisos adicionales.
-     */
-    public static Result load(Path appsDir, List<String> installedJarNames) {
-        Map<String, AppRegistry.AppSecurityProfile> profiles = installedJarNames.stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        name -> name,
-                        name -> new AppRegistry.AppSecurityProfile(fallbackId(name), Set.of()),
-                        (left, right) -> left));
-        return load(appsDir, profiles);
-    }
-
     /** Carga exclusivamente los paquetes .ncapp registrados y aplica sus permisos concedidos. */
     public static Result load(Path appsDir, Map<String, AppRegistry.AppSecurityProfile> securityProfiles) {
         List<LoadedApp> apps = new ArrayList<>();
@@ -139,10 +126,4 @@ public final class AppLoader {
         return new Result(apps, errors);
     }
 
-    private static String fallbackId(String filename) {
-        String raw = filename.toLowerCase(Locale.ROOT).endsWith(".ncapp")
-                ? filename.substring(0, filename.length() - 6) : filename;
-        String safe = raw.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]", "-");
-        return safe.isBlank() ? "external-app" : safe;
-    }
 }
