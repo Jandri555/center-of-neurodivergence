@@ -52,8 +52,7 @@ public final class DevTestKitDesktop implements NeuroApp {
                     + "Java: " + System.getProperty("java.version", "?") + "\n"
                     + "VM: " + System.getProperty("java.vm.name", "?")));
         add(actions, "Clases y ClassLoader", () -> {
-            ProbeDependency dependency = new ProbeDependency();
-            log("Clase dependiente: " + dependency.getClass().getName()
+            log("Clase dependiente: " + ProbeDependency.value()
                     + "\nClassLoader: " + getClass().getClassLoader());
         });
         add(actions, "Permisos declarados", () -> {
