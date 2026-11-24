@@ -55,8 +55,10 @@ jobs:
           $installer = Get-ChildItem target/installer -Recurse -Filter "*.exe" | Select-Object -First 1
           if ($null -eq $installer) { throw "No se generó el instalador EXE." }
           $testDir = Join-Path $env:RUNNER_TEMP "NeuroCenter-Installer-Smoke"
-          & $installer.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$testDir"
-          if ($LASTEXITCODE -ne 0) { throw "Fallo en instalación limpia: $LASTEXITCODE" }
+          $installation = Start-Process -FilePath $installer.FullName `
+            -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$testDir") `
+            -PassThru -Wait
+          if ($installation.ExitCode -ne 0) { throw "Fallo en instalación limpia: $($installation.ExitCode)" }
           $exe = Join-Path $testDir "Center of Neurodivergence.exe"
           $jar = Join-Path $testDir "app/center-of-neurodivergence.jar"
           $jre = Join-Path $testDir "runtime/bin/server/jvm.dll"
@@ -67,15 +69,19 @@ jobs:
             throw "El instalador no incluyó Java 21."
           }
           # Reinstall/update the same AppId without requiring an uninstall.
-          & $installer.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$testDir"
-          if ($LASTEXITCODE -ne 0) { throw "Fallo al actualizar: $LASTEXITCODE" }
+          $update = Start-Process -FilePath $installer.FullName `
+            -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$testDir") `
+            -PassThru -Wait
+          if ($update.ExitCode -ne 0) { throw "Fallo al actualizar: $($update.ExitCode)" }
           if (!(Test-Path $exe) -or !(Test-Path $jar)) {
             throw "La actualización dejó la aplicación incompleta."
           }
           $uninstaller = Get-ChildItem $testDir -Filter "unins*.exe" | Select-Object -First 1
           if ($uninstaller) {
-            & $uninstaller.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-            if ($LASTEXITCODE -ne 0) { throw "Fallo al desinstalar el paquete de prueba." }
+            $removal = Start-Process -FilePath $uninstaller.FullName `
+              -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') `
+              -PassThru -Wait
+            if ($removal.ExitCode -ne 0) { throw "Fallo al desinstalar el paquete de prueba: $($removal.ExitCode)" }
           }
 
       - name: Upload Windows installer
