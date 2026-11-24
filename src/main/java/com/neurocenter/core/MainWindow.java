@@ -116,6 +116,7 @@ public final class MainWindow extends JFrame {
     private final ButtonGroup navGroup = new ButtonGroup();
     private final CardLayout cards = new CardLayout();
     private final JPanel content = new JPanel(cards);
+    private JComponent homePanel;
     private final JLabel statusLabel = new JLabel(" ");
     private JButton settingsButton;
     private TrayIcon trayIcon;
@@ -431,7 +432,8 @@ public final class MainWindow extends JFrame {
         rootPanel.add(topBar, BorderLayout.NORTH);
 
         content.setOpaque(false);
-        content.add(buildHome(), HOME);
+        homePanel = buildHome();
+        content.add(homePanel, HOME);
         rootPanel.add(content, BorderLayout.CENTER);
 
         JPanel statusBar = new JPanel(new BorderLayout());
@@ -533,6 +535,16 @@ public final class MainWindow extends JFrame {
         navButtons.put(id, button);
         navMarkers.put(id, marker);
         parent.add(row);
+    }
+
+    /** Refreshes cards without destroying active app sessions or rebuilding the window. */
+    private void refreshHomeCards() {
+        if (homePanel != null) content.remove(homePanel);
+        homePanel = buildHome();
+        content.add(homePanel, HOME);
+        content.revalidate();
+        content.repaint();
+        cards.show(content, HOME.equals(activeAppId) ? HOME : activeAppId);
     }
 
     private JComponent buildHome() {
@@ -1141,6 +1153,7 @@ public final class MainWindow extends JFrame {
                 appRegistry.registerJar(staged);
                 register(prepared.app(), true, stagedName);
                 externalClassLoaders.put(metadata.id(), prepared.classLoader());
+                refreshHomeCards();
                 JOptionPane.showMessageDialog(this,
                         "«" + metadata.name() + "» instalada correctamente. Ya puedes abrirla.",
                         "Instalación completada", JOptionPane.INFORMATION_MESSAGE);
@@ -1191,6 +1204,7 @@ public final class MainWindow extends JFrame {
         URLClassLoader previousLoader = externalClassLoaders.put(old.id(), prepared.classLoader());
         apps.put(old.id(), prepared.app());
         externalJarByAppId.put(old.id(), prepared.jarFilename());
+        refreshHomeCards();
         if (previousLoader != null) {
             try { previousLoader.close(); }
             catch (IOException ignored) { /* The obsolete file will be cleaned later. */ }
