@@ -1,4 +1,4 @@
-name: Android Agenda CI
+name: Android NeuroCenter CI
 
 on:
   push:
@@ -10,7 +10,6 @@ on:
       - "src/main/java/com/neurocenter/apps/agenda/AgendaSyncJournal.java"
       - "src/main/java/com/neurocenter/apps/agenda/AgendaStore.java"
       - "src/main/java/com/neurocenter/apps/agenda/AgendaSyncProtocol.java"
-      - "src/main/java/com/neurocenter/apps/agenda/AgendaPanel.java"
       - "src/main/java/com/neurocenter/api/NeuroPlatform.java"
       - "src/main/java/com/neurocenter/api/NeuroAppContext.java"
       - ".github/workflows/android.yml"
@@ -29,10 +28,11 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build-android:
-    name: Build Android Agenda
+    name: Build Android NeuroCenter
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -49,21 +49,106 @@ jobs:
         with:
           packages: 'platform-tools'
 
-      - name: Install Android 16 SDK
-        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+      - name: Install Android 16 SDK, NDK and CMake
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
 
       - name: Set up Gradle 9.6
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.6.0"
 
-      - name: Build debug APK
-        run: gradle --no-daemon -p android :app:assembleDebug
+      - name: Test plugin registry fails closed by default
+        run: |
+          mkdir -p android/app/build/plugin-contract-test
+          javac --release 17 -d android/app/build/plugin-contract-test \
+            android/app/src/main/java/com/neurocenter/core/AndroidPluginServices.java \
+            android/tests/AndroidPluginServicesSmoke.java
+          java -cp android/app/build/plugin-contract-test AndroidPluginServicesSmoke
 
-      - name: Upload debug APK
+      - name: Download pinned patched OpenJDK 21 ARM64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: neurocenter-openjdk21-arm64-icholder-experimental
+          run-id: 44737945805
+          repository: Jandri555/center-of-neurodivergence
+          github-token: ${{ github.token }}
+          path: android/.cache
+
+      - name: Verify patched JRE 21 archive digest
+        run: |
+          echo "90ba39d0a204a1a525dc1bb4873d9e163984181668ff09678c84a71eedd9605c  android/.cache/jre21-android-arm64-20261120-release.tar.xz" | sha256sum -c -
+
+      - name: Build both APK variants with bundled patched OpenJDK 21 ARM64
+        env:
+          NEUROCENTER_JRE21_ARCHIVE: ${{ github.workspace }}/android/.cache/jre21-android-arm64-20261120-release.tar.xz
+        run: gradle --no-daemon -p android :app:assembleDebug :app:assembleRelease
+
+      - name: Verify JRE 21 actually bundled into APK
+        run: |
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libnm.so'
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libjvm.so'
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libneurojvm.so'
+          test -s android/app/build/generated/java21/jniLibs/arm64-v8a/libnm.so
+          python3 - <<'PY'
+          from pathlib import Path
+          data = Path("android/app/build/generated/java21/jniLibs/arm64-v8a/libnm.so").read_bytes()[:4]
+          assert data == bytes.fromhex("dadafeca"), data
+          jvm = Path("android/app/build/generated/java21/jniLibs/arm64-v8a/libjvm.so").read_bytes()
+          assert b"NEUROCENTER_JRE_HOME" in jvm
+          assert b"NeuroCenter CompiledICHolder mapping" in jvm
+          # The Java-side ImageReaderFactory.class is verified inside the
+          # JIMAGE, not by searching the native HotSpot binary for Java text.
+          import subprocess
+          image = Path("android/app/build/generated/java21/jniLibs/arm64-v8a/libnm.so")
+          output = Path("android/app/build/generated/java21/cldr-image-check")
+          output.mkdir(parents=True, exist_ok=True)
+          subprocess.run(["jimage", "extract", "--dir", str(output),
+              "--include", "glob:**/jdk/internal/jimage/ImageReaderFactory.class",
+              str(image)], check=True)
+          reader = output / "java.base/jdk/internal/jimage/ImageReaderFactory.class"
+          assert reader.is_file(), "ImageReaderFactory class missing from JIMAGE"
+          assert b"NEUROCENTER_JRE_HOME" in reader.read_bytes(), "ImageReaderFactory CLDR patch missing"
+          assert b"libnm.so" in reader.read_bytes(), "Java module image path patch missing"
+          print("CLDR ImageReaderFactory path patch included in APK JIMAGE")
+          assert b"%/libnm.so" in jvm
+          assert b"%s%slibnm.so" in jvm
+          assert b"%/lib/modules" not in jvm
+          print("JIMAGE is in APK's JNI extraction layout; HotSpot path patch verified")
+          PY
+
+      - name: Verify build-type diagnostic isolation
+        run: |
+          test -s android/app/build/outputs/apk/debug/app-debug.apk
+          test -s android/app/build/outputs/apk/release/app-release.apk
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          from pathlib import Path
+          debug = Path("android/app/build/outputs/apk/debug/app-debug.apk")
+          release = Path("android/app/build/outputs/apk/release/app-release.apk")
+          for candidate in (debug, release):
+              with ZipFile(candidate) as apk:
+                  assert "lib/arm64-v8a/libnm.so" in apk.namelist()
+                  assert "lib/arm64-v8a/libjvm.so" in apk.namelist()
+                  bridge = apk.read("lib/arm64-v8a/libneurojvm.so")
+                  if candidate == debug:
+                      assert b"DIAGN" in bridge or b"HotSpot output" in bridge
+                  else:
+                      assert b"HotSpot output" not in bridge
+          print("Debug/release native diagnostics separated")
+          PY
+
+      - name: Upload DEBUG APK (diagnostics included)
         uses: actions/upload-artifact@v4
         with:
-          name: agenda-android-debug
+          name: neurocenter-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload RELEASE TEST APK (no diagnostics, test signature)
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocenter-android-release-test
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14

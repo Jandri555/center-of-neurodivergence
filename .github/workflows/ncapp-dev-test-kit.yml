@@ -1,0 +1,91 @@
+name: NeuroCenter Dev Test Kit (.ncapp)
+
+on:
+  push:
+    branches: ["feature/android10-java21-ncapp", "dev", "main"]
+    paths:
+      - "examples/ncapp-dev-test-kit/**"
+      - ".github/workflows/ncapp-dev-test-kit.yml"
+  pull_request:
+    branches: ["dev", "main"]
+    paths:
+      - "examples/ncapp-dev-test-kit/**"
+      - ".github/workflows/ncapp-dev-test-kit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-dev-test-kit:
+    name: Build and smoke-test Java 21 .ncapp
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Build Android-only Dev Test Kit (.ncapp)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/devtest/classes build/devtest/tests dist
+          javac --release 21 -encoding UTF-8 -d build/devtest/classes \
+            examples/ncapp-dev-test-kit/src/main/java/com/neurocenter/devkit/*.java
+          jar --create --file dist/neurocenter-dev-test-kit.ncapp \
+            --manifest examples/ncapp-dev-test-kit/MANIFEST.MF \
+            -C build/devtest/classes . \
+            -C examples/ncapp-dev-test-kit/src/main/resources .
+          unzip -l dist/neurocenter-dev-test-kit.ncapp | grep -F 'com/neurocenter/devkit/DevTestKitMobile.class'
+          unzip -l dist/neurocenter-dev-test-kit.ncapp | grep -F 'com/neurocenter/devkit/ProbeDependency.class'
+          unzip -l dist/neurocenter-dev-test-kit.ncapp | grep -F 'dev-test-kit/probe.txt'
+          unzip -p dist/neurocenter-dev-test-kit.ncapp META-INF/MANIFEST.MF \
+            | grep -F 'NeuroCenter-Mobile-Class: com.neurocenter.devkit.DevTestKitMobile'
+          unzip -p dist/neurocenter-dev-test-kit.ncapp META-INF/MANIFEST.MF \
+            | grep -F 'NeuroCenter-App-Desktop: false'
+
+      - name: Smoke test app contract (Java 21)
+        shell: bash
+        run: |
+          set -euo pipefail
+          javac --release 21 -encoding UTF-8 -cp build/devtest/classes \
+            -d build/devtest/tests \
+            examples/ncapp-dev-test-kit/src/test/java/com/neurocenter/devkit/DevTestKitSmoke.java
+          java -cp "build/devtest/classes:build/devtest/tests:examples/ncapp-dev-test-kit/src/main/resources" \
+            com.neurocenter.devkit.DevTestKitSmoke > build/devtest/smoke.log
+          python3 - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+          lines = Path('build/devtest/smoke.log').read_text().splitlines()
+          assert lines[-1].startswith('PASS:')
+          screens = 0
+          for line in lines:
+              if not line.startswith('JSON:'):
+                  continue
+              obj = json.loads(line.removeprefix('JSON:'))
+              if 'hostRequest' in obj:
+                  req = obj['hostRequest']
+                  assert req['capability'] in ('agenda.read', 'agenda.write')
+                  continue
+              screens += 1
+              assert 0 < len(obj['title']) <= 180
+              assert len(obj['text']) <= 10_000
+              assert len(obj['actions']) <= 12
+              for item in obj['actions']:
+                  assert re.fullmatch(r'[A-Za-z0-9._-]{1,64}', item['id'])
+                  assert 0 < len(item['label']) <= 100
+          assert screens >= 10
+          print('PASS: validated', screens, 'JSON screens and host requests')
+          PY
+
+      - name: Upload .ncapp diagnostic kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocenter-dev-test-kit-ncapp
+          path: dist/neurocenter-dev-test-kit.ncapp
+          if-no-files-found: error
+          retention-days: 30

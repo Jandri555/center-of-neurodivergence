@@ -14,15 +14,20 @@ import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Locale;
 
 public final class Main {
 
     public static void main(String[] args) {
+        final Path requestedNcapp = args.length == 1
+                && args[0].toLowerCase(Locale.ROOT).endsWith(".ncapp")
+                ? Path.of(args[0]).toAbsolutePath().normalize() : null;
         // La comprobación se realiza antes de tocar carpetas o datos. Una
         // segunda ejecución solo activa la instancia existente y termina aquí.
         final SingleInstance singleInstance;
         try {
-            singleInstance = SingleInstance.acquireOrActivate(AppPaths.root());
+            singleInstance = SingleInstance.acquireOrActivate(AppPaths.root(), requestedNcapp);
         } catch (IOException ex) {
             JOptionPane.showMessageDialog(null,
                     "No se pudo comprobar si Center of Neurodivergence ya está abierto.\n\n"
@@ -101,6 +106,8 @@ public final class Main {
             // Se registra después de mostrar la ventana. Si llegó una orden
             // durante el arranque, SingleInstance la entrega en este momento.
             singleInstance.setActivationHandler(window::activateFromAnotherLaunch);
+            singleInstance.setNcappOpenHandler(window::installNcapp);
+            if (requestedNcapp != null) window.installNcapp(requestedNcapp);
         });
     }
 }

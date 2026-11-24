@@ -11,13 +11,13 @@ import android.os.IBinder;
 import android.os.Process;
 import android.util.Log;
 
-import com.google.gson.Gson;
 import com.neurocenter.api.INeuroCenterBridge;
 import com.neurocenter.api.NeuroCenterCapabilities;
 import com.neurocenter.api.NeuroCenterAppContract;
 import com.neurocenter.core.AndroidCredentialVault;
 import com.neurocenter.core.AndroidExternalApps;
 import com.neurocenter.core.NeuroCenterCapabilityStore;
+import com.neurocenter.core.AndroidPluginServices;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -40,7 +40,6 @@ public final class NeuroCenterBridgeService extends Service {
 
     public static final String ACTION_BIND = NeuroCenterAppContract.ACTION_BIND_BRIDGE;
     private static final String TAG = "NeuroCenterBridge";
-    private final Gson gson = new Gson();
 
     private final INeuroCenterBridge.Stub bridge = new INeuroCenterBridge.Stub() {
         @Override
@@ -52,6 +51,9 @@ public final class NeuroCenterBridgeService extends Service {
         public boolean hasCapability(String capabilityId) {
             Caller caller = caller();
             if (!NeuroCenterCapabilities.isSupported(capabilityId)) return false;
+            if ((NeuroCenterCapabilities.AGENDA_READ.equals(capabilityId)
+                    || NeuroCenterCapabilities.AGENDA_WRITE.equals(capabilityId))
+                    && !AndroidPluginServices.isAgendaBridgeAvailable()) return false;
             try (NeuroCenterCapabilityStore store = new NeuroCenterCapabilityStore(
                     NeuroCenterBridgeService.this)) {
                 return store.isGranted(caller.packageName, caller.signingDigest, capabilityId);
@@ -64,7 +66,7 @@ public final class NeuroCenterBridgeService extends Service {
         @Override
         public String getAgendaJson() {
             Caller caller = requireCapability(NeuroCenterCapabilities.AGENDA_READ);
-            return gson.toJson(((AgendaApplication) getApplication()).getAgendaStore().all());
+            return AndroidPluginServices.requireAgendaBridge().getAgendaJson();
         }
 
         @Override
@@ -75,47 +77,23 @@ public final class NeuroCenterBridgeService extends Service {
             String safeNotes = notes == null ? "" : notes;
             if (safeNotes.length() > 8192) throw new IllegalArgumentException("Las notas superan 8192 caracteres.");
 
-            AgendaEntry entry = new AgendaEntry();
-            entry.type = AgendaEntry.TASK;
-            entry.title = safeTitle;
-            entry.date = blankToNull(dateIso);
-            entry.time = blankToNull(timeIso);
-            entry.notes = safeNotes;
-            AgendaStore store = ((AgendaApplication) getApplication()).getAgendaStore();
-            store.add(entry);
-            store.save();
-            return entry.id;
+            return AndroidPluginServices.requireAgendaBridge().addTask(
+                    safeTitle, blankToNull(dateIso), blankToNull(timeIso), safeNotes);
         }
 
         @Override
         public boolean setEntryCompleted(String entryId, boolean completed) {
             Caller caller = requireCapability(NeuroCenterCapabilities.AGENDA_WRITE);
             String safeId = requireEntryId(entryId);
-            AgendaStore store = ((AgendaApplication) getApplication()).getAgendaStore();
-            for (AgendaEntry existing : store.all()) {
-                if (!safeId.equals(existing.id)) continue;
-                if (existing.isEvent()) throw new IllegalArgumentException("Los eventos no se pueden marcar como tareas completadas.");
-                AgendaEntry updated = existing.copy();
-                updated.done = completed;
-                store.replace(existing, updated);
-                store.save();
-                return true;
-            }
-            return false;
+            return AndroidPluginServices.requireAgendaBridge()
+                    .setEntryCompleted(safeId, completed);
         }
 
         @Override
         public boolean deleteAgendaEntry(String entryId) {
             Caller caller = requireCapability(NeuroCenterCapabilities.AGENDA_WRITE);
             String safeId = requireEntryId(entryId);
-            AgendaStore store = ((AgendaApplication) getApplication()).getAgendaStore();
-            for (AgendaEntry existing : store.all()) {
-                if (!safeId.equals(existing.id)) continue;
-                store.remove(existing);
-                store.save();
-                return true;
-            }
-            return false;
+            return AndroidPluginServices.requireAgendaBridge().deleteAgendaEntry(safeId);
         }
 
         @Override

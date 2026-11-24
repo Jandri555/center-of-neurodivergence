@@ -89,5 +89,26 @@ jobs:
       - name: Verify Java 21 Security Manager runtime
         run: java -Djava.security.manager=allow -jar target/center-of-neurodivergence.jar --security-self-test
 
-      - name: Build the external app example
-        run: mvn --batch-mode --no-transfer-progress -f example-app/pom.xml clean verify
+      - name: Build sample multiplatform .ncapp (Java 21)
+        run: |
+          mkdir -p target/ncapp-example-classes
+          javac --release 21 -cp target/center-of-neurodivergence.jar \
+            -d target/ncapp-example-classes examples/ncapp-demo/src/main/java/com/neurocenter/demo/*.java
+          jar --create --file target/neurocenter-demo.ncapp \
+            --manifest examples/ncapp-demo/MANIFEST.MF \
+            -C target/ncapp-example-classes . \
+            -C examples/ncapp-demo META-INF
+          unzip -l target/neurocenter-demo.ncapp | grep -F 'com/neurocenter/demo/DemoMobile.class'
+          unzip -p target/neurocenter-demo.ncapp META-INF/MANIFEST.MF | grep -F 'NeuroCenter-Mobile-Class: com.neurocenter.demo.DemoMobile'
+
+      - name: Upload multiplatform Java 21 sample
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocenter-example-ncapp
+          path: target/neurocenter-demo.ncapp
+          if-no-files-found: error
+
+      - name: Build the external app example (.ncapp)
+        run: |
+          mvn --batch-mode --no-transfer-progress -f example-app/pom.xml clean verify
+          test -s example-app/target/hello-app.ncapp
