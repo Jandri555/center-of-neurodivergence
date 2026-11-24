@@ -12,6 +12,7 @@ NeuroCenter-App-Id: com.neurocenter.demo
 NeuroCenter-App-Desktop: true
 NeuroCenter-App-Mobile: true
 NeuroCenter-Mobile-Class: com.neurocenter.demo.DemoMobile
+NeuroCenter-App-Permissions: agenda.read,agenda.write
 Implementation-Title: Ejemplo Java 21
 ~~~
 
@@ -57,10 +58,10 @@ En Android se puede instalar desde el gestor de archivos o desde el menú de apl
 
 ## Seguridad y estado
 
-El motor Android intenta lanzar la clase móvil en un UID realmente aislado
-utilizando descriptores Binder de solo lectura. No incluye aún el puente
-de operaciones privilegiadas (Agenda, credenciales, red y documentos):
-almacenar una concesión de permiso no significa que esas APIs estén disponibles.
+El motor Android ejecuta la clase móvil en un UID aislado mediante
+descriptores Binder verificados. El puente de Agenda es experimental y solo
+puede usarlo un plugin Agenda Bridge registrado; otras capacidades aún no
+tienen puente. Conceder un permiso nunca instala el proveedor de una API.
 
 El arranque de HotSpot 21 desde un proceso ART aislado y el uso de descriptores
 /proc/self/fd están implementados, pero requieren prueba en dispositivo
@@ -71,13 +72,27 @@ Android 10 es el mínimo (API 29); actualmente solo ARM64.
 
 ## Permisos y servicios del host (API experimental)
 
-Una interfaz puede devolver una petición en lugar de una pantalla:
+Las aplicaciones deben declarar todas las capacidades que pretendan solicitar
+en `NeuroCenter-App-Permissions`, una lista de identificadores separados por
+comas. Un atributo ausente significa **cero permisos**. Un valor no declarado
+no puede solicitarse ni concederse desde el gestor. Los permisos declarados
+son el máximo posible, nunca autorizaciones automáticas.
+
+En escritorio, la app llama a `AppContext.requestPermission("network.connect")`
+al necesitarlo y `hasPermission(id)` para comprobar una autorización actual.
+En Android, una interfaz puede devolver una petición al host en lugar de una pantalla:
 
 ~~~json
 {"hostRequest":{"capability":"agenda.read","operation":"list"}}
 ~~~
 
-El proceso principal de NeuroCenter verifica el permiso actual de ese
+NeuroCenter comprueba el permiso declarado y muestra, cuando procede,
+un cuadro con **Permitir, Denegar, Permitir siempre y Denegar siempre**,
+identificando la aplicación y el permiso solicitado. «Permitir» y «Denegar»
+son decisiones para la solicitud actual de Android; las opciones «siempre»
+son persistentes y están asociadas al identificador y SHA-256 del archivo.
+
+El proceso principal verifica después el permiso actual de ese
 paquete (identificador y SHA-256). Para acceder a Agenda exige ADEMÁS que
 un plugin Agenda Bridge de confianza esté instalado y habilitado y haya
 registrado su servicio. La concesión del permiso por sí sola NO da acceso.

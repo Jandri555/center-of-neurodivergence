@@ -270,3 +270,34 @@ El primer contrato funcional es `AgendaBridgeService`. El plugin Agenda Bridge t
 ### Lombok
 
 NeuroCenter utiliza Lombok `1.18.42` como dependencia `provided` y procesador de anotaciones de Maven. Lombok solo interviene durante la compilación; no se incorpora al runtime distribuido.
+
+## Permisos declarados de las aplicaciones externas
+
+Un paquete Java `.ncapp` debe incluir en su `META-INF/MANIFEST.MF` las
+capacidades que necesita. Por ejemplo:
+
+```text
+NeuroCenter-App-Permissions: network.connect,credentials.access,agenda.write
+```
+
+La ausencia de la propiedad equivale a **ningún permiso**. El gestor muestra
+únicamente las capacidades declaradas; no permite añadir otras. Si una app
+pide una capacidad que no declaró, NeuroCenter la deniega sin mostrar ningún
+diálogo. Para usar una capacidad debe solicitarla en el momento oportuno
+mediante `AppContext.requestPermission(id)` (escritorio) o mediante la solicitud
+al anfitrión (Android).
+
+El diálogo oficial tiene **Permitir**, **Denegar**, **Permitir siempre** y
+**Denegar siempre**. En escritorio «Permitir» y «Denegar» duran hasta cerrar
+la sesión de la app, las decisiones «siempre» se guardan en SQLite. En Android
+la autorización temporal corresponde a una solicitud concreta. Ninguna
+decisión puede conceder una capacidad no declarada.
+
+Los APK Android externos declaran su lista por separado mediante el
+`<meta-data android:name="com.neurocenter.app.permissions" ...>` de su
+`AndroidManifest.xml`. Ver `docs/android-external-apps.md`.
+
+Nota: una app instalada antes de este cambio que no declarase permisos
+no tendrá autorizaciones adicionales; para utilizar la versión adaptada
+deberá actualizarse/reinstalarse el paquete. Una capacidad de Agenda también
+requiere el plugin Agenda Bridge instalado.

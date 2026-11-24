@@ -38,6 +38,9 @@ Opcionalmente puede incluir metadatos dentro de `<application>`:
 <meta-data
     android:name="com.neurocenter.app.description"
     android:value="Descripción breve de la aplicación" />
+<meta-data
+    android:name="com.neurocenter.app.permissions"
+    android:value="agenda.read,agenda.write" />
 ```
 
 El identificador debe ser estable y contener solo letras, números, punto, guion o guion bajo. Si se omite, NeuroCenter utiliza el nombre del paquete Android como identificador.
@@ -56,7 +59,7 @@ Para documentos se debe preferir el Storage Access Framework (selector de docume
 
 Son permisos propios, independientes de Android. Controlarán operaciones que la app solo pueda realizar a través de servicios de NeuroCenter, como leer o modificar la Agenda, utilizar el almacén de credenciales del centro o acceder a datos compartidos.
 
-La futura API de servicios debe exponerse mediante IPC/Binder y comprobar siempre la identidad del llamante usando el UID real obtenido de Binder y su paquete instalado. Nunca debe aceptar un `packageName` enviado libremente en un Intent/Bundle como prueba de identidad. Las concesiones se guardarán por paquete y capacidad y se comprobarán en cada operación.
+La API de servicios se expone mediante IPC/Binder y comprobar siempre la identidad del llamante usando el UID real obtenido de Binder y su paquete instalado. Nunca debe aceptar un `packageName` enviado libremente en un Intent/Bundle como prueba de identidad. Las concesiones se guardarán por paquete y capacidad y se comprobarán en cada operación.
 
 **Estado:** están implementados el descubrimiento y lanzamiento de paquetes independientes, el paso de APK al instalador del sistema, una pantalla de lista y un gestor de concesiones por paquete. También existe un servicio Binder que comprueba el UID real del llamante y aplica las capacidades en el servidor para Agenda y credenciales. Aún faltan pruebas de integración en dispositivo, revisión del flujo de ciclo de vida y la migración del shell móvil completo; no se debe presentar el modelo como listo para producción hasta completar esas pruebas.
 
@@ -162,3 +165,38 @@ Las aplicaciones externas deben incluir `neurocenter-api` como dependencia Andro
 ```
 
 No copies al manifiesto de la app externa los permisos Bluetooth/cámara/etc. del host. Declara solo los que use esa app. Para sus datos privados, utiliza su almacenamiento interno; para ficheros elegidos por el usuario, usa Storage Access Framework.
+
+## Solicitud de permisos de NeuroCenter para un APK
+
+En `<application>` del `AndroidManifest.xml`, indica únicamente las capacidades
+que necesita tu APK:
+
+```xml
+<meta-data android:name="com.neurocenter.app.permissions"
+           android:value="agenda.read,agenda.write" />
+```
+
+Si se omite esa propiedad, no se puede pedir **ninguna** capacidad de NeuroCenter.
+Los identificadores desconocidos o repetidos hacen que se rechace la declaración.
+La lista del gestor muestra únicamente los identificadores declarados.
+
+Antes de usar el servicio Binder, la app debe solicitar al anfitrión:
+
+```java
+Intent request = NeuroCenterAppContract.permissionRequestIntent("agenda.read");
+startActivityForResult(request, 100);
+```
+
+NeuroCenter presenta un diálogo auténtico, identificado con el nombre del APK,
+con **Permitir**, **Denegar**, **Permitir siempre** y **Denegar siempre**. Un
+`RESULT_OK` permite intentar la operación Binder; el servidor vuelve a
+comprobar el manifiesto y la autorización con el UID/firma reales. «Permitir»
+autoriza la **siguiente operación** durante un tiempo limitado; «Permitir siempre»
+queda registrado por identidad criptográfica. La denegación «siempre» se recuerda.
+
+La app puede corregir sus decisiones desde el gestor de permisos de NeuroCenter.
+El sistema **no** sustituye los permisos nativos Android: estos se declaran mediante
+`<uses-permission>` y se solicitan directamente al sistema operativo.
+
+Para Agenda, también es imprescindible el plugin **Agenda Bridge**. Dar permiso
+no instala ni habilita el plugin.

@@ -50,8 +50,8 @@ public interface AppContext extends NeuroAppContext {
     /**
      * Solicita al host guardar un secreto en el almacén seguro del sistema operativo.
      * Las claves se aíslan automáticamente por identificador de aplicación.
-     * Las aplicaciones externas necesitan el permiso «credentials.access» concedido
-     * por el usuario en el gestor de permisos de NeuroCenter.
+     * Las aplicaciones externas deben declarar credentials.access y pedirlo
+     * con requestPermission("credentials.access") cuando lo necesiten.
      */
     default void saveSecret(String key, char[] secret) {
         throw new UnsupportedOperationException("El host no proporciona un almacén seguro de credenciales.");
