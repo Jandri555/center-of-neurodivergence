@@ -126,7 +126,7 @@ public final class MainWindow extends JFrame {
         register(new AgendaApp(pluginServices), false);
         register(new PdfReaderApp(), false);
 
-        // 2) Apps externas: solo se cargan los JAR inscritos en el registro SQLite.
+        // 2) Apps externas: solo se cargan paquetes .ncapp registrados en SQLite.
         Set<String> autorunJars = new HashSet<>();
         try {
             appRegistry = new AppRegistry(AppPaths.root().resolve("apps.db"));
@@ -991,17 +991,20 @@ public final class MainWindow extends JFrame {
             return;
         }
 
-        String[] options = {"Instalar app", "Desinstalar app", "Configurar inicio automático",
+        String[] options = {"Instalar aplicación (.ncapp)", "Desinstalar app", "Configurar inicio automático",
                 "Configurar permisos"};
         int choice = JOptionPane.showOptionDialog(this,
-                "Las apps externas solo acceden a sus propios datos por defecto. "
-                        + "Puedes conceder permisos adicionales desde aquí.",
+                "Formato único de aplicaciones: .ncapp (escritorio y Android). "
+                        + "Cada paquete declara las plataformas que admite. "
+                        + "Los permisos se limitan a los declarados en su manifiesto.",
                 "Gestor de apps", JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE,
                 null, options, options[0]);
 
         if (choice == 0) {
             javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
-            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Apps NeuroCenter (*.ncapp)", "ncapp"));
+            chooser.setDialogTitle("Instalar una aplicación NeuroCenter (.ncapp)");
+            chooser.setAcceptAllFileFilterUsed(false);
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Aplicaciones NeuroCenter (*.ncapp)", "ncapp"));
             if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
                 installNcapp(chooser.getSelectedFile().toPath());
             }
@@ -1261,7 +1264,7 @@ public final class MainWindow extends JFrame {
 
         /**
          * Los apps integrados y plugins son código de confianza del propio NeuroCenter.
-         * Los JAR externos necesitan el permiso explícito credentials.access.
+         * Los paquetes .ncapp externos necesitan el permiso explícito credentials.access.
          */
         private void requireCredentialPermission() {
             if (externalAppIds.contains(app.id()) && !hasPermission("credentials.access"))

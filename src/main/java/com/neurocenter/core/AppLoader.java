@@ -20,7 +20,7 @@ import java.util.jar.Manifest;
 import java.util.stream.Stream;
 
 /**
- * Carga apps externas con un ClassLoader por JAR.
+ * Carga paquetes .ncapp con un ClassLoader Java aislado por archivo.
  *
  * <p>El perfil de permisos se registra en la política de NeuroCenter antes de
  * crear el ClassLoader y, sobre todo, antes de inicializar cualquier clase de
@@ -34,7 +34,7 @@ public final class AppLoader {
     private AppLoader() {}
 
     /**
-     * Compatibilidad interna para llamadas antiguas: carga solo JAR indicados
+     * Compatibilidad interna para llamadas antiguas: carga solo paquetes .ncapp indicados
      * y les aplica el perfil mínimo sin permisos adicionales.
      */
     public static Result load(Path appsDir, List<String> installedJarNames) {
@@ -46,7 +46,7 @@ public final class AppLoader {
         return load(appsDir, profiles);
     }
 
-    /** Carga exclusivamente los JAR registrados y aplica sus permisos concedidos. */
+    /** Carga exclusivamente los paquetes .ncapp registrados y aplica sus permisos concedidos. */
     public static Result load(Path appsDir, Map<String, AppRegistry.AppSecurityProfile> securityProfiles) {
         List<LoadedApp> apps = new ArrayList<>();
         List<String> errors = new ArrayList<>();
@@ -111,7 +111,7 @@ public final class AppLoader {
                             continue;
                         }
                         if (found > 0) {
-                            errors.add(name + ": un JAR solo puede registrar una app; cada app debe instalarse por separado.");
+                            errors.add(name + ": un .ncapp solo puede registrar una app; instala cada app por separado.");
                             break;
                         }
                         apps.add(new LoadedApp(app, name));

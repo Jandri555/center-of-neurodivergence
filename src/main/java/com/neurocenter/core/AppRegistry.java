@@ -23,7 +23,7 @@ import java.util.jar.Manifest;
 
 /**
  * Registro SQLite de las aplicaciones externas instaladas.
- * La base de datos es la fuente de verdad; la carpeta apps/ solo almacena los JAR.
+ * La base de datos es la fuente de verdad; apps/ almacena paquetes .ncapp.
  */
 public final class AppRegistry {
 
@@ -93,7 +93,7 @@ public final class AppRegistry {
         }
     }
 
-    /** Lee los metadatos del manifiesto y registra un JAR recién instalado. */
+    /** Lee los metadatos del manifiesto y registra un paquete .ncapp. */
     public void registerJar(Path jar) throws IOException, SQLException {
         String filename = jar.getFileName().toString();
         if (!filename.toLowerCase(Locale.ROOT).endsWith(".ncapp")) {
@@ -130,7 +130,7 @@ public final class AppRegistry {
             }
         }
 
-        if (id.isBlank()) throw new IOException("El JAR no proporciona un identificador de aplicación válido.");
+        if (id.isBlank()) throw new IOException("El .ncapp no proporciona un identificador de aplicación válido.");
         if (name.isBlank()) name = fallback;
 
         try (Connection connection = connect();
@@ -197,7 +197,7 @@ public final class AppRegistry {
     }
 
     /**
-     * Devuelve los perfiles de seguridad indexados por nombre de JAR.
+     * Devuelve los perfiles de seguridad indexados por archivo .ncapp.
      * Las aplicaciones recién instaladas no tienen permisos adicionales concedidos.
      */
     public Map<String, AppSecurityProfile> securityProfilesByJar() throws SQLException {

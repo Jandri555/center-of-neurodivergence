@@ -83,46 +83,70 @@ Los datos se guardan en la carpeta `CenterOfNeurodivergence`:
 
 La carpeta `apps/` contiene las apps externas instaladas, `themes/` los temas `.tme` instalados y `data/` los datos de cada app.
 
-El registro de aplicaciones externas se guarda en `apps.db` (SQLite), dentro de esa misma carpeta. La tabla `installed_apps` conserva el identificador, nombre, autor, versión, nombre del JAR, fecha de instalación, tamaño en bytes y la opción `autorun` (0 = desactivado, 1 = activado). La base de datos es la fuente de verdad: al iniciar solo se cargan los JAR registrados.
+El registro de aplicaciones externas se guarda en `apps.db` (SQLite), dentro de esa misma carpeta. La tabla `installed_apps` conserva el identificador, nombre, autor, versión, nombre del paquete .ncapp, fecha de instalación, tamaño en bytes y la opción `autorun` (0 = desactivado, 1 = activado). La base de datos es la fuente de verdad: al iniciar solo se cargan los paquetes .ncapp registrados.
 
 En **Ajustes → Gestionar apps → Configurar inicio automático** puedes activar o desactivar el arranque automático de cada app. Las apps con `autorun = 1` se inician al abrir Center of Neurodivergence, pero la pantalla inicial sigue siendo Inicio.
 
-## Gestionar apps externas
+## Aplicaciones externas (.ncapp): un formato para escritorio y Android
 
-Abre **Ajustes** (⚙) en el panel y entra en **Gestionar apps**. Desde ahí puedes instalar un archivo JAR o programar su desinstalación. Los cambios se aplican al reiniciar, porque una app cargada puede mantener su JAR bloqueado en Windows.
+**Solo hay un formato de distribución de aplicaciones NeuroCenter: `.ncapp`.**
+Funciona como paquete tanto en Windows/escritorio como en Android. Técnicamente contiene
+un archivo ZIP/JAR Java 21 con `META-INF/MANIFEST.MF`; esto no significa que el usuario
+deba instalarlo como `.jar` ni que existan dos extensiones distintas.
 
-La API de extensiones de escritorio es `NeuroApp` con su contexto `AppContext`. Los JAR deben registrar la implementación de escritorio mediante el servicio:
+En **Ajustes → Gestionar apps → Instalar aplicación (.ncapp)** de escritorio puedes
+seleccionar el archivo. En Android se instala el **mismo archivo `.ncapp`**
+desde la gestión de aplicaciones o el gestor de archivos. El instalador comprueba la
+compatibilidad declarada antes de permitir su uso.
 
-`META-INF/services/com.neurocenter.api.NeuroApp`
-
-El manifiesto JAR declara las plataformas compatibles mediante dos flags booleanos:
+El manifiesto contiene las plataformas admitidas, el identificador y los puntos de
+entrada correspondientes:
 
 ```text
+Manifest-Version: 1.0
+NeuroCenter-App-Id: ejemplo.multiplataforma
 NeuroCenter-App-Desktop: true
-NeuroCenter-App-Mobile: false
+NeuroCenter-App-Mobile: true
+NeuroCenter-Mobile-Class: ejemplo.DemoMobile
+NeuroCenter-App-Permissions: network.connect
 ```
 
-- Solo escritorio: `true / false`.
-- Solo móvil: `false / true`.
-- Escritorio y móvil: `true / true`.
+Los flags ausentes equivalen a `false`:
+- `true/true`: **el mismo paquete** tiene código para escritorio y Android.
+- `true/false`: solo puede ejecutarse en escritorio.
+- `false/true`: solo puede ejecutarse en Android.
 
-Cada flag ausente equivale a `false`. Si ambos faltan o ambos valen `false`, el paquete no es compatible con ninguna plataforma y se rechaza. No existe compatibilidad implícita para paquetes antiguos: el tema negro anterior debe añadir expresamente sus flags. Si se intenta instalar o cargar en escritorio una app solo móvil, aparece un error indicando que el dispositivo no es compatible.
+**No todas las aplicaciones son automáticamente multiplataforma.** El formato es
+común, pero cada app debe incluir su implementación de la plataforma que declara.
+Para escritorio, un `.ncapp` incluye el proveedor
+`META-INF/services/com.neurocenter.api.NeuroApp` y una implementación
+`NeuroApp` con Swing. Para Android, incluye `NeuroCenter-Mobile-Class` con
+una clase Java 21 que implementa `renderJson()` y `onAction(String)`. El núcleo
+Android ejecuta esa clase en un proceso aislado y dibuja su interfaz declarativa.
 
-**Código por plataforma:** una app multiplataforma mantiene dos implementaciones con el mismo identificador:
-- Escritorio: implementa `NeuroApp`, recibe `AppContext` y construye su interfaz Swing. Los flags van en el `MANIFEST.MF` del JAR.
-- Android: implementa `NeuroMobileApp`, recibe `NeuroMobileContext` y construye su interfaz nativa mediante una `View`. Los flags van como `<meta-data>` en el `AndroidManifest.xml` del APK, con los nombres `NeuroCenter-App-Desktop` y `NeuroCenter-App-Mobile` y valores `true` o `false`.
+El ejemplo real `examples/ncapp-demo` declara **ambas plataformas** y GitHub
+Actions publica un solo archivo `neurocenter-demo.ncapp` para las dos.
+`examples/ncapp-dev-test-kit` es solo móvil, y Teis Aula Sync actualmente
+es solo escritorio aunque también se distribuye como `.ncapp`.
 
-Ambos contextos heredan de `NeuroAppContext`, que ofrece los servicios neutrales (plataforma, carpeta de datos y ajustes). `context.platform()` devuelve `NeuroPlatform.DESKTOP` en escritorio y `NeuroPlatform.MOBILE` en Android. Las clases de lógica compartida también pueden consultar directamente `NeuroPlatform.current()`, que detecta el runtime sin depender de Swing. La lógica de negocio compartida puede aceptar `NeuroAppContext`; las clases de presentación son distintas y no deben importar Swing en la implementación Android.
+Las bibliotecas Java internas siguen usando `JarFile` y `ClassLoader` para abrir
+el contenido, sin que esto cambie la extensión instalada. El `.jar` del programa
+principal de escritorio tampoco es un paquete de aplicación externa: es el
+ejecutable interno que usa el instalador EXE.
 
-La API móvil se publica en el módulo Gradle `:neurocenter-api` del proyecto `android/`. Una app Android puede añadir `implementation(project(":neurocenter-api"))` cuando forme parte del mismo proyecto Gradle, o consumir el AAR equivalente al distribuir la API.
+### Permisos
 
-**Estado del host móvil:** el proyecto Android ya incluye la API móvil como biblioteca reutilizable, pero aún no incorpora el gestor/cargador de paquetes externos Android. Por tanto, la detección de plataforma y los contratos de las dos implementaciones están definidos, pero todavía no se pueden instalar y ejecutar APK de apps externas desde el host Android.
+Las apps externas solo pueden solicitar los identificadores incluidos en
+`NeuroCenter-App-Permissions`; el host muestra **Permitir**, **Denegar**,
+**Permitir siempre** o **Denegar siempre** cuando sea necesario. El gestor de
+permisos solo muestra los permisos del manifiesto. En escritorio la
+política Java 21 limita el acceso; en Android la app Java se ejecuta en un
+proceso aislado. El acceso a Agenda desde apps externas requiere además el
+plugin Agenda Bridge; conceder `agenda.write` no instala dicho plugin.
 
-**Seguridad de apps externas (Java 21):** NeuroCenter activa Security Manager al arrancar y aplica una política distinta al JAR de cada app. Por defecto, una app solo puede leer su propio JAR, utilizar su directorio privado `data/<id>/` y realizar las operaciones básicas necesarias para su interfaz. No puede leer o modificar el resto de los archivos del usuario, abrir conexiones de red, ejecutar procesos ni cargar bibliotecas nativas por los mecanismos ordinarios de Java.
-
-En **Ajustes → Gestionar apps → Configurar permisos** puedes conceder capacidades adicionales: conexiones de salida, conexiones entrantes, lectura o modificación de Documentos/Escritorio/Descargas y acceso al portapapeles. Los cambios se aplican al reiniciar. Las apps recién instaladas no reciben permisos adicionales.
-
-Esto es una barrera de permisos de Java, no un sandbox del sistema operativo: el código nativo y las vulnerabilidades de la JVM quedan fuera de su protección. Solo instala apps de desarrolladores de confianza. Security Manager funciona en Java 21, pero fue retirado en Java 24; por eso NeuroCenter fija su runtime a Java 21 y habrá que migrar esta arquitectura si se cambia de versión.
+Por defecto, una app solo utiliza sus propios datos. Para detalles de
+implementación, empaquetado y servicios consulta
+[docs/ncapp-mobile-api.md](docs/ncapp-mobile-api.md).
 
 ## Sincronización de Agenda con Android (en desarrollo)
 
