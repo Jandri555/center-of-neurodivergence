@@ -102,6 +102,16 @@ final class DesktopPermissionPrompts {
             }
             granted.retainAll(declared);
             Path jar = AppPaths.appsDir().resolve(jarFilename).toRealPath();
+            // A replaced archive may only lose privileges, never acquire new
+            // ones without a fresh trusted install. Check live manifest too.
+            try (java.util.jar.JarFile archive = new java.util.jar.JarFile(jar.toFile())) {
+                java.util.jar.Manifest manifest = archive.getManifest();
+                if (manifest == null || !app.id().equalsIgnoreCase(
+                        manifest.getMainAttributes().getValue("NeuroCenter-App-Id"))) {
+                    throw new SecurityException("El manifiesto instalado ya no coincide con la app.");
+                }
+                granted.retainAll(AppPermissionManifest.parse(manifest));
+            }
             NeuroCenterSecurity.registerExternalApp(jar, app.id(), granted);
         } catch (Exception ex) {
             throw new SecurityException("No se pudo actualizar la política de seguridad.", ex);
