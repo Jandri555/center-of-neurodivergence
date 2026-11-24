@@ -716,7 +716,7 @@ public final class MainWindow extends JFrame {
             } catch (Throwable t) {
                 t.printStackTrace();
             } finally {
-                if (permissionPrompts != null && externalAppIds.contains(session.id())) {
+                if (permissionPrompts != null && externalAppIds.contains(session.id)) {
                     try {
                         AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
                             permissionPrompts.close(session.app, externalJarByAppId.get(session.id));
