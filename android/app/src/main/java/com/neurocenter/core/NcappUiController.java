@@ -251,15 +251,17 @@ public final class NcappUiController {
                                 + capability);
                     }
                     String requestJson = hostRequest.toString();
-                    executor.execute(() -> {
-                        try {
-                            if (closed || worker == null) return;
-                            String result = NcappHostServices.handle(activity, app, requestJson);
-                            present(worker.deliverHostResponse(capability, result));
-                        } catch (Exception failure) {
-                            error("Error de la API de NeuroCenter: " + failure);
-                        }
-                    });
+                    if (!app.declaredPermissions().contains(capability)) {
+                        deliverDenied(capability, "Permiso no declarado en el manifiesto de la app.");
+                        return;
+                    }
+                    Boolean remembered = NcappPermissionStore.decision(activity, app, capability);
+                    if (remembered != null) {
+                        if (remembered) executeHostRequest(capability, requestJson);
+                        else deliverDenied(capability, "Permiso denegado siempre por el usuario.");
+                    } else {
+                        askForPermission(capability, requestJson);
+                    }
                     return;
                 }
                 remainingHostRequests = 8;
@@ -304,6 +306,67 @@ public final class NcappUiController {
             } catch (Exception ex) {
                 error("La app devolvió una interfaz inválida: " + ex.getMessage());
             }
+        }
+
+        /** Request UI is owned exclusively by the host's Android Activity. */
+        void askForPermission(String capability, String requestJson) {
+            activity.runOnUiThread(() -> {
+                if (closed || failed) return;
+                final String[] choices = {"Permitir", "Denegar", "Permitir siempre", "Denegar siempre"};
+                String friendly = switch (capability) {
+                    case "agenda.read" -> "Leer la Agenda";
+                    case "agenda.write" -> "Modificar la Agenda";
+                    case "network.connect" -> "Conexiones de red";
+                    case "credentials.access" -> "Acceso a credenciales";
+                    default -> capability;
+                };
+                new AlertDialog.Builder(activity)
+                        .setTitle("Permiso solicitado · " + app.name())
+                        .setMessage("La aplicación «" + app.name() + "» solicita:\n\n"
+                                + friendly + " (" + capability + ")\n\n"
+                                + "Permitir o denegar sin «siempre» solo afecta a esta solicitud.")
+                        .setItems(choices, (d, selection) -> {
+                            try {
+                                if (selection == 2 || selection == 3) {
+                                    NcappPermissionStore.setDecision(activity, app, capability,
+                                            selection == 2);
+                                }
+                                if (selection == 0 || selection == 2)
+                                    executeHostRequest(capability, requestJson);
+                                else
+                                    deliverDenied(capability, "Permiso denegado por el usuario.");
+                            } catch (Exception failure) {
+                                deliverDenied(capability, "Error guardando la decisión del permiso.");
+                            }
+                        })
+                        .setOnCancelListener(d ->
+                                deliverDenied(capability, "Solicitud de permiso cancelada."))
+                        .show();
+            });
+        }
+
+        void executeHostRequest(String capability, String requestJson) {
+            executor.execute(() -> {
+                try {
+                    if (closed || worker == null) return;
+                    String result = NcappHostServices.handle(activity, app, requestJson, true);
+                    present(worker.deliverHostResponse(capability, result));
+                } catch (Exception failure) {
+                    error("Error de la API de NeuroCenter: " + failure);
+                }
+            });
+        }
+
+        void deliverDenied(String capability, String reason) {
+            executor.execute(() -> {
+                try {
+                    if (closed || worker == null) return;
+                    String response = new JSONObject().put("ok", false).put("error", reason).toString();
+                    present(worker.deliverHostResponse(capability, response));
+                } catch (Exception failure) {
+                    error("No se pudo devolver la denegación: " + failure);
+                }
+            });
         }
 
         void showText(String message) {

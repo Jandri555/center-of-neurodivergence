@@ -444,37 +444,45 @@ public final class MainActivity extends Activity {
     }
 
     private void editExternalAppPermissions(NcappManager.InstalledApp app) {
-        final java.util.Set<String> current = NcappPermissionStore.granted(this, app);
         LinearLayout options = new LinearLayout(this);
         options.setOrientation(LinearLayout.VERTICAL);
         options.setPadding(dp(18), dp(8), dp(18), dp(8));
-        java.util.Map<String, CheckBox> controls = new java.util.LinkedHashMap<>();
-        addCapabilityOption(options, controls, NeuroCenterCapabilities.AGENDA_READ,
-                "Leer la Agenda", "Requiere el plugin Agenda Bridge instalado y habilitado. El permiso no basta.", current);
-        addCapabilityOption(options, controls, NeuroCenterCapabilities.AGENDA_WRITE,
-                "Modificar la Agenda", "Requiere el plugin Agenda Bridge instalado y habilitado. El permiso no basta.", current);
-        addCapabilityOption(options, controls, NeuroCenterCapabilities.CREDENTIALS_ACCESS,
-                "Credenciales", "Acceder únicamente a las credenciales propias de la app.", current);
-        addCapabilityOption(options, controls, NeuroCenterCapabilities.NETWORK_CONNECT,
-                "Conexiones de red", "Solicitar conexiones a través de NeuroCenter.", current);
-        addCapabilityOption(options, controls, NeuroCenterCapabilities.FILES_READ_DOCUMENTS,
-                "Leer documentos", "Solicitar lectura de documentos seleccionados.", current);
-        addCapabilityOption(options, controls, NeuroCenterCapabilities.FILES_WRITE_DOCUMENTS,
-                "Modificar documentos", "Solicitar escritura de documentos seleccionados.", current);
+        java.util.Map<String, android.widget.Spinner> controls = new java.util.LinkedHashMap<>();
+        for (String permission : com.neurocenter.api.NeuroCenterCapabilities.supported()) {
+            if (!app.declaredPermissions().contains(permission)) continue;
+            TextView label = text(permission, 15, false);
+            options.addView(label);
+            android.widget.Spinner picker = new android.widget.Spinner(this);
+            String[] choices = {"Preguntar", "Permitir siempre", "Denegar siempre"};
+            android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(
+                    this, android.R.layout.simple_spinner_item, choices);
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            picker.setAdapter(adapter);
+            Boolean decision = NcappPermissionStore.decision(this, app, permission);
+            picker.setSelection(decision == null ? 0 : decision ? 1 : 2);
+            controls.put(permission, picker);
+            options.addView(picker);
+        }
+        if (controls.isEmpty()) {
+            options.addView(text("Esta app no declara permisos en su manifiesto.", 15, false));
+        }
         ScrollView scroll = new ScrollView(this);
         scroll.addView(options);
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Permisos · " + app.name()).setView(scroll)
-                .setNegativeButton("Cancelar", null).setPositiveButton("Guardar", null).create();
+                .setTitle("Permisos declarados · " + app.name())
+                .setView(scroll)
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Guardar", null).create();
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
                 .setOnClickListener(v -> {
-                    java.util.Set<String> updated = new java.util.HashSet<>();
-                    controls.forEach((id, control) -> { if (control.isChecked()) updated.add(id); });
                     try {
-                        NcappPermissionStore.setGranted(this, app, updated);
+                        for (java.util.Map.Entry<String, android.widget.Spinner> item : controls.entrySet()) {
+                            int choice = item.getValue().getSelectedItemPosition();
+                            NcappPermissionStore.setDecision(this, app, item.getKey(),
+                                    choice == 0 ? null : choice == 1);
+                        }
                         dialog.dismiss();
-                        Toast.makeText(this, "Permisos guardados. El acceso externo a Agenda"
-                                + " también requiere instalar y habilitar Agenda Bridge.",
+                        Toast.makeText(this, "Permisos guardados. El permiso no activa un servicio de plugin.",
                                 Toast.LENGTH_LONG).show();
                     } catch (RuntimeException ex) {
                         Toast.makeText(this, "No se guardaron los permisos: " + ex.getMessage(),
@@ -482,19 +490,6 @@ public final class MainActivity extends Activity {
                     }
                 }));
         dialog.show();
-    }
-
-    private void addCapabilityOption(LinearLayout parent, java.util.Map<String, CheckBox> controls,
-                                     String id, String label, String description,
-                                     java.util.Set<String> current) {
-        CheckBox checkBox = new CheckBox(this);
-        checkBox.setText(label);
-        checkBox.setChecked(current.contains(id));
-        controls.put(id, checkBox);
-        TextView detail = text(description, 12, false);
-        detail.setPadding(dp(34), 0, 0, dp(10));
-        parent.addView(checkBox);
-        parent.addView(detail);
     }
 
     private void selectExternalAppPackage() {
