@@ -46,8 +46,8 @@ public final class DevTestKitSmoke {
         has(app.onAction("report"), "Formato y configuración regional: OK");
         show(safe);
         String skipPage = app.onAction("all");
-        has(skipPage, "Paso 1/7");
-        has(app.onAction("suite-skip"), "Paso 2/7");
+        has(skipPage, "Paso 1/8");
+        has(app.onAction("suite-skip"), "Paso 2/8");
         show(app.onAction("suite-next"));
 
         for (String action : new String[]{"runtime", "contract", "classes", "resources", "threads", "memory",
