@@ -42,35 +42,12 @@ public final class NeuroCenterCapabilityStore implements Closeable {
         Path parent = file.getParent();
         if (parent != null) Files.createDirectories(parent);
         db = SQLiteDatabase.openOrCreateDatabase(file.toString(), null);
-        // Older pre-release builds stored grants without a signer identity. They
-        // are deliberately discarded instead of migrating unbound authorizations.
-        if (tableExists(db, "app_capabilities") && !hasColumn(db, "app_capabilities", "signing_digest")) {
-            db.execSQL("DROP TABLE app_capabilities");
-        }
         db.execSQL("CREATE TABLE IF NOT EXISTS app_capabilities ("
                 + "package_name TEXT NOT NULL, "
                 + "signing_digest TEXT NOT NULL, "
                 + "capability_id TEXT NOT NULL, "
                 + "granted INTEGER NOT NULL DEFAULT 1 CHECK (granted IN (0, 1)), "
                 + "PRIMARY KEY (package_name, signing_digest, capability_id))");
-    }
-
-    private static boolean tableExists(SQLiteDatabase db, String table) {
-        try (Cursor c = db.rawQuery(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-                new String[]{table})) {
-            return c.moveToFirst();
-        }
-    }
-
-    private static boolean hasColumn(SQLiteDatabase db, String table, String column) {
-        try (Cursor c = db.rawQuery("PRAGMA table_info(" + table + ")", null)) {
-            int name = c.getColumnIndex("name");
-            while (c.moveToNext()) {
-                if (name >= 0 && column.equals(c.getString(name))) return true;
-            }
-        }
-        return false;
     }
 
     public synchronized Set<String> grantedCapabilities(String packageName, String signingDigest) {

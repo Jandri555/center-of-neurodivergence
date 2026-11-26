@@ -70,7 +70,7 @@ jobs:
           assert metadata['NeuroCenter-App-Desktop'] == 'true'
           assert metadata['NeuroCenter-App-Mobile'] == 'true'
           assert metadata['NeuroCenter-Mobile-Class'] == 'com.neurocenter.devkit.DevTestKitMobile'
-          assert metadata['Implementation-Version'] == '1.4.0'
+          assert metadata['Implementation-Version'] == '1.5.0'
           assert set(metadata['NeuroCenter-App-Permissions'].split(',')) == {
               'network.connect', 'credentials.access', 'agenda.read', 'agenda.write'}
           print('PASS: same .ncapp targets desktop and Android with four declared permissions')

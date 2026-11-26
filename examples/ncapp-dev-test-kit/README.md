@@ -1,4 +1,4 @@
-# NeuroCenter Dev Test Kit 1.4.0 (.ncapp)
+# NeuroCenter Dev Test Kit 1.5.0 (.ncapp)
 
 **Un único paquete Java 21 para Windows y Android**, adaptado a las APIs de la rama `dev`. No es un APK ni requiere renombrar archivos JAR.
 
@@ -51,3 +51,7 @@ jar --create --file dist/neurocenter-dev-test-kit.ncapp \
 ```
 
 El Dev Test Kit es una herramienta de diagnóstico, **no una prueba exhaustiva de seguridad**: un resultado `AVISO` en `/proc` o un puerto TCP cerrado no demuestra por sí solo aislamiento.
+
+## Contrato vigente (sin migraciones)
+
+La versión 1.5.0 incorpora una prueba del manifiesto que verifica el ID, la versión, las dos plataformas y los cuatro permisos declarados. En Android se ejecuta dentro de HotSpot aislado, leyendo el manifiesto del paquete `.ncapp` ya validado por NeuroCenter. No instala permisos ni intenta interpretar formatos anteriores. La batería guiada tiene ocho pasos, ejecutados individualmente para localizar cierres nativos.

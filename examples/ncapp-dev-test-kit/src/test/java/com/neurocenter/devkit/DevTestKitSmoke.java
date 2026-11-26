@@ -24,18 +24,19 @@ public final class DevTestKitSmoke {
         show(ping);
         String startPage = app.onAction("all");
         has(startPage, "Pruebas guiadas");
-        has(startPage, "Paso 1/7");
+        has(startPage, "Paso 1/8");
         if (startPage.contains("Clases y Java 21: OK")) {
             throw new AssertionError("Suite unexpectedly ran all probes in one call");
         }
         show(startPage);
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 8; i++) {
             String result = app.onAction("suite-next");
-            if (i < 6) has(result, "Paso " + (i + 2) + "/7");
+            if (i < 7) has(result, "Paso " + (i + 2) + "/8");
             else has(result, "Informe de diagnóstico");
             show(result);
         }
         String safe = app.onAction("report");
+        has(safe, "Contrato .ncapp: OK");
         has(safe, "Clases y Java 21: OK");
         has(safe, "Recursos del JAR: OK");
         has(safe, "Hilos: OK");
@@ -49,7 +50,7 @@ public final class DevTestKitSmoke {
         has(app.onAction("suite-skip"), "Paso 2/7");
         show(app.onAction("suite-next"));
 
-        for (String action : new String[]{"runtime", "classes", "resources", "threads", "memory",
+        for (String action : new String[]{"runtime", "contract", "classes", "resources", "threads", "memory",
                 "speed", "sandbox", "home", "report", "agenda-menu"}) {
             show(app.onAction(action));
         }

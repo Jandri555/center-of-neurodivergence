@@ -31,7 +31,7 @@ public final class DevTestKitDesktop implements NeuroApp {
 
     @Override public String id() { return "com.neurocenter.devtestkit"; }
     @Override public String name() { return "NeuroCenter Dev Test Kit"; }
-    @Override public String version() { return "1.4.0"; }
+    @Override public String version() { return "1.5.0"; }
     @Override public String description() {
         return "Diagnóstico Java 21, permisos y ciclo de vida de aplicaciones .ncapp";
     }
@@ -44,7 +44,7 @@ public final class DevTestKitDesktop implements NeuroApp {
         host = context;
         JPanel root = new JPanel(new BorderLayout(10, 10));
         root.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
-        root.add(new JLabel("Dev Test Kit 1.4.0 · Escritorio · Java 21"), BorderLayout.NORTH);
+        root.add(new JLabel("Dev Test Kit 1.5.0 · Escritorio · Java 21"), BorderLayout.NORTH);
 
         JPanel actions = new JPanel(new GridLayout(0, 2, 8, 8));
         add(actions, "Java 21 y plataforma", () -> log(

@@ -18,6 +18,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.jar.Attributes;
+import java.util.jar.Manifest;
 
 /**
  * Standalone NeuroCenter Java 21 .ncapp diagnostic app for Android.
@@ -25,18 +27,24 @@ import java.util.concurrent.atomic.AtomicInteger;
  * isolated HotSpot process. No automatic network calls or host writes.
  */
 public final class DevTestKitMobile {
-    private static final String VERSION = "1.4.0";
+    private static final String VERSION = "1.5.0";
     private static final int MAX_REPORT_CHARS = 7400;
     private static final String SAMPLE = "neurocenter-dev-test-kit/1.0\n";
     private static final String[] SAFE_TESTS = {
-        "runtime", "classes", "resources", "threads", "memory", "speed", "sandbox"
+        "runtime", "contract", "classes", "resources", "threads", "memory", "speed", "sandbox"
     };
-    private static final Map<String, String> LABELS = Map.of(
-        "runtime", "Entorno Java", "classes", "Clases y Java 21",
-        "resources", "Recursos del JAR", "threads", "Hilos",
-        "memory", "Memoria", "speed", "Rendimiento",
-        "sandbox", "Aislamiento", "network", "Red local",
-        "agenda", "Agenda (lectura)", "locale", "Formato y configuración regional"
+    private static final Map<String, String> LABELS = Map.ofEntries(
+        Map.entry("runtime", "Entorno Java"),
+        Map.entry("contract", "Contrato .ncapp"),
+        Map.entry("classes", "Clases y Java 21"),
+        Map.entry("resources", "Recursos del JAR"),
+        Map.entry("threads", "Hilos"),
+        Map.entry("memory", "Memoria"),
+        Map.entry("speed", "Rendimiento"),
+        Map.entry("sandbox", "Aislamiento"),
+        Map.entry("network", "Red local"),
+        Map.entry("agenda", "Agenda (lectura)"),
+        Map.entry("locale", "Formato y configuración regional")
     );
 
     private record Result(String state, String message) { }
@@ -127,7 +135,7 @@ public final class DevTestKitMobile {
                     }
                     page = suiteIndex >= SAFE_TESTS.length ? "results" : "suite";
                 }
-                case "runtime", "classes", "resources", "threads", "memory",
+                case "runtime", "contract", "classes", "resources", "threads", "memory",
                      "speed", "sandbox", "network", "locale" -> {
                     runTest(actionId);
                     page = "single";
@@ -215,7 +223,8 @@ public final class DevTestKitMobile {
             .append(resultLine("network")).append("\n\n")
             .append(resultLine("agenda"));
         return screen("Informe de diagnóstico", text.toString(),
-            buttons("all", "Repetir pruebas guiadas", "locale", "Probar formato CLDR", "home", "Inicio"));
+            buttons("all", "Repetir pruebas guiadas", "contract", "Verificar contrato .ncapp",
+                    "locale", "Probar formato CLDR", "home", "Inicio"));
     }
 
     private String resultLine(String key) {
@@ -239,6 +248,7 @@ public final class DevTestKitMobile {
         try {
             result = switch (key) {
                 case "runtime" -> runtime();
+                case "contract" -> contract();
                 case "classes" -> classes();
                 case "resources" -> resources();
                 case "threads" -> threads();
@@ -254,6 +264,43 @@ public final class DevTestKitMobile {
         }
         results.put(key, result);
         lastInfo = resultLine(key);
+    }
+
+
+    /**
+     * Checks the actual installed package, not a legacy format or a second API.
+     * Android's verified streaming class loader exposes resources from this .ncapp.
+     */
+    private static Result contract() {
+        try (InputStream input = DevTestKitMobile.class.getClassLoader()
+                .getResourceAsStream("META-INF/MANIFEST.MF")) {
+            if (input == null) return new Result("ERROR", "Falta el manifiesto del .ncapp.");
+            Attributes meta = new Manifest(input).getMainAttributes();
+            String id = meta.getValue("NeuroCenter-App-Id");
+            String desktop = meta.getValue("NeuroCenter-App-Desktop");
+            String mobile = meta.getValue("NeuroCenter-App-Mobile");
+            String entry = meta.getValue("NeuroCenter-Mobile-Class");
+            String version = meta.getValue("Implementation-Version");
+            String rawPermissions = meta.getValue("NeuroCenter-App-Permissions");
+            List<String> permissions = rawPermissions == null ? List.of()
+                    : Arrays.stream(rawPermissions.split(",", -1)).map(String::trim).toList();
+            boolean valid = "com.neurocenter.devtestkit".equals(id)
+                    && "true".equalsIgnoreCase(desktop)
+                    && "true".equalsIgnoreCase(mobile)
+                    && DevTestKitMobile.class.getName().equals(entry)
+                    && VERSION.equals(version)
+                    && permissions.size() == 4
+                    && permissions.containsAll(List.of("agenda.read", "agenda.write",
+                            "network.connect", "credentials.access"));
+            return new Result(valid ? "OK" : "ERROR",
+                    "ID: " + id + "\nVersión: " + version
+                    + "\nPlataformas: escritorio=" + desktop + ", móvil=" + mobile
+                    + "\nEntrada móvil: " + entry
+                    + "\nPermisos declarados: " + permissions
+                    + "\nLos permisos efectivos se deciden en NeuroCenter, no aquí.");
+        } catch (Exception failure) {
+            return new Result("ERROR", "No se pudo verificar el manifiesto: " + safeError(failure));
+        }
     }
 
     private static Result runtime() {

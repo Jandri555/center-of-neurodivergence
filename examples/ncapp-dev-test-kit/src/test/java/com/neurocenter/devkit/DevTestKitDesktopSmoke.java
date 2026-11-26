@@ -25,7 +25,7 @@ public final class DevTestKitDesktopSmoke {
         DevTestKitDesktop app = new DevTestKitDesktop();
         if (!"com.neurocenter.devtestkit".equals(app.id()))
             throw new AssertionError("Desktop ID must match mobile manifest");
-        if (!"1.4.0".equals(app.version()))
+        if (!"1.5.0".equals(app.version()))
             throw new AssertionError("Incorrect desktop version");
 
         final JComponent[] view = new JComponent[1];
