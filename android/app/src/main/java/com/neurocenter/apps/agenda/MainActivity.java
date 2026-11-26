@@ -252,6 +252,7 @@ public final class MainActivity extends Activity {
                     }
                     @Override public void pin(String id, String name) { pinToAndroidHome(id, name); }
                     @Override public void install() { selectExternalAppPackage(); }
+                    @Override public void manage() { showExternalApps(); }
                     @Override public void permissions() { showExternalAppPermissions(); }
                     @Override public void diagnostics() { probeJava21Runtime(); }
                 });

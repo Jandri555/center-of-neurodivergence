@@ -29,6 +29,7 @@ public final class MobileDashboard {
         void openNative(AndroidExternalApps.InstalledApp app);
         void pin(String id, String name);
         void install();
+        void manage();
         void permissions();
         void diagnostics();
     }
@@ -132,6 +133,10 @@ public final class MobileDashboard {
         Button install = button(activity, "＋  Instalar o actualizar .ncapp", true);
         install.setOnClickListener(v -> actions.install());
         page.addView(install, full(activity));
+        gap(activity, page, 8);
+        Button manage = button(activity, "Gestionar aplicaciones instaladas", false);
+        manage.setOnClickListener(v -> actions.manage());
+        page.addView(manage, full(activity));
         gap(activity, page, 8);
         Button permissions = button(activity, "Gestionar permisos de aplicaciones", false);
         permissions.setOnClickListener(v -> actions.permissions());
