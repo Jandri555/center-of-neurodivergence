@@ -42,11 +42,39 @@ public final class NcappUiController {
     private NcappUiController() {}
 
     public static void open(Activity activity, NcappManager.InstalledApp app) {
+        if (showForApp(activity, app.id())) return;
         Session session = new Session(activity, app);
         synchronized (ACTIVE) {
             ACTIVE.computeIfAbsent(activity, ignored -> new ArrayList<>()).add(session);
         }
         session.start();
+    }
+
+    /** Hidden .ncapp sessions remain running until explicitly closed, as on desktop. */
+    public static List<String> openAppIds(Activity activity) {
+        synchronized (ACTIVE) {
+            List<Session> sessions = ACTIVE.get(activity);
+            if (sessions == null) return List.of();
+            List<String> ids = new ArrayList<>();
+            for (Session session : sessions) {
+                if (!session.closed && !ids.contains(session.app.id())) ids.add(session.app.id());
+            }
+            return List.copyOf(ids);
+        }
+    }
+
+    public static boolean showForApp(Activity activity, String id) {
+        synchronized (ACTIVE) {
+            List<Session> sessions = ACTIVE.get(activity);
+            if (sessions == null) return false;
+            for (Session session : sessions) {
+                if (!session.closed && session.app.id().equals(id)) {
+                    activity.runOnUiThread(() -> session.dialog.show());
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** Close only an app's isolated sessions before replacing its archive. */
@@ -105,9 +133,10 @@ public final class NcappUiController {
             dialog = new AlertDialog.Builder(activity)
                     .setTitle(app.name())
                     .setView(scroll)
-                    .setPositiveButton("Cerrar", (d, w) -> close())
+                    .setPositiveButton("Cerrar app", (d, w) -> close())
+                    .setNeutralButton("Minimizar", (d, w) -> { /* Keep the isolated session running. */ })
                     .create();
-            dialog.setOnDismissListener(ignored -> close());
+            // Android back/outside tap minimizes rather than killing this Java session.
         }
 
         void start() {
@@ -491,6 +520,7 @@ public final class NcappUiController {
                     if (sessions.isEmpty()) ACTIVE.remove(activity);
                 }
             }
+            activity.runOnUiThread(() -> { if (dialog.isShowing()) dialog.dismiss(); });
         }
 
         private int dp(int value) {

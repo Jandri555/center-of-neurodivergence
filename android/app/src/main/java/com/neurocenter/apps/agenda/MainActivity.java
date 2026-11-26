@@ -29,6 +29,12 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.FrameLayout;
+import android.widget.PopupWindow;
+import android.graphics.drawable.ColorDrawable;
+import com.neurocenter.core.MobileDashboard;
+import com.neurocenter.core.MobileAppShortcuts;
+import com.neurocenter.core.AndroidExternalApps;
 
 import java.io.IOException;
 import java.io.FileInputStream;
@@ -71,6 +77,11 @@ public final class MainActivity extends Activity {
     private AgendaStore store;
     private LinearLayout content;
     private TextView pageTitle;
+    private FrameLayout hostContent;
+    private View agendaScreen;
+    private Button openAppsButton;
+    private boolean agendaOpened;
+    private boolean showingAgenda;
     private boolean calendarView;
     private YearMonth month = YearMonth.now();
     private LocalDate selectedDate = LocalDate.now();
@@ -139,7 +150,8 @@ public final class MainActivity extends Activity {
         }
 
         registerUsbPermissionReceiver();
-        buildScreen();
+        buildHostScreen();
+        MobileAppShortcuts.refresh(this);
         refresh();
         updateBluetoothControls(BluetoothSyncService.isRunning());
         handleNcappIntent(getIntent());
@@ -153,6 +165,15 @@ public final class MainActivity extends Activity {
 
     private void handleNcappIntent(Intent intent) {
         if (intent == null) return;
+        if (MobileAppShortcuts.ACTION_OPEN.equals(intent.getAction())) {
+            String appId = intent.getStringExtra(MobileAppShortcuts.EXTRA_APP_ID);
+            if (MobileAppShortcuts.AGENDA_ID.equals(appId)) {
+                showAgenda();
+            } else if (appId != null) {
+                openNcappById(appId);
+            }
+            return;
+        }
         Uri source = null;
         if (Intent.ACTION_VIEW.equals(intent.getAction())) {
             source = intent.getData();
@@ -178,31 +199,207 @@ public final class MainActivity extends Activity {
         installNcapp(source);
     }
 
-    private void buildScreen() {
+    private void buildHostScreen() {
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setBackgroundColor(0xFF0C1424);
+        LinearLayout toolbar = new LinearLayout(this);
+        toolbar.setOrientation(LinearLayout.HORIZONTAL);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        toolbar.setPadding(dp(14), dp(10), dp(14), dp(10));
+        toolbar.setBackgroundColor(0xFF111E31);
+
+        TextView brand = text("N  NEUROCENTER", 16, true);
+        brand.setTextColor(0xFFF4FAFF);
+        brand.setOnClickListener(v -> showHome());
+        toolbar.addView(brand, new LinearLayout.LayoutParams(0, dp(50), 1f));
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+
+        Button home = button("Inicio");
+        home.setOnClickListener(v -> showHome());
+        toolbar.addView(home, new LinearLayout.LayoutParams(dp(78), dp(42)));
+        openAppsButton = button("Abiertas ▾");
+        openAppsButton.setOnClickListener(this::showOpenAppsMenu);
+        toolbar.addView(openAppsButton, new LinearLayout.LayoutParams(dp(118), dp(42)));
+        shell.addView(toolbar);
+        hostContent = new FrameLayout(this);
+        shell.addView(hostContent, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        setContentView(shell);
+        showHome();
+    }
+
+    private void showHome() {
+        if (hostContent == null) return;
+        showingAgenda = false;
+        List<NcappManager.InstalledApp> apps;
+        try { apps = NcappManager.list(this); }
+        catch (IOException error) {
+            apps = List.of();
+            Toast.makeText(this, "No se pudieron cargar las apps: " + error.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
+        View home = MobileDashboard.create(this, apps, AndroidExternalApps.discover(this),
+                new MobileDashboard.Actions() {
+                    @Override public void openAgenda() { showAgenda(); }
+                    @Override public void openNcapp(NcappManager.InstalledApp app) { MainActivity.this.openNcapp(app); }
+                    @Override public void openNative(AndroidExternalApps.InstalledApp app) {
+                        try { AndroidExternalApps.launch(MainActivity.this, app); }
+                        catch (RuntimeException error) {
+                            Toast.makeText(MainActivity.this, "No se pudo abrir: " + error.getMessage(),
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    }
+                    @Override public void pin(String id, String name) { pinToAndroidHome(id, name); }
+                    @Override public void install() { selectExternalAppPackage(); }
+                    @Override public void permissions() { showExternalAppPermissions(); }
+                    @Override public void diagnostics() { probeJava21Runtime(); }
+                });
+        hostContent.removeAllViews();
+        hostContent.addView(home);
+        refreshOpenAppsLabel();
+    }
+
+    private void showAgenda() {
+        if (hostContent == null) return;
+        if (agendaScreen == null) agendaScreen = buildAgendaScreen();
+        showingAgenda = true;
+        agendaOpened = true;
+        hostContent.removeAllViews();
+        hostContent.addView(agendaScreen);
+        MobileAppShortcuts.recordUse(this, MobileAppShortcuts.AGENDA_ID);
+        refresh();
+        updateBluetoothControls(BluetoothSyncService.isRunning());
+        refreshOpenAppsLabel();
+    }
+
+    private void openNcapp(NcappManager.InstalledApp app) {
+        NcappUiController.open(this, app);
+        MobileAppShortcuts.recordUse(this, app.id());
+        refreshOpenAppsLabel();
+    }
+
+    private void openNcappById(String appId) {
+        try {
+            for (NcappManager.InstalledApp installed : NcappManager.list(this)) {
+                if (installed.id().equals(appId)) {
+                    openNcapp(installed);
+                    return;
+                }
+            }
+            Toast.makeText(this, "La aplicación ya no está instalada.",
+                    Toast.LENGTH_LONG).show();
+        } catch (IOException error) {
+            Toast.makeText(this, "No se pudo abrir la app: " + error.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void pinToAndroidHome(String id, String name) {
+        if (!MobileAppShortcuts.requestHomeShortcut(this, id, name)) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Acceso directo no disponible")
+                    .setMessage("El lanzador de Android no permite fijar iconos automáticamente. "
+                            + "Puedes mantener pulsado NeuroCenter y usar sus accesos rápidos.")
+                    .setPositiveButton("Aceptar", null).show();
+        }
+    }
+
+    private void refreshOpenAppsLabel() {
+        if (openAppsButton == null) return;
+        int count = (agendaOpened ? 1 : 0) + NcappUiController.openAppIds(this).size();
+        openAppsButton.setText("Abiertas (" + count + ") ▾");
+    }
+
+    private void showOpenAppsMenu(View anchor) {
+        LinearLayout menu = new LinearLayout(this);
+        menu.setOrientation(LinearLayout.VERTICAL);
+        menu.setPadding(dp(10), dp(10), dp(10), dp(10));
+        menu.setBackground(MobileDashboard.shape(0xFF22304A, dp(14)));
+        PopupWindow popup = new PopupWindow(menu, dp(270),
+                ViewGroup.LayoutParams.WRAP_CONTENT, true);
+        popup.setBackgroundDrawable(new ColorDrawable(android.graphics.Color.TRANSPARENT));
+        popup.setOutsideTouchable(true);
+        popup.setElevation(dp(12));
+
+        Button home = button("⌂  Inicio");
+        home.setOnClickListener(v -> { popup.dismiss(); showHome(); });
+        menu.addView(home, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(45)));
+        if (agendaOpened) {
+            appendOpenAppRow(menu, "Agenda", () -> {
+                popup.dismiss();
+                showAgenda();
+            }, () -> {
+                agendaOpened = false;
+                if (showingAgenda) showHome();
+                agendaScreen = null;
+                content = null;
+                pageTitle = null;
+                bluetoothButton = null;
+                usbButton = null;
+                syncStatus = null;
+                linkedDevicesStatus = null;
+                refreshOpenAppsLabel();
+                popup.dismiss();
+            });
+        }
+        List<String> openIds = NcappUiController.openAppIds(this);
+        for (String id : openIds) {
+            String name = id;
+            try {
+                for (NcappManager.InstalledApp app : NcappManager.list(this)) {
+                    if (app.id().equals(id)) { name = app.name(); break; }
+                }
+            } catch (IOException ignored) { }
+            appendOpenAppRow(menu, name, () -> {
+                popup.dismiss();
+                NcappUiController.showForApp(this, id);
+            }, () -> {
+                NcappUiController.closeForApp(this, id);
+                popup.dismiss();
+                refreshOpenAppsLabel();
+            });
+        }
+        if (!agendaOpened && openIds.isEmpty()) {
+            TextView empty = text("No hay aplicaciones abiertas.", 13, false);
+            empty.setTextColor(0xFFACBED1);
+            empty.setPadding(dp(8), dp(16), dp(8), dp(8));
+            menu.addView(empty);
+        }
+        popup.showAsDropDown(anchor, 0, dp(5), Gravity.END);
+    }
+
+    private void appendOpenAppRow(LinearLayout menu, String name, Runnable activate, Runnable close) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        Button switchTo = button(name);
+        switchTo.setOnClickListener(v -> activate.run());
+        row.addView(switchTo, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        Button x = button("×");
+        x.setContentDescription("Cerrar " + name);
+        x.setOnClickListener(v -> close.run());
+        row.addView(x, new LinearLayout.LayoutParams(dp(46), dp(48)));
+        menu.addView(row);
+    }
+
+    @Override public void onBackPressed() {
+        if (showingAgenda) { showHome(); return; }
+        super.onBackPressed();
+    }
+
+    private View buildAgendaScreen() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(16), dp(14), dp(16), dp(12));
+        root.setBackgroundColor(0xFFF7F9FD);
 
         TextView heading = new TextView(this);
         heading.setText("Agenda");
+        heading.setTextColor(0xFF12243A);
         heading.setTextSize(26);
         heading.setTypeface(null, android.graphics.Typeface.BOLD);
         root.addView(heading);
-
-        Button javaRuntimeButton = button("Comprobar OpenJDK 21");
-        javaRuntimeButton.setOnClickListener(v -> probeJava21Runtime());
-        root.addView(javaRuntimeButton, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        Button externalAppsButton = button("Aplicaciones de NeuroCenter");
-        externalAppsButton.setOnClickListener(v -> showExternalApps());
-        root.addView(externalAppsButton, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        Button externalPermissionsButton = button("Permisos de aplicaciones");
-        externalPermissionsButton.setOnClickListener(v -> showExternalAppPermissions());
-        root.addView(externalPermissionsButton, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         pageTitle = new TextView(this);
         pageTitle.setTextSize(14);
@@ -276,7 +473,7 @@ public final class MainActivity extends Activity {
         root.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        setContentView(root);
+        return root;
     }
 
 
@@ -343,7 +540,7 @@ public final class MainActivity extends Activity {
                         .setMessage("Archivo Java 21: " + app.id() + ".ncapp\n"
                                 + "Clase móvil: " + app.mobileClass()
                                 + "\nProceso independiente sin permisos Android del centro.")
-                        .setPositiveButton("Abrir", (a, b) -> NcappUiController.open(this, app))
+                        .setPositiveButton("Abrir", (a, b) -> openNcapp(app))
                         .setNeutralButton("Desinstalar", (a, b) -> uninstallNcapp(app))
                         .setNegativeButton("Cerrar", null)
                         .show();
@@ -362,6 +559,9 @@ public final class MainActivity extends Activity {
                         // Other sessions and the built-in Agenda remain running.
                         NcappUiController.closeForApp(this, app.id());
                         NcappManager.uninstall(this, app);
+                        MobileAppShortcuts.onUninstalled(this, app.id());
+                        showHome();
+                        refreshOpenAppsLabel();
                         try {
                             NcappPermissionStore.revoke(this, app);
                         } catch (RuntimeException revokeFailure) {
@@ -635,8 +835,11 @@ public final class MainActivity extends Activity {
                                     NcappManager.discard(staged);
                                 }
                                 final String finished = outcome;
-                                runOnUiThread(() -> Toast.makeText(this, finished,
-                                        Toast.LENGTH_LONG).show());
+                                runOnUiThread(() -> {
+                                    MobileAppShortcuts.refresh(this);
+                                    if (!showingAgenda) showHome();
+                                    Toast.makeText(this, finished, Toast.LENGTH_LONG).show();
+                                });
                             });
                         })
                         .setNegativeButton("Cancelar", (dialog, choice) -> NcappManager.discard(staged))
@@ -966,6 +1169,8 @@ public final class MainActivity extends Activity {
         // Recarga siempre la agenda persistida al volver a primer plano.
         refresh();
         updateBluetoothControls(BluetoothSyncService.isRunning());
+        if (!showingAgenda) showHome();
+        else refreshOpenAppsLabel();
         inspectUsbAccessory();
     }
 
