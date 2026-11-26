@@ -45,11 +45,11 @@ public final class MobileDashboard {
 
         TextView eyebrow = text(activity, "TU ESPACIO · NEUROCENTER", 12, true, ACCENT);
         page.addView(eyebrow);
-        TextView title = text(activity, "Bienvenido a casa", 29, true, TEXT);
+        TextView title = text(activity, "Inicio", 29, true, TEXT);
         gap(activity, page, 7);
         page.addView(title);
         gap(activity, page, 7);
-        page.addView(text(activity, "Tus aplicaciones, tu agenda y tus herramientas, todo en un mismo sitio.",
+        page.addView(text(activity, "Aplicaciones instaladas y herramientas de Neurocenter.",
                 15, false, SUBTLE));
 
         gap(activity, page, 24);
