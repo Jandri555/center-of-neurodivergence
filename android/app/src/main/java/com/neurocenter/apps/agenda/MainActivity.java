@@ -2,6 +2,8 @@ package com.neurocenter.apps.agenda;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.DatePickerDialog;
+import android.app.TimePickerDialog;
 import android.app.PendingIntent;
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
@@ -64,6 +66,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -203,6 +206,17 @@ public final class MainActivity extends Activity {
         LinearLayout shell = new LinearLayout(this);
         shell.setOrientation(LinearLayout.VERTICAL);
         shell.setBackgroundColor(0xFF0C1424);
+        // Android 15+ draws apps behind system bars by default. Keep the header
+        // below the status icons and controls above the gesture navigation bar.
+        if (Build.VERSION.SDK_INT >= 35) {
+            shell.setOnApplyWindowInsetsListener((view, insets) -> {
+                android.graphics.Insets bars = insets.getInsets(
+                        android.view.WindowInsets.Type.statusBars()
+                                | android.view.WindowInsets.Type.navigationBars());
+                view.setPadding(0, bars.top, 0, bars.bottom);
+                return insets;
+            });
+        }
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
@@ -966,7 +980,7 @@ public final class MainActivity extends Activity {
         card.setLayoutParams(cardParams);
 
         String kind = entry.isEvent() ? "EVENTO" : "TAREA";
-        TextView kindLabel = text(kind + " · " + safe(entry.date)
+        TextView kindLabel = text(kind + " · " + AgendaDateFormat.displayStored(entry.date)
                 + (entry.time == null || entry.time.trim().isEmpty() ? "" : " · " + entry.time), 12, true);
         card.addView(kindLabel);
 
@@ -1019,18 +1033,44 @@ public final class MainActivity extends Activity {
         form.setPadding(dp(20), dp(8), dp(20), 0);
 
         EditText title = field("Título", candidate.title, InputType.TYPE_CLASS_TEXT);
-        EditText date = field("Fecha (AAAA-MM-DD)",
-                candidate.date == null ? LocalDate.now().toString() : candidate.date,
-                InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_DATE);
-        EditText time = field(event ? "Hora (HH:mm)" : "Hora límite (opcional)",
-                candidate.time == null ? "" : candidate.time,
-                InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_TIME);
+        final LocalDate[] chosenDate = {candidate.localDate() == null
+                ? selectedDate : candidate.localDate()};
+        Button date = button("Fecha: " + AgendaDateFormat.display(chosenDate[0]));
+        date.setContentDescription("Elegir fecha: día, mes y año");
+        date.setOnClickListener(v -> {
+            LocalDate initial = chosenDate[0];
+            new DatePickerDialog(this, (picker, year, zeroBasedMonth, day) -> {
+                chosenDate[0] = AgendaDateFormat.fromPicker(year, zeroBasedMonth, day);
+                date.setText("Fecha: " + AgendaDateFormat.display(chosenDate[0]));
+            }, initial.getYear(), initial.getMonthValue() - 1, initial.getDayOfMonth()).show();
+        });
+
+        final LocalTime[] chosenTime = {candidate.localTime()};
+        DateTimeFormatter clockFormat = DateTimeFormatter.ofPattern("HH:mm", Locale.forLanguageTag("es-ES"));
+        Button time = button((event ? "Hora: " : "Hora límite: ")
+                + (chosenTime[0] == null ? "Seleccionar" : chosenTime[0].format(clockFormat)));
+        time.setOnClickListener(v -> {
+            LocalTime initial = chosenTime[0] == null ? LocalTime.now() : chosenTime[0];
+            new TimePickerDialog(this, (picker, hour, minute) -> {
+                chosenTime[0] = LocalTime.of(hour, minute);
+                time.setText((event ? "Hora: " : "Hora límite: ") + chosenTime[0].format(clockFormat));
+            }, initial.getHour(), initial.getMinute(), true).show();
+        });
+
         EditText notes = field("Notas", candidate.notes,
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         form.addView(title);
         form.addView(date);
         form.addView(time);
-        if (!event) form.addView(notes);
+        if (!event) {
+            Button noDeadlineTime = button("Sin hora límite");
+            noDeadlineTime.setOnClickListener(v -> {
+                chosenTime[0] = null;
+                time.setText("Hora límite: Seleccionar");
+            });
+            form.addView(noDeadlineTime);
+            form.addView(notes);
+        }
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(existing == null ? (event ? "Nuevo evento" : "Nueva tarea")
@@ -1044,14 +1084,13 @@ public final class MainActivity extends Activity {
             try {
                 String cleanTitle = title.getText().toString().trim();
                 if (cleanTitle.isEmpty()) throw new IllegalArgumentException("Escribe un título.");
-                LocalDate parsedDate = LocalDate.parse(date.getText().toString().trim());
-                String timeText = time.getText().toString().trim();
-                LocalTime parsedTime = timeText.isEmpty() ? null : LocalTime.parse(timeText);
+                LocalDate parsedDate = chosenDate[0];
+                LocalTime parsedTime = chosenTime[0];
                 if (event && parsedTime == null) throw new IllegalArgumentException("Los eventos necesitan una hora.");
 
                 candidate.type = type;
                 candidate.title = cleanTitle;
-                candidate.date = parsedDate.toString();
+                candidate.date = AgendaDateFormat.store(parsedDate);
                 candidate.time = parsedTime == null ? null : parsedTime.toString();
 
                 if (event) {

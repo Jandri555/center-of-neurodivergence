@@ -65,6 +65,14 @@ jobs:
             android/tests/AndroidPluginServicesSmoke.java
           java -cp android/app/build/plugin-contract-test AndroidPluginServicesSmoke
 
+      - name: Test Spanish date display and ISO storage contract
+        run: |
+          mkdir -p android/app/build/date-format-test
+          javac --release 17 -d android/app/build/date-format-test \
+            android/app/src/main/java/com/neurocenter/apps/agenda/AgendaDateFormat.java \
+            android/tests/AgendaDateFormatSmoke.java
+          java -cp android/app/build/date-format-test AgendaDateFormatSmoke
+
       - name: Download pinned patched OpenJDK 21 ARM64 artifact
         uses: actions/download-artifact@v4
         with:
