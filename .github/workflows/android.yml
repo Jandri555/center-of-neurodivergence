@@ -5,6 +5,7 @@ on:
     branches: [ "dev", "main" ]
     paths:
       - "android/**"
+      - "src/main/java/com/neurocenter/apps/agenda/AgendaDateFormat.java"
       - "src/main/java/com/neurocenter/apps/agenda/AgendaEntry.java"
       - "src/main/java/com/neurocenter/apps/agenda/AgendaOperation.java"
       - "src/main/java/com/neurocenter/apps/agenda/AgendaSyncJournal.java"
@@ -17,6 +18,7 @@ on:
     branches: [ "dev", "main" ]
     paths:
       - "android/**"
+      - "src/main/java/com/neurocenter/apps/agenda/AgendaDateFormat.java"
       - "src/main/java/com/neurocenter/apps/agenda/AgendaEntry.java"
       - "src/main/java/com/neurocenter/apps/agenda/AgendaOperation.java"
       - "src/main/java/com/neurocenter/apps/agenda/AgendaSyncJournal.java"
@@ -65,11 +67,11 @@ jobs:
             android/tests/AndroidPluginServicesSmoke.java
           java -cp android/app/build/plugin-contract-test AndroidPluginServicesSmoke
 
-      - name: Test Spanish date display and ISO storage contract
+      - name: Test Spanish date display and storage contract
         run: |
           mkdir -p android/app/build/date-format-test
           javac --release 17 -d android/app/build/date-format-test \
-            android/app/src/main/java/com/neurocenter/apps/agenda/AgendaDateFormat.java \
+            src/main/java/com/neurocenter/apps/agenda/AgendaDateFormat.java \
             android/tests/AgendaDateFormatSmoke.java
           java -cp android/app/build/date-format-test AgendaDateFormatSmoke
 

@@ -189,3 +189,15 @@ La aplicación Android será independiente del panel Swing y tendrá:
 - Android Open Accessory protocol: https://source.android.com/docs/core/interaction/accessories/protocol
 - Android Bluetooth connections: https://developer.android.com/develop/connectivity/bluetooth/connect-bluetooth-devices
 - usb4java/libusb: https://github.com/usb4java/usb4java
+
+
+## Fechas de Agenda (contrato único)
+
+Las dos plataformas guardan, muestran y sincronizan las fechas en **dd/MM/aaaa**
+(por ejemplo, `16/02/2027`). Las horas siguen usando `HH:mm`.
+El campo `date` de `agenda.json` y de las operaciones Bluetooth/USB utiliza
+exactamente ese formato. Las tareas importadas a través de `ExternalTask`
+también se almacenan así.
+
+No hay conversiones, compatibilidad heredada ni migraciones para fechas ISO
+de versiones anteriores: se parte de la nueva estructura.

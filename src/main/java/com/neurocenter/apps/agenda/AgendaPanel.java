@@ -959,7 +959,7 @@ final class AgendaPanel extends JPanel {
             boolean hasTime = event || withTime.isSelected();
             e.type = type;
             e.title = ttl;
-            e.date = fromDate((Date) dateSpinner.getValue()).toString();
+            e.date = AgendaDateFormat.store(fromDate((Date) dateSpinner.getValue()));
             e.time = hasTime
                     ? LocalTime.of(((Number) hour.getValue()).intValue(), ((Number) minute.getValue()).intValue()).toString()
                     : null;

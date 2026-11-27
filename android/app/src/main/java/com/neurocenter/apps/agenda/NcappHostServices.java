@@ -9,7 +9,6 @@ import com.neurocenter.core.AndroidPluginServices;
 
 import org.json.JSONObject;
 
-import java.time.LocalDate;
 import java.time.LocalTime;
 
 /**
@@ -57,7 +56,7 @@ public final class NcappHostServices {
                 if (title.isEmpty() || title.length() > 512 || notes.length() > 8192) {
                     throw new IllegalArgumentException("Título o notas inválidos.");
                 }
-                if (!date.isEmpty()) LocalDate.parse(date);
+                if (!date.isEmpty()) AgendaDateFormat.parse(date);
                 if (!time.isEmpty()) LocalTime.parse(time);
                 String taskId = agenda.addTask(title, date.isEmpty() ? null : date,
                         time.isEmpty() ? null : time, notes);

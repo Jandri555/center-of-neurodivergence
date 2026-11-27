@@ -7,7 +7,7 @@ import java.time.format.DateTimeParseException;
 import java.util.UUID;
 
 /**
- * Una tarea o un evento. Se guarda tal cual en agenda.json (fechas y horas como texto ISO).
+ * Una tarea o un evento. Se guarda en agenda.json (fechas dd/MM/aaaa y horas HH:mm).
  * Tarea:  tiene fecha límite (date), hora límite opcional (time), notas y se puede marcar como hecha.
  * Evento: título, fecha, hora y opciones de aviso (día anterior y/o tiempo antes personalizado).
  * Las entradas guardadas antes de que existieran los eventos no tienen "type" y se leen como tareas.
@@ -19,7 +19,7 @@ final class AgendaEntry {
 
     String id = UUID.randomUUID().toString();
     String type = TASK;
-    String date;            // yyyy-MM-dd (en una tarea es la fecha límite)
+    String date;            // dd/MM/aaaa (en una tarea es la fecha límite)
     String time;            // HH:mm, o null si no tiene hora
     String title = "";
     String externalSource;
@@ -77,7 +77,7 @@ final class AgendaEntry {
 
     LocalDate localDate() {
         try {
-            return date == null ? null : LocalDate.parse(date);
+            return date == null ? null : AgendaDateFormat.parse(date);
         } catch (DateTimeParseException e) {
             return null;
         }

@@ -955,8 +955,10 @@ public final class MainActivity extends Activity {
 
     private void addEntries(List<AgendaEntry> entries, String emptyMessage) {
         entries.sort(Comparator
-                .comparing((AgendaEntry entry) -> entry.date == null ? "" : entry.date)
-                .thenComparing(entry -> entry.time == null ? "" : entry.time)
+                .comparing((AgendaEntry entry) -> entry.localDate(),
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(entry -> entry.localTime(),
+                        Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(entry -> entry.title == null ? "" : entry.title.toLowerCase()));
 
         if (entries.isEmpty()) {

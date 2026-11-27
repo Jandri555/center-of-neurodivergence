@@ -13,8 +13,8 @@ interface INeuroCenterBridge {
     /** Requires agenda.read. Returns a JSON snapshot, never a mutable host object. */
     String getAgendaJson();
 
-    /** Requires agenda.write. */
-    String addTask(String title, String dateIso, String timeIso, String notes);
+    /** Requires agenda.write. dateSpanish uses dd/MM/aaaa; timeIso uses HH:mm. */
+    String addTask(String title, String dateSpanish, String timeIso, String notes);
 
     /** Requires agenda.write. */
     boolean setEntryCompleted(String entryId, boolean completed);

@@ -13,7 +13,7 @@ public final class AndroidPluginServices {
 
     public interface AgendaBridge {
         String getAgendaJson();
-        String addTask(String title, String dateIso, String timeIso, String notes);
+        String addTask(String title, String dateSpanish, String timeIso, String notes);
         boolean setEntryCompleted(String entryId, boolean completed);
         boolean deleteAgendaEntry(String entryId);
     }

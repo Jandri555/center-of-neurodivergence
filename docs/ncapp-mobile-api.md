@@ -106,7 +106,7 @@ String onHostResponse(String capability, String responseJson);
 
 La respuesta contiene ok:true y los datos, o bien ok:false y error.
 El contrato del plugin admite agenda.read/list y agenda.write/addTask
-(campos title, date y time ISO opcionales y notes opcional).
+(campos title, date en formato dd/MM/aaaa, time en HH:mm y notes opcionales).
 Revocar el permiso en el gestor bloquea las siguientes operaciones.
 Las demás capacidades todavía no tienen puente móvil. El proceso
 aislado no puede acceder a AgendaStore por su cuenta.

@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
-import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
 import java.util.Arrays;
@@ -70,15 +69,15 @@ public final class NeuroCenterBridgeService extends Service {
         }
 
         @Override
-        public String addTask(String title, String dateIso, String timeIso, String notes) {
+        public String addTask(String title, String dateSpanish, String timeIso, String notes) {
             Caller caller = requireCapability(NeuroCenterCapabilities.AGENDA_WRITE);
             String safeTitle = requireText(title, "El título", 512);
-            validateDateAndTime(dateIso, timeIso);
+            validateDateAndTime(dateSpanish, timeIso);
             String safeNotes = notes == null ? "" : notes;
             if (safeNotes.length() > 8192) throw new IllegalArgumentException("Las notas superan 8192 caracteres.");
 
             return AndroidPluginServices.requireAgendaBridge().addTask(
-                    safeTitle, blankToNull(dateIso), blankToNull(timeIso), safeNotes);
+                    safeTitle, blankToNull(dateSpanish), blankToNull(timeIso), safeNotes);
         }
 
         @Override
@@ -240,12 +239,12 @@ public final class NeuroCenterBridgeService extends Service {
         return value;
     }
 
-    private static void validateDateAndTime(String dateIso, String timeIso) {
+    private static void validateDateAndTime(String dateSpanish, String timeIso) {
         try {
-            if (dateIso != null && !dateIso.trim().isEmpty()) LocalDate.parse(dateIso.trim());
+            if (dateSpanish != null && !dateSpanish.trim().isEmpty()) AgendaDateFormat.parse(dateSpanish.trim());
             if (timeIso != null && !timeIso.trim().isEmpty()) LocalTime.parse(timeIso.trim());
         } catch (DateTimeParseException ex) {
-            throw new IllegalArgumentException("La fecha debe ser yyyy-MM-dd y la hora HH:mm.", ex);
+            throw new IllegalArgumentException("La fecha debe ser dd/MM/aaaa y la hora HH:mm.", ex);
         }
     }
 

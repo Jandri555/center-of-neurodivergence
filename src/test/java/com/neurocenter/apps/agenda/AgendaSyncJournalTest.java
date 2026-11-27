@@ -19,7 +19,7 @@ class AgendaSyncJournalTest {
         AgendaStore desktop = store("desktop");
         AgendaEntry task = new AgendaEntry();
         task.title = "Entregar práctica";
-        task.date = LocalDate.of(2026, 11, 20).toString();
+        task.date = AgendaDateFormat.store(LocalDate.of(2026, 11, 20));
         desktop.add(task);
         desktop.save();
 
@@ -55,7 +55,7 @@ class AgendaSyncJournalTest {
         AgendaEntry event = new AgendaEntry();
         event.type = AgendaEntry.EVENT;
         event.title = "Cita";
-        event.date = LocalDate.of(2026, 12, 1).toString();
+        event.date = AgendaDateFormat.store(LocalDate.of(2026, 12, 1));
         event.time = "10:00";
         desktop.add(event);
         desktop.save();
@@ -90,7 +90,7 @@ class AgendaSyncJournalTest {
         AgendaEntry event = new AgendaEntry();
         event.type = AgendaEntry.EVENT;
         event.title = "Reunión";
-        event.date = LocalDate.of(2026, 12, 1).toString();
+        event.date = AgendaDateFormat.store(LocalDate.of(2026, 12, 1));
         event.time = "12:00";
         event.remindDayBefore = true;
         event.notifiedDayBefore = true;
@@ -113,7 +113,7 @@ class AgendaSyncJournalTest {
         AgendaStore desktop = store("restart");
         AgendaEntry task = new AgendaEntry();
         task.title = "Comprar material";
-        task.date = LocalDate.of(2026, 11, 22).toString();
+        task.date = AgendaDateFormat.store(LocalDate.of(2026, 11, 22));
         desktop.add(task);
         desktop.save();
         desktop.enableSync();
@@ -136,7 +136,7 @@ class AgendaSyncJournalTest {
         AgendaEntry event = new AgendaEntry();
         event.type = AgendaEntry.EVENT;
         event.title = "Médico";
-        event.date = LocalDate.of(2026, 12, 2).toString();
+        event.date = AgendaDateFormat.store(LocalDate.of(2026, 12, 2));
         event.time = "09:00";
         event.remindDayBefore = true;
         event.notifiedDayBefore = true;
@@ -151,11 +151,11 @@ class AgendaSyncJournalTest {
         phoneEvent.notifiedDayBefore = true;
         phone.save();
 
-        event.date = LocalDate.of(2026, 12, 3).toString();
+        event.date = AgendaDateFormat.store(LocalDate.of(2026, 12, 3));
         desktop.save();
         phone.mergeOperations(desktop.exportOperations());
 
-        assertEquals("2026-12-03", phone.all().get(0).date);
+        assertEquals("03/12/2026", phone.all().get(0).date);
         assertFalse(phone.all().get(0).notifiedDayBefore,
                 "Un cambio en fecha/hora debe habilitar el recordatorio local para la nueva fecha.");
     }

@@ -30,7 +30,7 @@ class AgendaExternalImportTest {
 
         assertEquals(1, store.all().size());
         assertEquals("Entrega modificada", store.all().get(0).title);
-        assertEquals("2026-12-03", store.all().get(0).date);
+        assertEquals("03/12/2026", store.all().get(0).date);
     }
 
     @Test

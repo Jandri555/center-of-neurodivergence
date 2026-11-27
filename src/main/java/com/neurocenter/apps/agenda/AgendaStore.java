@@ -247,7 +247,7 @@ final class AgendaStore {
             }
             existing.type = AgendaEntry.TASK;
             existing.title = task.title();
-            existing.date = task.dueDate() == null ? null : task.dueDate().toString();
+            existing.date = task.dueDate() == null ? null : AgendaDateFormat.store(task.dueDate());
             existing.time = task.dueTime() == null ? null : task.dueTime().toString();
             existing.notes = task.notes();
             existing.done = task.completed();

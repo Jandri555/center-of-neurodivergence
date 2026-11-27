@@ -345,7 +345,7 @@ class AgendaSyncProtocolTest {
     private static AgendaEntry task(String title) {
         AgendaEntry task = new AgendaEntry();
         task.title = title;
-        task.date = LocalDate.of(2026, 12, 5).toString();
+        task.date = AgendaDateFormat.store(LocalDate.of(2026, 12, 5));
         return task;
     }
 }
